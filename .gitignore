@@ -1,0 +1,12 @@
+data/*
+!data/.gitkeep
+cache/*
+!cache/.gitkeep
+__pycache__/
+.venv/
+*.npy
+*.bin
+*.db
+*.pyc
+.pytest_cache/
+*.egg-info/
