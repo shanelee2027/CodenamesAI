@@ -1,34 +1,42 @@
-"""Build the GloVe similarity tensor (SCOPE.md §M2).
+"""Build the similarity tensor's clue vocabulary and GloVe slice (SCOPE.md §M2).
 
-Loads GloVe 6B-300d, filters a ~250k-word clue vocabulary, builds vectors
-for the board vocabulary (mean-pooling multi-word entries like "New york"
--- GloVe only has single-token vectors, so a phrase's vector is the mean
-of its parts' vectors, a standard practice for representing short phrases
-with single-word embeddings), normalizes everything to unit vectors, and
-computes cosine similarity for every (clue, board word) pair on GPU in
-batches. Output is a memory-mapped fp16 tensor of shape
-(n_clues, n_board_words, n_spaces=1) plus JSON vocab index files, all in
-cache/ (gitignored -- this is a build artifact, regenerate it locally).
+Clue vocabulary is a UNION across all three downloaded spaces' own
+vocabularies, not just GloVe's. This corrects an earlier version of this
+script that used only GloVe's top-N frequency-ranked words: that
+structurally prevented any word GloVe doesn't know (or ranks too low) from
+ever being a candidate clue, no matter how well another space knows it --
+directly undercutting SCOPE.md's own motivating example ("GloVe has no
+vector for [Technoblade] at all, and could not produce the clue at any
+threshold," implying another space *should* be able to supply it). See
+docs/log.md's M2 entry for the fuller writeup of the correction.
 
-GloVe's 6B vocab file is frequency-descending ordered (verified empirically:
-first entries are "the", ",", ".", "of" ...; last entries are junk/rare
-tokens) -- so "frequency threshold" (SCOPE.md's phrase) is implemented as a
-rank cutoff via --vocab-size, rather than pulling in an external word-
-frequency source. Filtering to purely lowercase-alphabetic tokens first
-(dropping punctuation/digit tokens GloVe also assigns vectors to) and then
-taking the top --vocab-size of what's left lands close to SCOPE's ~250k
-target using GloVe's own ordering, no new dependency needed.
+Per-space vocabulary contribution:
+  - GloVe and Wikipedia2Vec are both frequency-descending ordered in their
+    raw files (verified empirically) -- take each one's top --*-vocab-size
+    alphabetic words via a token-only scan that stops early once enough
+    are collected (e.g. Wikipedia2Vec: the first 250k qualifying tokens
+    appear within the first 12% of its 4.53M lines, so this is much
+    faster than a full scan).
+  - Numberbatch has no reliable frequency ordering in its file (verified
+    empirically -- its first entries are junk tokens like "##") and its
+    total alphabetic vocabulary is modest (~359k), so all of it is
+    included rather than attempting a rank cutoff.
+
+Every word in the final union gets a GloVe similarity value if GloVe's
+*full* 400k-word vocabulary has it (not just its top-250k) -- a word
+freshly added to the vocab by Numberbatch or Wikipedia2Vec might still
+exist further down GloVe's own list. Words with no GloVe vector at all get
+NaN in this slice, the same convention scripts/extend_similarity_tensor.py
+uses for the other spaces.
 
 Usage:
     python scripts/build_similarity_tensor.py
-    python scripts/build_similarity_tensor.py --vocab-size 250000 --batch-size 20000
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import re
 import time
 import zipfile
 from pathlib import Path
@@ -36,7 +44,15 @@ from pathlib import Path
 import numpy as np
 import torch
 
-ALPHABETIC = re.compile(r"^[a-z]+$")
+from _embedding_lib import (
+    ALPHABETIC,
+    SPACE_CONFIGS,
+    all_alphabetic_words,
+    build_vectors_for_vocab,
+    compute_similarity,
+    normalize_rows,
+    ranked_alphabetic_words,
+)
 
 
 def ensure_glove_extracted(zip_path: Path, extract_dir: Path, filename: str) -> Path:
@@ -49,8 +65,11 @@ def ensure_glove_extracted(zip_path: Path, extract_dir: Path, filename: str) -> 
     return dest
 
 
-def load_glove(path: Path) -> tuple[list[str], np.ndarray]:
-    """Returns (words, vectors) in file order (== frequency-descending rank)."""
+def load_glove_full(path: Path) -> tuple[list[str], np.ndarray]:
+    """Returns (words, vectors) for GloVe's *entire* vocabulary, in file
+    order (== frequency rank). Needed as a full dict (not just the top-N
+    used to seed the vocab union) since a word contributed by another
+    space might exist further down GloVe's list."""
     words: list[str] = []
     vectors: list[np.ndarray] = []
     with path.open(encoding="utf-8") as f:
@@ -61,60 +80,8 @@ def load_glove(path: Path) -> tuple[list[str], np.ndarray]:
     return words, np.stack(vectors)
 
 
-def build_clue_vocab(glove_words: list[str], glove_vectors: np.ndarray, vocab_size: int) -> tuple[list[str], np.ndarray]:
-    clue_words: list[str] = []
-    clue_idxs: list[int] = []
-    for i, w in enumerate(glove_words):
-        if ALPHABETIC.match(w):
-            clue_words.append(w)
-            clue_idxs.append(i)
-            if len(clue_words) == vocab_size:
-                break
-    return clue_words, glove_vectors[clue_idxs]
-
-
-def build_board_vectors(board_words: list[str], glove_index: dict[str, int], glove_vectors: np.ndarray) -> np.ndarray:
-    dim = glove_vectors.shape[1]
-    out = np.zeros((len(board_words), dim), dtype=np.float32)
-    for i, word in enumerate(board_words):
-        lw = word.lower()
-        if lw in glove_index:
-            out[i] = glove_vectors[glove_index[lw]]
-            continue
-        parts = re.split(r"[\s-]+", lw)
-        missing = [p for p in parts if p not in glove_index]
-        if missing:
-            raise KeyError(
-                f"board word {word!r} has no GloVe vector, and part(s) {missing} "
-                "also missing -- can't even mean-pool it. Fix the board word list "
-                "or extend GloVe coverage before proceeding."
-            )
-        part_vectors = np.stack([glove_vectors[glove_index[p]] for p in parts])
-        out[i] = part_vectors.mean(axis=0)
-    return out
-
-
-def normalize_rows(vectors: np.ndarray) -> np.ndarray:
-    norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    return vectors / norms
-
-
-def compute_similarity_tensor(
-    clue_vectors: np.ndarray, board_vectors: np.ndarray, device: torch.device, batch_size: int
-) -> np.ndarray:
-    board_t = torch.from_numpy(board_vectors).to(device)  # (n_board, dim)
-    n_clues = clue_vectors.shape[0]
-    n_board = board_vectors.shape[0]
-    result = np.empty((n_clues, n_board), dtype=np.float16)
-
-    for start in range(0, n_clues, batch_size):
-        end = min(start + batch_size, n_clues)
-        batch = torch.from_numpy(clue_vectors[start:end]).to(device)
-        sims = batch @ board_t.T  # (batch, n_board), cosine sim since both sides are unit vectors
-        result[start:end] = sims.to(torch.float16).cpu().numpy()
-
-    return result
+def build_board_words(path: Path) -> list[str]:
+    return [l.strip() for l in path.read_text().splitlines() if l.strip()]
 
 
 def main() -> None:
@@ -122,41 +89,83 @@ def main() -> None:
     parser.add_argument("--glove-zip", type=Path, default=Path("data/embeddings/raw/glove.6B.zip"))
     parser.add_argument("--glove-dim", type=int, default=300)
     parser.add_argument("--glove-extract-dir", type=Path, default=Path("data/embeddings/glove"))
+    parser.add_argument("--numberbatch-source", type=Path, default=SPACE_CONFIGS["numberbatch"]["default_source"])
+    parser.add_argument("--wikipedia2vec-source", type=Path, default=SPACE_CONFIGS["wikipedia2vec"]["default_source"])
     parser.add_argument("--board-words", type=Path, default=Path("codenames/assets/board_words.txt"))
-    parser.add_argument("--vocab-size", type=int, default=250_000, help="clue vocabulary size (rank cutoff over GloVe's frequency-ordered vocab)")
+    parser.add_argument("--glove-vocab-size", type=int, default=250_000, help="GloVe's own contribution to the vocab union (rank cutoff)")
+    parser.add_argument("--wikipedia2vec-vocab-size", type=int, default=250_000, help="Wikipedia2Vec's own contribution to the vocab union (rank cutoff)")
     parser.add_argument("--batch-size", type=int, default=20_000)
     parser.add_argument("--output-dir", type=Path, default=Path("cache"))
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"device: {device}")
-
     t0 = time.time()
+
     glove_filename = f"glove.6B.{args.glove_dim}d.txt"
     glove_path = ensure_glove_extracted(args.glove_zip, args.glove_extract_dir, glove_filename)
-    print(f"loading {glove_path} ...")
-    glove_words, glove_vectors = load_glove(glove_path)
+    print(f"loading full GloVe vocabulary from {glove_path} ...")
+    glove_words, glove_vectors = load_glove_full(glove_path)
     glove_index = {w: i for i, w in enumerate(glove_words)}
-    print(f"loaded {len(glove_words)} GloVe vectors in {time.time()-t0:.1f}s")
+    print(f"loaded {len(glove_words)} GloVe vectors ({time.time()-t0:.1f}s)")
 
-    clue_words, clue_vectors = build_clue_vocab(glove_words, glove_vectors, args.vocab_size)
-    print(f"clue vocabulary: {len(clue_words)} words")
+    print(f"collecting top {args.glove_vocab_size} alphabetic GloVe words...")
+    glove_contribution = set()
+    for w in glove_words:
+        if ALPHABETIC.match(w):
+            glove_contribution.add(w)
+            if len(glove_contribution) >= args.glove_vocab_size:
+                break
 
-    board_words = [l.strip() for l in args.board_words.read_text().splitlines() if l.strip()]
-    board_vectors = build_board_vectors(board_words, glove_index, glove_vectors)
+    print(f"collecting top {args.wikipedia2vec_vocab_size} alphabetic Wikipedia2Vec words...")
+    wiki_config = SPACE_CONFIGS["wikipedia2vec"]
+    wiki_contribution = set(ranked_alphabetic_words(
+        args.wikipedia2vec_source, wiki_config["opener"], wiki_config["skip_prefixes"],
+        wiki_config["has_header"], limit=args.wikipedia2vec_vocab_size,
+    ))
+    print(f"  found {len(wiki_contribution)}")
+
+    print("collecting all alphabetic Numberbatch words (no reliable rank order to cut by)...")
+    nb_config = SPACE_CONFIGS["numberbatch"]
+    nb_contribution = all_alphabetic_words(
+        args.numberbatch_source, nb_config["opener"], nb_config["skip_prefixes"], nb_config["has_header"],
+    )
+    print(f"  found {len(nb_contribution)}")
+
+    clue_words = sorted(glove_contribution | wiki_contribution | nb_contribution)
+    print(f"clue vocabulary (union): {len(clue_words)} words")
+
+    board_words = build_board_words(args.board_words)
     print(f"board vocabulary: {len(board_words)} words")
 
-    clue_vectors = normalize_rows(clue_vectors)
-    board_vectors = normalize_rows(board_vectors)
+    dim = glove_vectors.shape[1]
+    clue_matrix = np.zeros((len(clue_words), dim), dtype=np.float32)
+    clue_valid = np.zeros(len(clue_words), dtype=bool)
+    for i, w in enumerate(clue_words):
+        idx = glove_index.get(w)
+        if idx is not None:
+            clue_matrix[i] = glove_vectors[idx]
+            clue_valid[i] = True
+    print(f"GloVe clue coverage: {clue_valid.sum()}/{len(clue_words)} ({100*clue_valid.mean():.1f}%)")
+
+    board_vectors_dict = {w: glove_vectors[glove_index[w]] for w in glove_index}
+    board_matrix, board_valid = build_vectors_for_vocab(
+        board_words, board_vectors_dict, dim, is_board=True, multiword_join=None,
+    )
+    missing_board = [w for w, ok in zip(board_words, board_valid) if not ok]
+    print(f"GloVe board coverage: {board_valid.sum()}/{len(board_words)}" + (f", missing: {missing_board}" if missing_board else ""))
+
+    clue_matrix = normalize_rows(clue_matrix, clue_valid)
+    board_matrix = normalize_rows(board_matrix, board_valid)
 
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
     t1 = time.time()
-    sim_2d = compute_similarity_tensor(clue_vectors, board_vectors, device, args.batch_size)
+    sim_2d = compute_similarity(clue_matrix, clue_valid, board_matrix, board_valid, device, args.batch_size)
     compute_time = time.time() - t1
     peak_vram = torch.cuda.max_memory_allocated(device) / 1e9 if device.type == "cuda" else 0.0
 
-    tensor = sim_2d[:, :, np.newaxis]  # (n_clues, n_board_words, n_spaces=1)
+    tensor = sim_2d.astype(np.float16)[:, :, np.newaxis]
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     np.save(args.output_dir / "similarity_tensor.npy", tensor)
@@ -166,7 +175,9 @@ def main() -> None:
         "spaces": ["glove"],
         "shape": list(tensor.shape),
         "glove_source": str(glove_path),
-        "vocab_size_arg": args.vocab_size,
+        "glove_vocab_size_arg": args.glove_vocab_size,
+        "wikipedia2vec_vocab_size_arg": args.wikipedia2vec_vocab_size,
+        "vocab_note": "union of glove/numberbatch/wikipedia2vec vocabularies, see script docstring",
     }, indent=2))
 
     total_time = time.time() - t0

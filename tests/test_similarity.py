@@ -107,3 +107,39 @@ class TestTopClues:
     def test_default_space_is_first(self, sims):
         top = sims.top_clues("Vehicle", k=1)
         assert top[0][0] == "car"  # space_a value 0.95 is the max in that column
+
+
+class TestTopCluesWithMissingVectors:
+    """M4 extends spaces onto a fixed vocabulary, so a clue or board word
+    absent from a given space's source vectors gets NaN rather than being
+    silently dropped from the vocab (see scripts/extend_similarity_tensor.py).
+    top_clues() must exclude those from ranking, not let them corrupt it."""
+
+    @pytest.fixture
+    def sims_with_nan(self, tmp_path):
+        # "banana" has no vector in space_a (simulating an OOV clue word);
+        # its true value would beat "apple" if NaN were mishandled as 0 or
+        # sorted as the max.
+        tensor = np.array(
+            [
+                [[0.5], [0.1]],  # apple
+                [[np.nan], [0.9]],  # banana
+                [[0.3], [0.2]],  # car
+            ],
+            dtype=np.float16,
+        )
+        np.save(tmp_path / "similarity_tensor.npy", tensor)
+        (tmp_path / "clue_vocab.json").write_text(json.dumps(CLUE_WORDS))
+        (tmp_path / "board_vocab.json").write_text(json.dumps(BOARD_WORDS))
+        (tmp_path / "similarity_meta.json").write_text(json.dumps({"spaces": ["space_a"], "shape": list(tensor.shape)}))
+        return SimilarityTensor.load(cache_dir=tmp_path)
+
+    def test_nan_clue_excluded_from_ranking(self, sims_with_nan):
+        top = sims_with_nan.top_clues("Fruit", k=3)
+        words = [w for w, _ in top]
+        assert "banana" not in words
+        assert words[0] == "apple"  # 0.5 is the highest of the two valid entries
+
+    def test_k_larger_than_valid_count_does_not_crash(self, sims_with_nan):
+        top = sims_with_nan.top_clues("Fruit", k=20)
+        assert len(top) == 2  # only apple and car are valid; banana excluded

@@ -86,12 +86,24 @@ class SimilarityTensor:
 
     def top_clues(self, board_word: str, k: int = 20, space: str | None = None) -> list[tuple[str, float]]:
         """Top-k clue-vocabulary words by similarity to a single board word,
-        highest first. Used by scripts/sanity_check_sims.py."""
+        highest first. Used by scripts/sanity_check_sims.py.
+
+        NaN entries (a clue or board word with no vector in this space --
+        see scripts/extend_similarity_tensor.py) are excluded before
+        ranking, not just sorted last: np.argpartition's behavior with NaN
+        mixed into a partial sort is not guaranteed the way a full sort's
+        is, so they're dropped up front rather than relied on to land
+        somewhere sensible.
+        """
         bi = self.board_index.get(board_word.lower())
         if bi is None:
             raise KeyError(f"{board_word!r} not in board vocabulary")
         si = self.spaces.index(space) if space is not None else 0
         column = np.asarray(self.tensor[:, bi, si], dtype=np.float32)
-        top_idx = np.argpartition(-column, k)[:k]
+        valid = ~np.isnan(column)
+        valid_idx = np.flatnonzero(valid)
+        column = column[valid]
+        k = min(k, len(column))
+        top_idx = np.argpartition(-column, k - 1)[:k] if k > 0 else np.array([], dtype=int)
         top_idx = top_idx[np.argsort(-column[top_idx])]
-        return [(self.clue_words[i], float(column[i])) for i in top_idx]
+        return [(self.clue_words[valid_idx[i]], float(column[i])) for i in top_idx]

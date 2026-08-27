@@ -1,8 +1,12 @@
-"""Print top-20 nearest clues for sample board words (SCOPE.md §M2).
+"""Print top-20 nearest clues for sample board words (SCOPE.md §M2/§M4).
 
-Do not proceed past M2 without eyeballing this output. If the tensor
-indexing is wrong, everything downstream is wrong and it will not be
-obvious from unit tests alone.
+Do not proceed past M2 (or after extending the tensor in M4) without
+eyeballing this output. If the tensor indexing is wrong, everything
+downstream is wrong and it will not be obvious from unit tests alone.
+
+Prints one block per space found in the loaded tensor, so a newly added
+space (via scripts/extend_similarity_tensor.py) gets checked automatically
+without needing a --space flag.
 
 Usage:
     python scripts/sanity_check_sims.py
@@ -35,13 +39,15 @@ def main() -> None:
     words = args.words if args.words is not None else DEFAULT_WORDS + [random.choice(sims.board_words)]
     for word in words:
         print(f"=== {word} ===")
-        try:
-            top = sims.top_clues(word, k=args.k)
-        except KeyError:
-            print("  NOT IN BOARD VOCABULARY, skipping\n")
-            continue
-        for clue, score in top:
-            print(f"  {clue:20s} {score:.4f}")
+        for space in sims.spaces:
+            try:
+                top = sims.top_clues(word, k=args.k, space=space)
+            except KeyError:
+                print("  NOT IN BOARD VOCABULARY, skipping\n")
+                break
+            print(f"  --- {space} ---")
+            for clue, score in top:
+                print(f"    {clue:20s} {score:.4f}")
         print()
 
 

@@ -191,9 +191,187 @@ sanity check as a gate, not a formality.
   4 new regression tests added across `test_board.py`/`test_similarity.py`
   (39 total, all passing).
 
+**Correction (found while working on M4):** the clue vocabulary as
+originally built was structurally broken for this project's own stated
+purpose. It was the top-250k GloVe-ranked alphabetic words only, which
+means a word GloVe doesn't know (or ranks too low) could **never** appear
+as a candidate clue, regardless of how well any other space knows it —
+directly undercutting SCOPE.md's own motivating example: "GloVe has no
+vector for [Technoblade] at all, and could not produce the clue at any
+threshold," which implies another space *should* be able to supply it.
+The user asked, while testing `scripts/check_clue.py`, whether a word
+absent from GloVe but present in Wikipedia2Vec could be allowed — that
+question is what surfaced this.
+
+Fixed by rebuilding `clue_vocab.json` as a **union** across all three
+downloaded spaces, not just GloVe's:
+- GloVe and Wikipedia2Vec are both frequency-descending ordered in their
+  raw files (verified empirically), so each contributes its own top-N
+  alphabetic words via a rank cutoff (250k each, matching the original
+  per-space target). Early-stopping once N are collected made this fast
+  even for Wikipedia2Vec's 4.53M-line file — the first 250k qualifying
+  tokens appear within the first 12% of the file (539,860 lines), so this
+  script no longer needs the ~235s full scan it needed in M4's first
+  pass just to establish the vocabulary.
+- Numberbatch has no reliable frequency ordering (verified empirically —
+  its first entries are junk tokens like "##") and a modest total
+  alphabetic vocabulary (359,059 words), so all of it is included rather
+  than attempting a rank cutoff.
+- Result: **532,738** clue words (up from 250,000), of which 251,610 have
+  no GloVe vector at all — these are exactly the words the original
+  design would have permanently excluded. GloVe's own slice now has NaN
+  gaps too (52.8% coverage of the new, larger vocab) using the same
+  NaN-for-missing convention already established for the other spaces —
+  a generalization that was needed anyway, since GloVe's slice could no
+  longer assume 100% coverage of its own reference vocabulary once that
+  vocabulary stopped being purely GloVe-derived.
+- Every word in the union still gets checked against GloVe's *full*
+  400k-word vocabulary (not just its top-250k) before being marked
+  missing — a word freshly contributed by Numberbatch or Wikipedia2Vec
+  might still exist further down GloVe's own list.
+- Verified the fix directly: `fortnite` (not in GloVe's vocab at all —
+  predates the word's 2017 gaming usage in GloVe's training corpus) now
+  resolves via `check_clue.py`, showing `n/a` for GloVe and real values
+  for Numberbatch/Wikipedia2Vec, instead of the hard "not in clue
+  vocabulary" error it would have raised before.
+- Extracted the loading/mean-pooling/NaN-masking logic that both
+  `build_similarity_tensor.py` and `extend_similarity_tensor.py` now
+  need into `scripts/_embedding_lib.py` — this duplication became real
+  once GloVe's own slice needed the same NaN-aware machinery the other
+  spaces already had, not speculative abstraction.
+- One cosmetic side effect, not a bug: Numberbatch's top-clues for common
+  board words now surface rare morphological derivatives it wasn't
+  contributing before (e.g. "King" → nonking/kinging/kingless/unking
+  ahead of queen/monarch) — a consequence of including its full
+  vocabulary rather than only the slice that overlapped GloVe's top-250k.
+  Harmless in practice: every one of these literally contains the board
+  word as a substring, so `is_legal_clue()` already rejects them before
+  they'd ever be scored as a real candidate.
+- Full rebuild: 42.7s (GloVe + union vocab construction), 12.1s
+  (Numberbatch), 241.2s (Wikipedia2Vec, dominated by the full scan needed
+  to check membership against the new, larger wanted-set — the early-stop
+  trick only applies to vocab *construction*, not to finding vectors for
+  an already-fixed vocab). 41 tests still pass unchanged (they use a
+  synthetic fixture, not the real tensor).
+
 ## M3 — Inspector
 
-## M4 — Remaining embedding spaces + fastText training
+Skipped for now at the user's explicit request, out of SCOPE.md's stated
+order (M3 before M4) — proceeded straight to M4's non-fastText half. Noting
+this here since SCOPE.md says to flag divergences explicitly. Consequence:
+no dedicated CLI/UI exists yet for interactively exploring a board+clue;
+`scripts/sanity_check_sims.py` (extended to loop over all spaces) is being
+used as a stand-in verification tool in the meantime. M3 still needs to be
+built properly later — this isn't a substitute for it.
+
+## M4 — Remaining embedding spaces + fastText training (partial)
+
+**Note:** the coverage numbers and vocab-size figures below (250,000
+clues, 47.6%/97.6% coverage) describe the *first* pass and are superseded
+by the vocab-union correction recorded under M2 above (532,738 clues,
+67.4%/72.3% coverage after rebuilding). Left as-is below as a record of
+what happened at the time rather than edited to match — the correction
+entry explains why and what changed.
+
+**Scope actually covered:** Numberbatch + Wikipedia2Vec extended onto the
+existing tensor. fastText is NOT done — it trains on the Fandom corpus
+(SCOPE.md §M4), which isn't fully collected yet (23/45 wikis; 21 pending
+the Fandom account's autoconfirmed window, see M0). Explicitly deferred,
+not forgotten.
+
+**Expected:** straightforward per SCOPE.md — download (already done during
+M0's pre-fetch), extend the tensor to 4 spaces, extend the inspector,
+run the "technoblade" milestone test.
+
+**Actual:**
+
+- Both new spaces reuse the exact clue/board vocabulary fixed by M2's
+  GloVe build (same 250,000 clue words, same 400 board words, same row/
+  column indices) — required for the `n_spaces` axis to mean anything;
+  each space is a slice appended to the same tensor, not a separate one.
+- A clue or board word with no vector in a given space gets **NaN**, not
+  zero or a silent drop. Zero would misleadingly read as "confirmed
+  unrelated" rather than "no data" — a real design difference from the
+  `-1` sentinel SCOPE uses elsewhere (§2) for masking revealed/missing
+  board slots in the eventual feature vector; that's a different, later
+  concern (M7) about a specific board's 25 slots, not about vocabulary
+  coverage gaps in the tensor itself.
+- Checked each source file's format empirically before writing loader
+  code (this determined the design, not the other way around):
+  - **Numberbatch** (`numberbatch-en-19.08.txt.gz`): plain word2vec-style
+    text format, fully lowercase, and — unlike GloVe — multi-word concepts
+    are already single underscore-joined tokens (`new_york`, `ice_cream`,
+    `loch_ness`, `scuba_diver` all present directly). Result: **100%**
+    board-word coverage with no mean-pooling needed at all. Clue coverage
+    is lower, **47.6%** (119,026/250,000) — Numberbatch's ~517k-word
+    vocab just doesn't overlap GloVe's frequency-ranked 250k as heavily
+    as it does for the small, curated board vocabulary.
+  - **Wikipedia2Vec** (`enwiki_20180420_300d.txt.bz2`): mixes plain word
+    vectors with `ENTITY/Title_Case` Wikipedia-article vectors in the same
+    file (4.53M total entries). Entity vectors are Wikipedia2Vec's actual
+    differentiator per SCOPE's own table ("Encyclopedic entities, wiki
+    link graph") but were **excluded** here — using them properly needs
+    real Wikipedia title resolution (our board string "New york" isn't
+    guaranteed to match the article title "New_York" in general, and
+    guessing title-casing heuristically is fragile). Used plain word
+    vectors only, with GloVe-style mean-pooling as the multi-word
+    fallback (all 4 multi-word board entries needed it, same as GloVe).
+    Result: 396/400 board words matched directly, 4 mean-pooled, **100%**
+    board coverage; **97.6%** clue coverage (243,918/250,000) — much
+    closer to GloVe's coverage than Numberbatch's, consistent with both
+    being built from broad web/encyclopedia text rather than a curated
+    concept graph. Using entity vectors properly is a reasonable follow-up
+    enhancement, not abandoned by design — just out of scope for "the two
+    embeddings we can do" as asked.
+  - Wikipedia2Vec's file is large enough (4.53M lines) that a naive full
+    parse would be slow/memory-heavy; `extend_similarity_tensor.py` only
+    float-parses lines whose token is in the wanted set (250k clue words ∪
+    400 board words ∪ their split parts), checked cheaply via string
+    membership before paying for the `np.fromstring` conversion. Full run:
+    236s wall time, dominated by the single pass over the compressed file
+    (similarity compute itself was 0.3s).
+  - Numberbatch: 6.6s wall time total (small file, no filtering bottleneck).
+- `codenames/similarity.py`'s `top_clues()` needed a real fix once NaN
+  entries existed in the tensor: `np.argpartition` mixed with NaN doesn't
+  reliably sort NaN to one end the way a full sort does, so NaN rows are
+  now filtered out *before* ranking rather than trusted to land somewhere
+  sensible after. Caught by reasoning about it before running at scale
+  (Numberbatch leaves ~52% of any clue column as NaN, so this wasn't a
+  rare edge case) rather than by a failure.
+- `scripts/sanity_check_sims.py` extended to loop over every space in the
+  loaded tensor per board word, rather than only checking index 0. Ran it
+  across all three spaces on King/New york/Egypt/Spy and eyeballed the
+  results per SCOPE's instruction not to skip this: each space shows a
+  genuinely different knowledge profile exactly as SCOPE's design predicts
+  — Numberbatch surfaces commonsense/geographic specifics (Newburgh,
+  Poughkeepsie, Masr, Hatshepsut for Egypt), Wikipedia2Vec skews
+  encyclopedic (nyc, nubia, philby), GloVe stays generic co-occurrence
+  (manhattan, jersey, boston). No signs of index misalignment across
+  spaces.
+- 2 new regression tests for the NaN-exclusion behavior in `top_clues()`.
+  41 tests total, all passing.
+- The "technoblade" milestone test from SCOPE.md's M4 section requires
+  fastText (trained on the Fandom/pop-culture corpus) — GloVe/Numberbatch/
+  Wikipedia2Vec are all general web/encyclopedia corpora and have no
+  vector for "technoblade" at all. Confirmed by checking all three raw
+  source files directly (not just the built vocab) — the word doesn't
+  exist in any of them, not even as a Wikipedia2Vec entity vector. That
+  test is meaningless until fastText exists; will run it properly once
+  M0's corpus is complete enough to train on.
+
+**Future improvement (not pursued now):** Wikipedia2Vec's only English
+pretrained release is from April 2018 (confirmed via the project's own
+pretrained-downloads page and general search — a 2020 paper trained the
+tool on a January 2019 dump, but that was never published as a
+downloadable pretrained file). A fresher Wikipedia snapshot might carry
+entities/terms that postdate 2018. Not pursued: it would mean training
+Wikipedia2Vec from scratch against a full current Wikipedia dump
+(~20GB+ compressed, hours of training), which both diverges from
+SCOPE.md's explicit "download, pretrained" design for this space (§1:
+"Not a training-from-scratch embeddings project") and is redundant with
+fastText-on-Fandom, which is already the project's designated mechanism
+for recent pop-culture coverage. Left as a possible later stretch item,
+not a current gap to close.
 
 ## M5 — Guesser pool
 
