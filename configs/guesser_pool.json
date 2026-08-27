@@ -1,0 +1,47 @@
+{
+  "_comment": "Guesser pool composition (SCOPE.md §M5/§3). Entries build in order -- a wrapper guesser's 'base' must reference a name defined earlier in this list. Exactly 2 guessers are held_out: training code must never touch them (see codenames/guessers/registry.py). fastText has no guesser here yet -- it doesn't exist until M4's remaining half (needs the Fandom corpus); add a single_space entry with space='fasttext' once it does, most likely to the training-visible set given it's central to the project's own motivating case.",
+  "guessers": [
+    {
+      "name": "glove",
+      "type": "single_space",
+      "params": { "space": "glove" }
+    },
+    {
+      "name": "numberbatch",
+      "type": "single_space",
+      "params": { "space": "numberbatch" },
+      "held_out": true
+    },
+    {
+      "name": "wikipedia2vec",
+      "type": "single_space",
+      "params": { "space": "wikipedia2vec" }
+    },
+    {
+      "name": "blend_uniform",
+      "type": "blend",
+      "params": { "weights": { "glove": 1.0, "numberbatch": 1.0, "wikipedia2vec": 1.0 } }
+    },
+    {
+      "name": "blend_glove_heavy",
+      "type": "blend",
+      "params": { "weights": { "glove": 2.0, "numberbatch": 0.5, "wikipedia2vec": 0.5 } }
+    },
+    {
+      "name": "rank_based",
+      "type": "rank_based",
+      "params": { "spaces": ["glove", "numberbatch", "wikipedia2vec"] },
+      "held_out": true
+    },
+    {
+      "name": "noisy_blend",
+      "type": "noisy",
+      "params": { "base": "blend_uniform", "noise_std": 0.15, "seed": 42 }
+    },
+    {
+      "name": "cautious_glove",
+      "type": "confidence_threshold",
+      "params": { "base": "glove", "threshold": 0.2 }
+    }
+  ]
+}

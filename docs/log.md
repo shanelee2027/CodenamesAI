@@ -256,13 +256,53 @@ downloaded spaces, not just GloVe's:
 
 ## M3 — Inspector
 
-Skipped for now at the user's explicit request, out of SCOPE.md's stated
-order (M3 before M4) — proceeded straight to M4's non-fastText half. Noting
-this here since SCOPE.md says to flag divergences explicitly. Consequence:
-no dedicated CLI/UI exists yet for interactively exploring a board+clue;
-`scripts/sanity_check_sims.py` (extended to loop over all spaces) is being
-used as a stand-in verification tool in the meantime. M3 still needs to be
-built properly later — this isn't a substitute for it.
+**Note:** initially skipped at the user's explicit request, out of SCOPE.md's
+stated order (M3 before M4) — proceeded straight to M4's non-fastText half.
+Built afterward, once M4 (partial) was done. `scripts/sanity_check_sims.py`
+was used as a stand-in verification tool in the meantime.
+
+**Expected:** CLI taking a board and a typed clue, printing per-space
+similarity to all 25 words, per-space top-ranked words, what each guesser
+would pick, and a baseline score.
+
+**Actual:** built out of SCOPE.md's intended milestone order, so two of
+the four pieces have real gaps that were flagged rather than papered
+over:
+
+- "What each guesser would pick" needs the guesser pool (M5), which
+  doesn't exist yet. `scripts/inspector.py` prints an explicit
+  placeholder line rather than silently omitting the section — so it's
+  visibly incomplete each time it's run, not quietly missing.
+- "A baseline score" — the real one (SCOPE.md §6, baseline 3) needs
+  CMA-ES-tuned constants against the guesser pool, which also doesn't
+  exist yet. Used an **untuned preview** instead: SCOPE.md's own stated
+  example constants (own +1, opponent −1, neutral −0.3, assassin −10)
+  applied directly, unweighted-averaged across whichever spaces have a
+  value for a given word (NaN entries excluded from each role's mean,
+  not treated as 0). Labeled clearly in the output as not the real
+  tuned baseline.
+- SCOPE.md's directory layout (§8) doesn't list an inspector module
+  under `codenames/` at all — only `scripts/` and the "CLI (and
+  optionally a small web UI)" phrasing — so this lives at
+  `scripts/inspector.py`, not as a package module.
+- Supports `--reveal WORD [WORD ...]` to simulate mid-game states (a
+  word already picked no longer counts toward its role's baseline mean).
+  Verified this works: revealing the assassin word makes its baseline
+  contribution correctly drop to exactly 0, not skew from a stale value.
+- Manually verified against a real board (seed 42): the illegal-clue
+  path correctly caught a clue that was itself a board word ("England"),
+  and separately surfaced that "England" would also be a *dangerous*
+  clue regardless (0.55/0.32/0.53 similarity to the assassin word
+  "Australia" across the three spaces) — exactly the kind of thing this
+  tool is meant to catch. Also verified the NaN-handling path with
+  "fortnite" (present in Numberbatch/Wikipedia2Vec, absent from GloVe
+  per the M4 union-vocab fix) — GloVe's column correctly shows "n/a"
+  throughout rather than crashing or defaulting to 0.
+- `baseline_score()`'s formula (not just the script's I/O) got 6 unit
+  tests in `tests/test_inspector.py`: role-mean correctness, revealed-word
+  exclusion, a fully-revealed role contributing exactly 0, the weighted
+  sum matching SCOPE's stated constants, and NaN exclusion from role
+  means. 47 tests total, all passing.
 
 ## M4 — Remaining embedding spaces + fastText training (partial)
 
@@ -374,6 +414,79 @@ for recent pop-culture coverage. Left as a possible later stretch item,
 not a current gap to close.
 
 ## M5 — Guesser pool
+
+**Expected:** ~8 structurally different guessers per §3, a registry so
+the arena can enumerate them, 2 held out from training, pool composition
+in a config file.
+
+**Actual:** matched expectations. Notes:
+
+- The interface needed two methods, not one. A guesser can't just return
+  a sorted word list: `NoisyGuesser` needs the underlying numeric scores
+  to perturb, and `ConfidenceThresholdGuesser` needs to voluntarily
+  return *fewer* candidates than it was given (early stop). So
+  `Guesser.score_candidates()` is the abstract method every guesser type
+  implements (this is where the actual knowledge/policy difference
+  lives), and `rank_candidates()` has a default (sort by score) that only
+  the threshold guesser overrides. This let `NoisyGuesser` and
+  `ConfidenceThresholdGuesser` be generic *wrappers* around any other
+  guesser instead of duplicating logic per base type.
+- A candidate a guesser's knowledge source has no vector for scores
+  `-inf`, not 0 -- consistent with the NaN-as-"unknown" convention
+  established in M4, and important here specifically: 0 would compete
+  with real low-but-nonzero similarity instead of always ranking last.
+- 8 guessers in `configs/guesser_pool.json` (pool composition lives there,
+  not in code, per SCOPE.md §3's explicit instruction): one per available
+  space (`glove`, `numberbatch`, `wikipedia2vec`), two blends (`blend_uniform`,
+  `blend_glove_heavy` -- SCOPE's "one or two"), one rank-based, one noisy
+  (wraps `blend_uniform`), one confidence-threshold (wraps `glove`).
+  **fastText has no guesser yet** -- it doesn't exist until M4's remaining
+  half (needs the Fandom corpus). Noted directly in the config file's
+  comment, not just here, so it's visible to whoever edits pool
+  composition later: add a `single_space` entry once fastText exists,
+  most likely training-visible given it's central to the project's own
+  motivating case.
+- Held out (2, matching SCOPE's requirement exactly): `numberbatch` and
+  `rank_based` -- one single-space guesser and the structurally distinct
+  rank-based one, so the held-out set tests generalization along two
+  different axes (an unseen knowledge source, and an unseen decision
+  policy), not just one.
+- `RankBasedGuesser`'s "rank not score" property is real, not just
+  labeled: unit-tested with a case where a raw-score blend and a
+  rank-based aggregation genuinely disagree on the top candidate (one
+  space has a huge outlier score that dominates any weighted average but
+  loses on rank in both spaces) -- raw blend picks the outlier's word,
+  rank-based correctly doesn't.
+- `BlendGuesser` renormalizes over whichever weighted spaces actually
+  have a vector for a given word, rather than treating a missing space
+  as 0. Caught a flawed test while verifying this: two candidates each
+  present in only *one* space can never show a weight-driven ranking
+  change, since renormalizing by the single available space's own weight
+  makes that weight cancel out algebraically -- had to rebuild the test
+  with candidates present in *both* spaces to actually observe the
+  effect. Not a bug in the guesser, just a bug in reasoning about what
+  the test needed to construct.
+- Registry (`codenames/guessers/registry.py`) builds guessers from the
+  JSON config, resolving wrapper guessers' `base` references by name (an
+  entry can only reference a base defined earlier in the list). Raises
+  clear errors for an unresolvable base reference, a duplicate name, or
+  an unknown guesser type, all tested.
+- 23 new tests in `tests/test_guessers.py`. 70 tests total, all passing.
+- Manually verified against the real tensor and a real board: all 8
+  guessers produce visibly different rankings for the same clue+board
+  (as they should -- that's the entire point of a diverse pool), and
+  `cautious_glove`'s confidence-threshold cutoff landed exactly where
+  hand-checking the raw GloVe scores said it should.
+- Wired the pool into `scripts/inspector.py`'s "what each guesser would
+  pick" section, closing the placeholder M3 had to leave there before
+  guessers existed. Shows each guesser's own top-5 preference ranking
+  over currently-unrevealed words (not a full simulated turn -- the
+  number+1 attempt cap and turn-ending-on-a-miss rule are M6's job).
+  Immediately useful for real: running it against a live board+clue
+  showed `noisy_blend` picking the assassin word as its #2 guess while
+  every other guesser avoided it entirely -- a concrete look at exactly
+  the kind of risky-guess training signal the noisy guesser exists to
+  produce.
 
 ## M6 — Arena
 

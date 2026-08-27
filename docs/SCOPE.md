@@ -427,9 +427,9 @@ docs/
 - [ ] M0 — Corpus collection (start immediately)
 - [x] M1 — Board and legality
 - [x] M2 — GloVe and similarity tensor
-- [ ] M3 — Inspector
+- [x] M3 — Inspector
 - [ ] M4 — Remaining embedding spaces + fastText training
-- [ ] M5 — Guesser pool
+- [x] M5 — Guesser pool
 - [ ] M6 — Arena
 - [ ] M7 — Features and data generation
 - [ ] M8 — Scorer
