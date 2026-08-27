@@ -85,6 +85,39 @@ click-through, with one deliberate exception. Findings:
 
 ## M1 — Board and legality
 
+**Expected:** straightforward per SCOPE.md's description — Board class,
+`is_legal_clue()`, pytest coverage of the listed edge cases.
+
+**Actual:** matched expectations, plus two decisions worth recording:
+
+- Board vocabulary: no source was specified in SCOPE.md beyond "~800
+  Codenames card words." Used the 400-word base-game list from
+  [sagelga/codenames](https://github.com/sagelga/codenames)
+  (`wordlist/en-EN/default`, itself sourced from two other open
+  implementations) — verified as 400 unique words, no duplicates, and it
+  naturally includes multi-word entries ("Ice cream", "New york", "Loch
+  ness", "Scuba diver") which became real test fixtures rather than
+  synthetic ones. Checked in at `codenames/assets/board_words.txt` (a
+  package asset, not `data/` — that's for gitignored raw dumps). 400 words
+  is half of SCOPE's "~800" figure; expansions would need to be added
+  later if that matters, but wasn't blocking for M1.
+- Legality's "morphological variants" rule: substring-containment already
+  covers regular English suffixation for free (plural -s/-es, -ing, -ed
+  are all concatenative, so "apple" ⊂ "apples" as strings). The only
+  common gap is a stem-spelling change before a suffix -- y→i ("happy" /
+  "happier", "city" / "cities") -- so `_stem_variants()` adds just that one
+  extra form per word rather than pulling in a stemmer/lemmatizer library.
+  Deliberately narrow: won't catch irregular forms (mouse/mice, go/went).
+  Chosen over a real stemmer because SCOPE explicitly flags that legality
+  bugs "silently inflate every downstream score" -- a small,
+  fully-enumerable rule set that's easy to write precise tests against
+  beats broader but less predictable coverage from a black-box stemmer.
+- `codenames/board.py` + `tests/test_board.py`, 23 tests, all passing:
+  board generation (determinism per seed, role counts, no duplicate
+  words), reveal/role-query behavior, and legality (exact match, case
+  insensitivity, plurals both directions, the y→i stem case, hyphenated
+  board words, multi-word board entries).
+
 ## M2 — GloVe and similarity tensor
 
 ## M3 — Inspector

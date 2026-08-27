@@ -14,7 +14,7 @@ say so explicitly and ask before diverging.
 ## Milestone checklist (SCOPE.md §9)
 
 - [ ] M0 — Corpus collection (start immediately)
-- [ ] M1 — Board and legality
+- [x] M1 — Board and legality
 - [ ] M2 — GloVe and similarity tensor
 - [ ] M3 — Inspector
 - [ ] M4 — Remaining embedding spaces + fastText training
