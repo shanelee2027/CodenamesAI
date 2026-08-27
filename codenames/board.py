@@ -87,8 +87,9 @@ class Board:
         return tuple(c.word for c in self.cards)
 
     def _card(self, word: str) -> Card:
+        target = word.lower()
         for c in self.cards:
-            if c.word == word:
+            if c.word.lower() == target:
                 return c
         raise KeyError(f"{word!r} is not on this board")
 
@@ -96,12 +97,14 @@ class Board:
         return self._card(word).role
 
     def is_revealed(self, word: str) -> bool:
-        self._card(word)  # raises KeyError if not on board
-        return word in self.revealed
+        card = self._card(word)
+        return card.word in self.revealed
 
     def reveal(self, word: str) -> Role:
         card = self._card(word)
-        self.revealed.add(word)
+        # store the card's canonical casing, not the caller's -- otherwise
+        # reveal("king") and is_revealed("King") would disagree.
+        self.revealed.add(card.word)
         return card.role
 
     def words_by_role(self, role: Role, *, unrevealed_only: bool = False) -> list[str]:

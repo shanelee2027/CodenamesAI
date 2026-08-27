@@ -79,6 +79,24 @@ class TestRevealAndRoles:
         assert own_words[0] not in unrevealed
         assert len(unrevealed) == len(own_words) - 1
 
+    def test_lookups_are_case_insensitive(self):
+        board = Board.generate(seed=0)
+        word = board.words[0]
+        assert board.role_of(word.upper()) == board.role_of(word)
+        assert board.role_of(word.lower()) == board.role_of(word)
+
+    def test_reveal_with_different_case_is_consistent(self):
+        # reveal() must record the card's canonical casing, not the
+        # caller's -- otherwise is_revealed()/words_by_role() using the
+        # canonical casing would disagree with what was just revealed.
+        board = Board.generate(seed=0)
+        word = board.words_by_role(Role.OWN)[0]
+        board.reveal(word.upper())
+        assert board.is_revealed(word)
+        assert board.is_revealed(word.upper())
+        assert board.is_revealed(word.lower())
+        assert word not in board.words_by_role(Role.OWN, unrevealed_only=True)
+
 
 class TestClueLegality:
     def test_unrelated_clue_is_legal(self):

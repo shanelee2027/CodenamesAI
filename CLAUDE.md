@@ -15,7 +15,7 @@ say so explicitly and ask before diverging.
 
 - [ ] M0 — Corpus collection (start immediately)
 - [x] M1 — Board and legality
-- [ ] M2 — GloVe and similarity tensor
+- [x] M2 — GloVe and similarity tensor
 - [ ] M3 — Inspector
 - [ ] M4 — Remaining embedding spaces + fastText training
 - [ ] M5 — Guesser pool
