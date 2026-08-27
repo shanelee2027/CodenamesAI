@@ -1,0 +1,58 @@
+# Candidate Fandom wikis for M0 corpus collection (SCOPE.md §M0).
+# One subdomain per line (the part before ".fandom.com"). Lines starting
+# with # are ignored. This is a draft candidate list across
+# gaming/anime/film/TV per SCOPE's "breadth beats depth" guidance -- edit
+# freely. scripts/check_fandom_dumps.py verifies each entry empirically
+# (subdomain guesses can be wrong: renamed, migrated off Fandom per the
+# Minecraft note in SCOPE.md, or never had a dump requested).
+
+# --- Gaming ---
+minecraft
+leagueoflegends
+fortnite
+overwatch
+terraria
+stardewvalley
+genshin-impact
+valorant
+apexlegends
+roblox
+callofduty
+eldenring
+elderscrolls
+destiny
+warframe
+teamfortress
+hollowknight
+amongus
+
+# --- Anime ---
+naruto
+onepiece
+dragonball
+bleach
+attackontitan
+myheroacademia
+jujutsu-kaisen
+kimetsu-no-yaiba
+deathnote
+fairytail
+fullmetalalchemist
+swordartonline
+
+# --- Film / TV ---
+starwars
+harrypotter
+marvel
+disney
+lotr
+gameofthrones
+strangerthings
+rickandmorty
+theoffice
+friends
+simpsons
+southpark
+spongebob
+avatar
+doctorwho
