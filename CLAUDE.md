@@ -20,7 +20,7 @@ say so explicitly and ask before diverging.
 - [ ] M4 — Remaining embedding spaces + fastText training
 - [x] M5 — Guesser pool
 - [x] M6 — Arena
-- [ ] M7 — Features and data generation
+- [x] M7 — Features and data generation
 - [ ] M8 — Scorer
 - [ ] M9 — Evaluation and ablations
 - [ ] M10 — Human evaluation

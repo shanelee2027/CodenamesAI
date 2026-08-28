@@ -27,9 +27,10 @@ from __future__ import annotations
 import numpy as np
 
 from codenames.board import Board, Role
+from codenames.clue_search import top_legal_clue
 from codenames.similarity import SimilarityTensor
 
-from ._util import natural_number, top_legal_clue
+from ._util import natural_number
 from .base import MAX_CLUE_NUMBER, Codemaster
 
 DEFAULT_WEIGHTS: dict[Role, float] = {

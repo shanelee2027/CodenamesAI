@@ -15,27 +15,12 @@ is not what we want here).
 
 from __future__ import annotations
 
-import numpy as np
-
 from codenames.board import Board, Role
+from codenames.clue_search import mean_similarity_to_words, top_legal_clue
 from codenames.similarity import SimilarityTensor
 
-from ._util import natural_number, state_rng, top_legal_clue
+from ._util import natural_number, state_rng
 from .base import MAX_CLUE_NUMBER, Codemaster
-
-
-def _mean_similarity_to_words(sims: SimilarityTensor, words: list[str]) -> np.ndarray:
-    """Per-clue mean similarity, flat across the given words and spaces --
-    shape (n_clues,). NaN where every (word, space) pair is missing."""
-    cols = [np.asarray(sims.tensor[:, sims.board_index[w.lower()], :], dtype=np.float32) for w in words]
-    flat = np.stack(cols, axis=1).reshape(len(sims.clue_words), -1)
-    with np.errstate(invalid="ignore"):
-        valid_counts = np.sum(~np.isnan(flat), axis=1)
-        sums = np.nansum(flat, axis=1)
-    means = np.full(sums.shape, np.nan, dtype=np.float32)
-    has_data = valid_counts > 0
-    means[has_data] = sums[has_data] / valid_counts[has_data]
-    return means
 
 
 class CentroidCodemaster(Codemaster):
@@ -48,7 +33,7 @@ class CentroidCodemaster(Codemaster):
         subset_size = rng.randint(1, max(1, min(MAX_CLUE_NUMBER, len(own_unrevealed))))
         subset = rng.sample(own_unrevealed, k=subset_size)
 
-        scores = _mean_similarity_to_words(sims, subset)
+        scores = mean_similarity_to_words(sims, subset)
         clue = top_legal_clue(sims, board, scores)
         number = natural_number(sims, board, clue, MAX_CLUE_NUMBER)
         return clue, number
