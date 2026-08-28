@@ -1,12 +1,12 @@
 {
-  "_comment": "Guesser pool composition (SCOPE.md §M5/§3), revised for a first-pass simplification -- see docs/log.md's post-M8 design-revision entry and docs/SCOPE.md's first-pass-simplifications note. Exactly one guesser per currently-built embedding space (fastText still doesn't exist -- M4's remaining half), each wrapped in Gaussian noise so it isn't perfectly predictable, equally weighted, ALL training-visible: no held_out guessers. Generalization is checked via held-out board words instead (codenames/board.py::load_holdout_wordlist/load_training_wordlist), not held-out guessers -- three genuinely different knowledge sources already gives real diversity without needing a fourth axis, and the clue vocabulary is now restricted to the intersection of all three spaces (scripts/build_similarity_tensor.py) so no guesser here is structurally disadvantaged by vocabulary coverage gaps. Each 'base' is an inline anonymous single_space guesser (see codenames/guessers/registry.py's inline-base support) rather than a separately-named pool entry, so the pool has exactly 3 members, not 3 noisy wrappers plus 3 redundant raw ones.",
+  "_comment": "Guesser pool composition (SCOPE.md §M5/§3), revised for a first-pass simplification -- see docs/log.md's post-M8 design-revision entry and docs/SCOPE.md's first-pass-simplifications note. Exactly one guesser per currently-built embedding space (fastText still doesn't exist -- M4's remaining half), each wrapped in Gaussian noise so it isn't perfectly predictable, equally weighted, ALL training-visible: no held_out guessers. Generalization is checked via held-out board words instead (codenames/board.py::load_holdout_wordlist/load_training_wordlist), not held-out guessers -- three genuinely different knowledge sources already gives real diversity without needing a fourth axis, and the clue vocabulary is now restricted to the intersection of all three spaces (scripts/build_similarity_tensor.py) so no guesser here is structurally disadvantaged by vocabulary coverage gaps. Each 'base' is an inline anonymous single_space guesser (see codenames/guessers/registry.py's inline-base support) rather than a separately-named pool entry, so the pool has exactly 3 members, not 3 noisy wrappers plus 3 redundant raw ones. noise_std lowered from 0.15 to 0.03 (post-M9): measured real similarity std across a board for a given clue is only ~0.05-0.08 per space, so 0.15 was 2-3x the natural signal spread -- large enough to frequently overturn the true ranking rather than just perturb it. 0.03 sits meaningfully below the smallest space's natural spread. See docs/log.md's noise-reduction entry.",
   "guessers": [
     {
       "name": "noisy_glove",
       "type": "noisy",
       "params": {
         "base": { "type": "single_space", "params": { "space": "glove" } },
-        "noise_std": 0.15,
+        "noise_std": 0.03,
         "seed": 1
       }
     },
@@ -15,7 +15,7 @@
       "type": "noisy",
       "params": {
         "base": { "type": "single_space", "params": { "space": "numberbatch" } },
-        "noise_std": 0.15,
+        "noise_std": 0.03,
         "seed": 2
       }
     },
@@ -24,7 +24,7 @@
       "type": "noisy",
       "params": {
         "base": { "type": "single_space", "params": { "space": "wikipedia2vec" } },
-        "noise_std": 0.15,
+        "noise_std": 0.03,
         "seed": 3
       }
     }

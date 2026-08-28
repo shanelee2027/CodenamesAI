@@ -974,4 +974,30 @@ Full numbers: `docs/m9_ablation_report.md`. Notes:
   like `run_arena.py`, it *is* the integration test, verified by actually
   running it (first at toy scale as a smoke test, then for real).
 
+## Post-M9: noise reduction + a real numbering-convention bug found via the web UI
+
+Using the web inspector's top-K clue browsing (previous entry) surfaced two
+real findings, not just UI polish:
+
+- **`learned:full` was picking `number 0` on nearly every board.** Measured
+  the actual real-data similarity spread to check a hypothesis raised while
+  discussing this: for a given clue, real per-space similarity across a
+  board has std ~0.05-0.08 (measured directly against the rebuilt cache),
+  but `noise_std=0.15` in `configs/guesser_pool.json` was 2-3x that --
+  large enough to frequently overturn the *true* ranking rather than
+  merely perturb it, not "some realistic uncertainty." Lowered to `0.03`,
+  meaningfully below the smallest space's natural spread, for all three
+  guessers. This only affects data generated from here forward -- the
+  existing `cache/checkpoints/` and `cache/m9/checkpoints/*/` models were
+  all trained under the old 0.15 and won't reflect this until retrained.
+- **`OracleCodemaster` had a real off-by-one**, caught by explicitly
+  confirming the numbering convention rather than assuming it: `number`
+  is supposed to be the intended word count directly (every other
+  codemaster already follows this via `codemasters/_util.py::natural_number`;
+  `codenames.game.play_turn` then applies the standard "+1 bonus guess"
+  itself, unchanged). Oracle was reporting `run_length - 1` instead of
+  `run_length` -- silently under-announcing by one word relative to every
+  other codemaster's convention. Fixed; `number` now equals the run length
+  directly everywhere.
+
 ## M10 — Human evaluation
