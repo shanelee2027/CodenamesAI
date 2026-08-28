@@ -18,7 +18,11 @@ codemaster's clue choice (and the simulated turn's displayed reward) are
 scored against (own/neutral/opponent/assassin -- see
 codenames/scorer.py's module docstring), and which noise-level guesser
 pool a turn gets simulated against (one of NOISE_LEVELS, independent of
-which noise level the codemaster itself was *trained* under).
+which noise level the codemaster itself was *trained* under). A third
+knob, `max_rarity`, screens candidate clues by CLUE_RARITY_PERCENTILE --
+derived once at startup from GloVe's own frequency-ordered file, no new
+dependency -- so an obscure pick like "confectionery" can be filtered out
+without retraining anything either.
 
 Usage:
     python scripts/web_inspector.py [--port 8000]
@@ -36,6 +40,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
+from _embedding_lib import SPACE_CONFIGS, ranked_alphabetic_words
 from codenames.board import Board, Role, is_legal_clue
 from codenames.codemasters import CentroidCodemaster, OracleCodemaster, RandomCodemaster
 from codenames.game import ROLE_REWARD
@@ -73,6 +78,48 @@ def _pool_config_at_noise(noise_std: float) -> dict:
 # per request.
 POOLS_BY_NOISE = {level: load_pool(_pool_config_at_noise(level)) for level in NOISE_LEVELS}
 POOL = POOLS_BY_NOISE[DEFAULT_NOISE]
+
+
+def _build_clue_rarity_percentile(clue_words: list[str]) -> dict[str, float]:
+    """0.0 = the most common word in the clue vocabulary, ~100.0 = the
+    rarest -- lets the UI filter out obscure clues like "confectionery".
+
+    GloVe's raw file is frequency-descending ordered (verified empirically
+    in scripts/_embedding_lib.py, reused here via ranked_alphabetic_words'
+    token-only scan -- no float parsing, ~0.4s for the full 400k-line
+    file) and every word in `clue_words` is guaranteed to appear in it:
+    build_similarity_tensor.py only ever admits a word into the clue
+    vocabulary if it's among GloVe's own top-N (by default 250k)
+    alphabetic words. So GloVe's file position already IS a frequency
+    rank for every clue word, with no new dependency or cache artifact
+    needed -- just re-derive it once at server startup.
+
+    Percentile is computed within the clue vocabulary itself (not all
+    400k GloVe words), since that's the pool an actual filter choice is
+    made over -- clue_words already skews toward moderately-common words
+    by construction (SPACE_CONFIGS' top-N + intersection filtering), so a
+    percentile against the full English vocabulary would make even a
+    fairly obscure Codenames clue look deceptively "common."
+    """
+    glove_config = SPACE_CONFIGS["glove"]
+    ranked = ranked_alphabetic_words(
+        glove_config["default_source"], glove_config["opener"], glove_config["skip_prefixes"], glove_config["has_header"], limit=None
+    )
+    glove_rank = {w: i for i, w in enumerate(ranked)}
+
+    # Words never seen in GloVe's alphabetic scan shouldn't be possible
+    # given the invariant above, but fall back to "rarest" rather than
+    # crashing if the assumption is ever violated (e.g. a differently
+    # built cache).
+    fallback_rank = len(ranked)
+    ranks = np.array([glove_rank.get(w, fallback_rank) for w in clue_words])
+    order = np.argsort(ranks)
+    percentile = np.empty(len(clue_words), dtype=np.float64)
+    percentile[order] = np.arange(len(clue_words)) / len(clue_words) * 100.0
+    return dict(zip(clue_words, percentile))
+
+
+CLUE_RARITY_PERCENTILE = _build_clue_rarity_percentile(SIMS.clue_words)
 
 
 def _discover_checkpoints() -> dict[str, Path]:
@@ -226,20 +273,50 @@ def _apply_reward_overrides(codemaster, overrides: dict[str, str]) -> None:
             setattr(codemaster, attr, float(value))
 
 
+# Over-fetch pool when a rarity filter is active: top_k_clues' own
+# candidate pool (clue_search._CANDIDATE_POOL) already defaults to 200,
+# so asking for a few hundred more is close to free computationally (the
+# forward pass scoring the whole vocabulary already happened; this only
+# affects how many of clue_search's already-sorted candidates get walked
+# for legality + the rarity check).
+_RARITY_FETCH_POOL = 300
+
+
 def build_give_clue_response(
-    seed: int, reveal: list[str], codemaster_name: str, reward_overrides: dict[str, str] | None = None, top_k: int = 1
+    seed: int,
+    reveal: list[str],
+    codemaster_name: str,
+    reward_overrides: dict[str, str] | None = None,
+    top_k: int = 1,
+    max_rarity: float = 100.0,
 ) -> dict:
+    """`max_rarity` (0-100, default 100 = no filtering) excludes clues
+    above that CLUE_RARITY_PERCENTILE -- e.g. max_rarity=50 keeps only
+    the more-common half of the clue vocabulary, screening out obscure
+    picks like "confectionery". Only applies to codemasters exposing
+    top_k_clues (i.e. not RandomCodemaster, which has no ranking to
+    filter); may return fewer than top_k if the over-fetch pool doesn't
+    contain that many eligible clues, same as top_k_legal_clues' own
+    "fewer than k" case."""
     if codemaster_name not in CODEMASTERS:
         return {"error": f"unknown codemaster {codemaster_name!r}, choices: {list(CODEMASTERS)}"}
     codemaster = CODEMASTERS[codemaster_name]
     _apply_reward_overrides(codemaster, reward_overrides or {})
     board = _make_board(seed, reveal)
 
-    if top_k > 1 and hasattr(codemaster, "top_k_clues"):
-        clues = [{"clue": c, "number": n, "score": s} for c, n, s in codemaster.top_k_clues(board, SIMS, top_k)]
+    filtering = max_rarity < 100.0 and hasattr(codemaster, "top_k_clues")
+    if (top_k > 1 or filtering) and hasattr(codemaster, "top_k_clues"):
+        fetch_k = max(top_k, _RARITY_FETCH_POOL) if filtering else top_k
+        candidates = codemaster.top_k_clues(board, SIMS, fetch_k)
+        if filtering:
+            candidates = [c for c in candidates if CLUE_RARITY_PERCENTILE.get(c[0], 100.0) <= max_rarity]
+        clues = [
+            {"clue": c, "number": n, "score": s, "rarity_percentile": CLUE_RARITY_PERCENTILE.get(c)}
+            for c, n, s in candidates[:top_k]
+        ]
     else:
         clue, number = codemaster.give_clue(board, SIMS)
-        clues = [{"clue": clue, "number": number, "score": None}]
+        clues = [{"clue": clue, "number": number, "score": None, "rarity_percentile": CLUE_RARITY_PERCENTILE.get(clue)}]
 
     return {"codemaster": codemaster_name, "clues": clues}
 
@@ -342,7 +419,8 @@ class Handler(BaseHTTPRequestHandler):
             codemaster_name = query.get("codemaster", [""])[0]
             reward_overrides = {param: query.get(param, [""])[0] for param in _REWARD_PARAMS}
             top_k = int(query.get("top_k", ["1"])[0])
-            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, reward_overrides, top_k)
+            max_rarity = float(query.get("max_rarity", ["100"])[0])
+            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, reward_overrides, top_k, max_rarity)
             self._send_json(response, status=400 if "error" in response else 200)
             return
 

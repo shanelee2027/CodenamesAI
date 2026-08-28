@@ -163,6 +163,7 @@
   .candidate-clue { font-weight: 600; flex: 1; }
   .candidate-number { color: var(--dim); font-size: 12px; }
   .candidate-score { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 60px; text-align: right; }
+  .candidate-rarity { color: var(--dim); font-size: 11px; min-width: 60px; text-align: right; }
 </style>
 </head>
 <body>
@@ -185,6 +186,8 @@
     <select id="codemaster"></select>
     <label>top</label>
     <input id="topK" type="number" min="1" max="50" value="10" style="width:60px;" title="How many candidate clues to show, best first.">
+    <label>max rarity %</label>
+    <input id="maxRarity" type="number" min="0" max="100" step="5" placeholder="100 (no filter)" style="width:110px;" title="Exclude clues rarer than this percentile of the clue vocabulary (0 = only the most common words, 100 = no filtering). Screens out obscure picks like 'confectionery'. No effect on 'random' (nothing to rank).">
     <button id="getAiClue" class="primary">Get AI clues</button>
     <span id="aiClueReadout" class="sub" style="margin:0 0 0 4px;"></span>
   </div>
@@ -450,10 +453,12 @@ function renderAiCandidates(codemaster, candidates) {
     row.className = 'candidate-row';
     row.dataset.index = i;
     const scoreText = c.score === null || c.score === undefined ? '' : c.score.toFixed(3);
+    const rarityText = c.rarity_percentile === null || c.rarity_percentile === undefined ? '' : `rarity ${c.rarity_percentile.toFixed(0)}%`;
     row.innerHTML = `<span class="candidate-rank">${i + 1}</span>` +
       `<span class="candidate-clue">${c.clue}</span>` +
       `<span class="candidate-number">number ${c.number}</span>` +
-      `<span class="candidate-score">${scoreText}</span>`;
+      `<span class="candidate-score">${scoreText}</span>` +
+      `<span class="candidate-rarity">${rarityText}</span>`;
     row.addEventListener('click', () => selectCandidate(codemaster, i));
     el.appendChild(row);
   });
@@ -492,7 +497,8 @@ async function getAiClue() {
   const seed = currentSeed();
   const codemaster = document.getElementById('codemaster').value;
   const topK = document.getElementById('topK').value || 1;
-  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&top_k=${topK}&reveal=${encodeURIComponent(currentReveal())}${rewardParams()}`);
+  const maxRarity = document.getElementById('maxRarity').value.trim() || 100;
+  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&top_k=${topK}&max_rarity=${maxRarity}&reveal=${encodeURIComponent(currentReveal())}${rewardParams()}`);
   if (data.error) {
     document.getElementById('aiClueReadout').textContent = data.error;
     return;

@@ -1199,4 +1199,60 @@ All 184 tests pass (169 + 15 new: `outcome_class`/`decode_outcome_class`
 round-trip and validation tests, `reward_matrix`'s per-cause behavior,
 `load_pool` accepting a dict, `LearnedCodemaster`'s 3 new reward params).
 
+## Post-M9: web UI clue-rarity filter, and a noise-level observation to revisit
+
+Two things from playing with the retrained UI. First, an anecdotal
+observation worth recording even though nothing was changed in response
+to it yet: the user's impression, trying different `learned:noise_*`
+codemasters in the UI, was that clue quality subjectively peaked around
+`noise_std` 0.06-0.10, not 0.03 -- despite 0.03 having the better
+val_accuracy of the two (63.5% vs. 57.0%/50.2%). Val_accuracy measures
+"how often does the model's top-1 prediction match the exact (k, cause)
+outcome," which isn't the same thing as "how good do this model's actual
+clue choices feel" -- a model trained against a noisier pool may learn
+more conservative, safer clue-giving that reads as better play even with
+lower raw predictive accuracy. Not investigated further this session;
+flagged here since it's a real tension between the metric being reported
+and the thing that's actually supposed to matter, worth a closer look
+before ever picking a single "default" model for actual play.
+
+Second, a concrete UI feature: the user pointed out some given clues are
+obscure (e.g. "confectionery") -- something few human players would
+reliably know -- and asked for a way to filter those out. Added
+`CLUE_RARITY_PERCENTILE` (scripts/web_inspector.py): GloVe's raw file is
+frequency-descending ordered (already established and reused from
+scripts/_embedding_lib.py/build_similarity_tensor.py -- verified
+empirically, the file starts with "the"/"of"/"to"), and every clue word
+is guaranteed to appear in it, since `build_similarity_tensor.py` only
+ever admits a word into the clue vocabulary if it's among GloVe's own
+top-N alphabetic words. So GloVe's own file position already *is* a
+frequency rank, with no new dependency (no `wordfreq` package, no new
+cache artifact) -- just a ~0.4s token-only scan (reusing
+`_embedding_lib.ranked_alphabetic_words`) at server startup, converted to
+a percentile *within the clue vocabulary itself* (0 = most common clue
+word, 100 = rarest), not against the full 400k-word GloVe vocabulary --
+the clue vocabulary already skews common by construction, so a
+full-vocabulary percentile would make even a fairly obscure Codenames
+clue look deceptively tame.
+
+New `max_rarity` param on `/api/give_clue` (and a "max rarity %" UI
+field, default blank = no filtering): excludes any candidate clue above
+that percentile before truncating to `top_k`, via an over-fetch-then-
+filter on the existing `top_k_clues()` mechanism (fetch up to 300
+candidates instead of just `top_k`, filter, then truncate) -- no changes
+needed to any codemaster class or `codenames/clue_search.py`, since the
+forward pass that scores the whole vocabulary already happens regardless
+of how many results are requested; asking for a bigger pool afterward is
+close to free. Doesn't apply to `random` (nothing to rank). Each
+candidate's rarity percentile is now also just displayed in the UI
+alongside its score, even when no filter is active, for visibility.
+
+No test suite changes needed beyond the manual verification above (this
+is UI-facing plumbing over already-tested `top_k_clues`/percentile-derived
+data, not new core logic) -- spot-checked end-to-end against the running
+server: unfiltered top-5 for one seed included "stretching"/"overlooking"
+(8.4th percentile), a `max_rarity=3` request against the same seed
+correctly dropped both in favor of lower-percentile alternatives
+("fort" 1.8, "area" 0.2). All 184 tests still pass (no regressions).
+
 ## M10 — Human evaluation
