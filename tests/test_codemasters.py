@@ -207,10 +207,10 @@ class TestOracleCodemaster:
         clue, number = cm.give_clue(board, sims)
         assert (clue, number) == top2[0][:2]
 
-    def test_zero_run_length_reports_number_zero(self, tmp_path):
+    def test_zero_run_length_floors_number_at_one(self, tmp_path):
         # Every clue's single highest-similarity word is an opponent word
-        # -- the best achievable run length is 0 for all of them, so
-        # number (== run length) is legitimately 0, not an error case.
+        # -- the best achievable run length is 0 for all of them, but
+        # number is floored at 1 like every other codemaster here.
         tensor = base_tensor()
         for clue in CLUE_WORDS:
             tensor[CLUE_WORDS.index(clue), BOARD_WORDS.index("Board9"), :] = 0.99
@@ -218,4 +218,4 @@ class TestOracleCodemaster:
         board = make_board()
         cm = OracleCodemaster(space="a")
         _, number = cm.give_clue(board, sims)
-        assert number == 0
+        assert number == 1

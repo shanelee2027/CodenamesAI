@@ -113,16 +113,31 @@ def reward_matrix(miss_penalty: float = DEFAULT_MISS_PENALTY, max_k: int = MAX_K
     return np.where(k_grid <= n_grid, natural_stop, budget_exhausted).astype(np.float32)
 
 
-def expected_reward_and_best_n(probs: np.ndarray, miss_penalty: float = DEFAULT_MISS_PENALTY) -> tuple[np.ndarray, np.ndarray]:
+def expected_reward_and_best_n(
+    probs: np.ndarray, miss_penalty: float = DEFAULT_MISS_PENALTY, min_n: int = 1
+) -> tuple[np.ndarray, np.ndarray]:
     """probs: (batch, N_K_CLASSES) distribution over k for each candidate
     clue. Returns (best_n, score), each shape (batch,): the number
     maximizing expected reward, and the expected reward at that number --
     SCOPE §2's `best_n = argmax_n E[reward|clue,n]` and
     `score(clue) = E[reward|clue,best_n]`, vectorized over every candidate
     clue at once (the "one gather plus one small forward pass" §2 asks
-    for)."""
-    matrix = reward_matrix(miss_penalty)  # (n_k, n_n)
+    for).
+
+    `min_n=1` excludes n=0 from consideration: reward_matrix's formula
+    treats n=0 as a legitimate one-attempt play (attempts = n+1 = 1), but
+    every other codemaster in this project floors its announced number at
+    1 (codemasters/_util.py::natural_number), so the learned codemaster
+    does too by default, for consistency -- not because n=0 is
+    mathematically invalid."""
+    matrix = reward_matrix(miss_penalty)  # (n_k, n_n), columns n=0..MAX_K
     expected = probs @ matrix  # (batch, n_n) -- E[reward|clue,n] for every n
-    best_n = np.argmax(expected, axis=1)
-    score = np.take_along_axis(expected, best_n[:, None], axis=1)[:, 0]
+    candidate_n = np.arange(matrix.shape[1])
+    allowed = candidate_n >= min_n
+    expected_allowed = expected[:, allowed]
+    allowed_n = candidate_n[allowed]
+
+    best_idx = np.argmax(expected_allowed, axis=1)
+    best_n = allowed_n[best_idx]
+    score = np.take_along_axis(expected_allowed, best_idx[:, None], axis=1)[:, 0]
     return best_n, score

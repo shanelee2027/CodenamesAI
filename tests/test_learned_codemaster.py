@@ -60,7 +60,7 @@ class TestLearnedCodemaster:
         cm = LearnedCodemaster(checkpoint_path)
         board = make_board()
         _, number = cm.give_clue(board, sims)
-        assert 0 <= number <= 4  # unlike the baselines, 0 is a legitimate output here
+        assert 1 <= number <= 4  # floored at 1, like every other codemaster here
 
     def test_top_k_clues_ranked_best_first_and_agrees_with_give_clue(self, sims, checkpoint_path):
         cm = LearnedCodemaster(checkpoint_path)
@@ -69,7 +69,7 @@ class TestLearnedCodemaster:
         assert len(top2) == 2
         for clue, number, _ in top2:
             assert clue in sims.clue_words
-            assert 0 <= number <= 4
+            assert 1 <= number <= 4
         assert top2[0][2] >= top2[1][2]  # scores non-increasing
 
         clue, number = cm.give_clue(board, sims)

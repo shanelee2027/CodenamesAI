@@ -66,12 +66,18 @@ class OracleCodemaster(Codemaster):
         # codemasters/_util.py::natural_number's convention) -- the
         # standard Codenames "one bonus guess beyond what you announced"
         # rule is still applied by codenames.game.play_turn, unchanged.
+        # Floored at 1, same as every other codemaster here: a run length
+        # of 0 (this space's single best-ranked word isn't even own) still
+        # has to be announced as *something*.
         run_length, combined = self._score_all_clues(board, sims)
         clue = top_legal_clue(sims, board, combined)
         clue_idx = sims.clue_index[clue.lower()]
-        return clue, int(run_length[clue_idx])
+        return clue, max(1, int(run_length[clue_idx]))
 
     def top_k_clues(self, board: Board, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
         run_length, combined = self._score_all_clues(board, sims)
         clues = top_k_legal_clues(sims, board, combined, k)
-        return [(clue, int(run_length[sims.clue_index[clue.lower()]]), float(run_length[sims.clue_index[clue.lower()]])) for clue in clues]
+        return [
+            (clue, max(1, int(run_length[sims.clue_index[clue.lower()]])), float(run_length[sims.clue_index[clue.lower()]]))
+            for clue in clues
+        ]

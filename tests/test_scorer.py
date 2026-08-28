@@ -59,8 +59,25 @@ class TestExpectedRewardAndBestN:
         probs = np.zeros((1, N_K_CLASSES), dtype=np.float32)
         probs[0, 0] = 1.0
         best_n, score = expected_reward_and_best_n(probs)
-        assert best_n[0] == 0  # ties broken by the smallest n
+        assert best_n[0] == 1  # n=0 ties too, but is excluded by the default floor
         assert score[0] == pytest.approx(DEFAULT_MISS_PENALTY)
+
+    def test_n_zero_is_excluded_by_default_even_though_it_would_win(self):
+        # A clue certain to get k=1 right: n=0 scores strictly *higher*
+        # than n=1 here (budget-exhausted-with-1-correct vs. a real
+        # decision at n=1 that still risks nothing since k=1, but n=0 is
+        # floored out regardless of whether it would have won).
+        probs = np.zeros((1, N_K_CLASSES), dtype=np.float32)
+        probs[0, 1] = 1.0
+        best_n, _ = expected_reward_and_best_n(probs)
+        assert best_n[0] != 0
+        assert best_n[0] >= 1
+
+    def test_min_n_can_be_relaxed_back_to_zero(self):
+        probs = np.zeros((1, N_K_CLASSES), dtype=np.float32)
+        probs[0, 1] = 1.0
+        best_n, _ = expected_reward_and_best_n(probs, min_n=0)
+        assert best_n[0] == 0
 
     def test_batched_over_many_clues_at_once(self):
         probs = np.zeros((3, N_K_CLASSES), dtype=np.float32)
