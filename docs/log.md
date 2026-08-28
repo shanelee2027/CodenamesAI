@@ -892,4 +892,86 @@ the revised vocabulary and pool.
 
 ## M9 — Evaluation and ablations
 
+**Expected:** ablate each embedding space, ablate sorting, ablate
+concatenation (average instead), a pool-sensitivity sweep, and a linear
+model over the same features with coefficients reported (§6 baseline 4;
+the gap between it and the MLP is the project's stated headline result).
+Adapted the pool-sensitivity axis to the post-revamp 3-guesser pool
+(sweep which embedding dominates the training mix) rather than SCOPE's
+original glove/fastText/uniform/adversarial framing, which assumed the
+old ~8-guesser pool. "Moderate real run" scale, per explicit user choice:
+real numbers on an illustrative-scale dataset, not the 5-20M target.
+
+**Actual:** matched expectations, plus a design simplification found while
+planning that avoided a much heavier implementation, and a genuinely
+interesting result tying back to the very start of this conversation.
+Full numbers: `docs/m9_ablation_report.md`. Notes:
+
+- **Key simplification: most ablations don't need new data at all.**
+  `generate_training_data.py`'s sampling is driven entirely by a
+  `random.Random(seed)` instance, and feature computation happens *after*
+  a board/clue/guesser are already sampled -- it never itself consumes
+  randomness. So: the drop-space and averaged-concatenation ablations are
+  pure post-hoc array transforms on an *already-generated* dataset's
+  feature vectors (new `codenames/ablation.py`, using `FeatureLayout` to
+  know which columns are which) -- no regeneration, no new storage. The
+  unsorted-similarity ablation needs a second feature-builder function
+  (`build_features_unsorted`) but not a reconstruction pipeline -- just
+  regenerating with the same seed reproduces the identical sampled
+  boards/clues/guessers while computing different features for them. The
+  pool-sensitivity sweep similarly needed only a `guesser_weights` sampling
+  parameter (`rng.choices` instead of `rng.choice`), not per-example
+  guesser-identity storage -- each composition is its own regeneration,
+  and using the same seed across all 4 compositions means they share the
+  identical underlying board/clue sample sequence, differing only in which
+  guesser scored each one (holding the "exam questions" constant, varying
+  only "who's grading," the cleanest version of this comparison). Net
+  effect: zero changes to the M7 shard schema, despite covering every
+  ablation axis SCOPE asks for.
+- `scripts/train_scorer.py::train()` gained one parameter
+  (`model_factory`, defaulting to `Scorer`) to support the linear baseline
+  (new `LinearScorer` in scorer.py, a single `nn.Linear`) -- everything
+  else (splitting, early stopping, checkpointing, curves, reliability
+  diagrams) was already architecture-agnostic and needed no changes.
+- Real run: 600k fresh examples generated (200k base, 200k unsorted, 4x50k
+  pool-sensitivity) in ~37 minutes, plus 11 total model trainings
+  (~20 epochs each with early stopping) in a few minutes combined --
+  faster than the ~2-hour estimate in the plan, since throughput measured
+  higher in practice than the M7/revamp estimate it was based on.
+- **Every pre-registered sanity check confirmed in the expected direction**
+  (val_loss, lower is better): MLP (0.9648) beats the linear baseline
+  (0.9843); all three drop-space variants (0.9698-0.9731) underperform the
+  full model; unsorted (0.9768) underperforms sorted; averaged (0.9668)
+  underperforms full concatenation, though by a small margin at this
+  scale -- reported honestly rather than oversold, and a candidate for a
+  larger run to see if the gap widens with more data/epochs. The overall
+  MLP-vs-linear gap is real but modest here too, for the same reason:
+  illustrative scale, not the 5-20M target.
+- **Pool-sensitivity result worth flagging on its own**: among the 4
+  same-size (50k), same-underlying-samples pool compositions,
+  numberbatch-heavy scored best (val_loss 0.9523, the best of *all* 11
+  variants including the 200k-example full model) and wikipedia2vec-heavy
+  scored worst (0.9878) -- directly echoing the anecdotal impression that
+  kicked off this whole design-revision conversation ("numberbatch seems
+  to have the most reasonable results"). Not proof of anything on its own
+  (different guesser weightings change what the *label* rewards, so a
+  model trained against a numberbatch-heavy mix doing well by that same
+  mix's own standard is a softer claim than it first looks), but a
+  concrete data point in favor of the earlier intuition, worth revisiting
+  once a larger run is affordable.
+- Linear baseline's top-weighted features (by L2 norm across the 5
+  k-classes, labeled via new `FeatureLayout.describe()`) are almost
+  entirely `*/own/rank0` and `*/own/rank1` across all three spaces, plus
+  `*/assassin/rank0` -- i.e. the model's strongest learned signal is
+  exactly the intuitive spymaster heuristic ("how close is this clue to
+  my best own word, and how close is it to the assassin"), which is a
+  clean, defensible, oral-defense-ready interpretability result (§9's
+  explicit ask).
+- 25 new tests (`build_features_unsorted`, `FeatureLayout.describe`,
+  `codenames/ablation.py`'s two transforms, `LinearScorer`,
+  `train_scorer.train()` with a custom `model_factory`). 162 tests total,
+  all passing. `scripts/run_ablation_study.py` itself has no unit tests --
+  like `run_arena.py`, it *is* the integration test, verified by actually
+  running it (first at toy scale as a smoke test, then for real).
+
 ## M10 — Human evaluation

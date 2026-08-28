@@ -105,6 +105,28 @@ class FeatureLayout:
     def size(self) -> int:
         return feature_dim(len(self.spaces))
 
+    def describe(self, index: int) -> str:
+        """Label a raw feature index for interpretability (SCOPE §9's linear
+        baseline needs to report "which spaces and rank positions carry
+        weight", not just raw indices)."""
+        n = len(self.spaces)
+        mask_start = n * BOARD_SIZE
+        scalar_start = mask_start + BOARD_SIZE
+
+        if index < mask_start:
+            space_i, pos = divmod(index, BOARD_SIZE)
+            prefix = self.spaces[space_i]
+        elif index < scalar_start:
+            pos = index - mask_start
+            prefix = "mask"
+        else:
+            return f"scalar/{SCALAR_NAMES[index - scalar_start]}"
+
+        for role, (start, end) in ROLE_SLOT_RANGES.items():
+            if start <= pos < end:
+                return f"{prefix}/{role.value}/rank{pos - start}"
+        raise AssertionError(f"position {pos} not covered by any role range")
+
 
 def _sorted_padded_values(sims: SimilarityTensor, clue: str, words: list[str], space: str, pad_to: int) -> np.ndarray:
     out = np.full(pad_to, SENTINEL, dtype=np.float32)
@@ -117,10 +139,34 @@ def _sorted_padded_values(sims: SimilarityTensor, clue: str, words: list[str], s
     return out
 
 
+def _unsorted_padded_values(sims: SimilarityTensor, clue: str, words: list[str], space: str, pad_to: int) -> np.ndarray:
+    """Like _sorted_padded_values, but keeps each word's value at its own
+    natural (words_by_role order) position instead of sorting descending --
+    used only by build_features_unsorted (SCOPE §9's sort ablation)."""
+    out = np.full(pad_to, SENTINEL, dtype=np.float32)
+    if not words:
+        return out
+    raw = sims.similarities_for_board(clue, words, space=space)
+    out[: len(words)] = np.where(np.isnan(raw), SENTINEL, raw)
+    return out
+
+
 def _role_mask(remaining: int, count: int) -> np.ndarray:
     out = np.zeros(count, dtype=np.float32)
     out[:remaining] = 1.0
     return out
+
+
+def _compute_mask(role_words: dict[Role, list[str]]) -> np.ndarray:
+    return np.concatenate([_role_mask(len(role_words[role]), ROLE_COUNTS[role]) for role in ROLE_ORDER])
+
+
+def _compute_scalars(board: Board, turn_index: int) -> np.ndarray:
+    own_remaining = float(board.remaining(Role.OWN))
+    own_revealed = ROLE_COUNTS[Role.OWN] - board.remaining(Role.OWN)
+    opponent_revealed = ROLE_COUNTS[Role.OPPONENT] - board.remaining(Role.OPPONENT)
+    score_differential = float(own_revealed - opponent_revealed)
+    return np.array([own_remaining, float(turn_index), score_differential], dtype=np.float32)
 
 
 def build_features(board: Board, clue: str, sims: SimilarityTensor, turn_index: int) -> np.ndarray:
@@ -138,14 +184,31 @@ def build_features(board: Board, clue: str, sims: SimilarityTensor, turn_index: 
         )
         space_blocks.append(block)
 
-    mask = np.concatenate([_role_mask(len(role_words[role]), ROLE_COUNTS[role]) for role in ROLE_ORDER])
+    mask = _compute_mask(role_words)
+    scalars = _compute_scalars(board, turn_index)
+    return np.concatenate([*space_blocks, mask, scalars])
 
-    own_remaining = float(board.remaining(Role.OWN))
-    own_revealed = ROLE_COUNTS[Role.OWN] - board.remaining(Role.OWN)
-    opponent_revealed = ROLE_COUNTS[Role.OPPONENT] - board.remaining(Role.OPPONENT)
-    score_differential = float(own_revealed - opponent_revealed)
-    scalars = np.array([own_remaining, float(turn_index), score_differential], dtype=np.float32)
 
+def build_features_unsorted(board: Board, clue: str, sims: SimilarityTensor, turn_index: int) -> np.ndarray:
+    """SCOPE §9's sort ablation: identical layout and width to
+    build_features(), but each role group's values keep their natural
+    (unrevealed, board-order) position instead of being sorted descending.
+    Deliberately reintroduces the position-carries-no-information problem
+    §2 sorts specifically to avoid, as a controlled comparison."""
+    role_words = {role: board.words_by_role(role, unrevealed_only=True) for role in ROLE_ORDER}
+
+    space_blocks = []
+    for space in sims.spaces:
+        block = np.concatenate(
+            [
+                _unsorted_padded_values(sims, clue, role_words[role], space, ROLE_COUNTS[role])
+                for role in ROLE_ORDER
+            ]
+        )
+        space_blocks.append(block)
+
+    mask = _compute_mask(role_words)
+    scalars = _compute_scalars(board, turn_index)
     return np.concatenate([*space_blocks, mask, scalars])
 
 
@@ -201,14 +264,7 @@ def build_features_batch(board: Board, sims: SimilarityTensor, turn_index: int) 
         )
         space_blocks.append(block)
 
-    mask = np.concatenate([_role_mask(len(role_words[role]), ROLE_COUNTS[role]) for role in ROLE_ORDER])
-    mask_block = np.broadcast_to(mask, (n_clues, BOARD_SIZE))
-
-    own_remaining = float(board.remaining(Role.OWN))
-    own_revealed = ROLE_COUNTS[Role.OWN] - board.remaining(Role.OWN)
-    opponent_revealed = ROLE_COUNTS[Role.OPPONENT] - board.remaining(Role.OPPONENT)
-    score_differential = float(own_revealed - opponent_revealed)
-    scalar_row = np.array([own_remaining, float(turn_index), score_differential], dtype=np.float32)
-    scalars_block = np.broadcast_to(scalar_row, (n_clues, N_SCALARS))
+    mask_block = np.broadcast_to(_compute_mask(role_words), (n_clues, BOARD_SIZE))
+    scalars_block = np.broadcast_to(_compute_scalars(board, turn_index), (n_clues, N_SCALARS))
 
     return np.concatenate([*space_blocks, mask_block, scalars_block], axis=1).astype(np.float32)

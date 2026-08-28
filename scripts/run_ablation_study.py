@@ -1,0 +1,190 @@
+"""Run the M9 evaluation/ablation study (SCOPE.md §9), moderate real scale.
+
+Generates a base dataset plus what each ablation axis actually needs (see
+module docstrings on codenames/features.py, codenames/ablation.py, and
+generate_training_data.py's feature_builder/guesser_weights params for why
+most axes don't need their own fresh generation), trains one model per
+variant via scripts/train_scorer.py's reused training loop, and writes a
+comparison report.
+
+Variants trained:
+- full: the base dataset, full sorted/concatenated features (Scorer).
+- drop_<space>: base dataset with one embedding space's columns removed.
+- averaged: base dataset with per-space blocks averaged instead of
+  concatenated.
+- unsorted: a fresh dataset with the same sampled boards/clues/guessers as
+  the base (same seed), but unsorted features.
+- pool_<uniform|glove_heavy|numberbatch_heavy|wikipedia2vec_heavy>: fresh
+  datasets sharing the same board/clue sample sequence (same seed) but
+  different guesser-selection weights.
+- linear_baseline: the base dataset, trained with LinearScorer instead of
+  Scorer (SCOPE §6 baseline 4).
+
+Usage:
+    python scripts/run_ablation_study.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+import torch
+
+sys.path.insert(0, str(Path(__file__).parent))
+from generate_training_data import generate  # noqa: E402
+from train_scorer import train  # noqa: E402
+
+from codenames.ablation import average_concatenation, drop_space
+from codenames.features import FeatureLayout, build_features_unsorted
+from codenames.guessers.registry import DEFAULT_POOL_CONFIG, training_pool
+from codenames.scorer import LinearScorer, Scorer
+from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
+
+
+def _generate_if_needed(output_dir: Path, n_examples: int, **kwargs) -> None:
+    if output_dir.exists() and any(output_dir.glob("features_*.npy")):
+        print(f"[skip] {output_dir} already generated")
+        return
+    print(f"[generate] {output_dir} ({n_examples} examples)")
+    t0 = time.time()
+    generate(n_examples=n_examples, shard_size=n_examples, output_dir=output_dir, **kwargs)
+    print(f"  done in {time.time() - t0:.0f}s")
+
+
+def _derive_if_needed(src_dir: Path, dst_dir: Path, transform) -> None:
+    if dst_dir.exists() and any(dst_dir.glob("features_*.npy")):
+        print(f"[skip] {dst_dir} already derived")
+        return
+    print(f"[derive] {dst_dir} from {src_dir}")
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for features_path in sorted(src_dir.glob("features_*.npy")):
+        idx = features_path.stem.split("_", 1)[1]
+        features = np.load(features_path)
+        np.save(dst_dir / f"features_{idx}.npy", transform(features).astype(np.float32))
+        for name in ("k", "seed"):
+            np.save(dst_dir / f"{name}_{idx}.npy", np.load(src_dir / f"{name}_{idx}.npy"))
+
+
+def _best_epoch_metrics(checkpoint_dir: Path) -> dict:
+    with (checkpoint_dir / "training_curves.csv").open() as f:
+        rows = list(csv.DictReader(f))
+    best = min(rows, key=lambda r: float(r["val_loss"]))
+    return {"val_loss": float(best["val_loss"]), "val_accuracy": float(best["val_accuracy"]), "epoch": int(best["epoch"])}
+
+
+def _train_variant(name: str, data_dir: Path, checkpoints_root: Path, train_kwargs: dict, model_factory=Scorer) -> dict:
+    out_dir = checkpoints_root / name
+    print(f"[train] {name}")
+    t0 = time.time()
+    train(data_dir=data_dir, output_dir=out_dir, model_factory=model_factory, **train_kwargs)
+    metrics = _best_epoch_metrics(out_dir)
+    metrics["train_seconds"] = time.time() - t0
+    metrics["n_examples"] = sum(len(np.load(p, mmap_mode="r")) for p in data_dir.glob("k_*.npy"))
+    print(f"  val_loss={metrics['val_loss']:.4f} val_acc={metrics['val_accuracy']:.4f} ({metrics['train_seconds']:.0f}s)")
+    return metrics
+
+
+def _linear_feature_importance(checkpoint_dir: Path, layout: FeatureLayout, top_k: int = 20) -> list[tuple[str, float]]:
+    checkpoint = torch.load(checkpoint_dir / "scorer_best.pt", map_location="cpu")
+    model = LinearScorer(input_dim=checkpoint["input_dim"])
+    model.load_state_dict(checkpoint["model_state"])
+    weight = model.net.weight.detach().numpy()  # (N_K_CLASSES, input_dim)
+    importance = np.linalg.norm(weight, axis=0)
+    order = np.argsort(-importance)[:top_k]
+    return [(layout.describe(int(i)), float(importance[i])) for i in order]
+
+
+def _write_report(path: Path, results: dict[str, dict], importances: list[tuple[str, float]]) -> None:
+    lines = ["# M9 ablation study report\n", "| variant | n_examples | val_loss | val_accuracy |", "|---|---|---|---|"]
+    for name, m in sorted(results.items(), key=lambda kv: kv[1]["val_loss"]):
+        lines.append(f"| {name} | {m['n_examples']} | {m['val_loss']:.4f} | {m['val_accuracy']:.4f} |")
+    lines.append("\n## Linear baseline: top features by importance (L2 norm of weight across k-classes)\n")
+    lines.append("| feature | importance |")
+    lines.append("|---|---|")
+    for label, value in importances:
+        lines.append(f"| {label} | {value:.4f} |")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--base-n", type=int, default=200_000)
+    parser.add_argument("--pool-sensitivity-n", type=int, default=50_000)
+    parser.add_argument("--data-root", type=Path, default=Path("cache/m9"))
+    parser.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG)
+    parser.add_argument("--sims-cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
+    parser.add_argument("--max-epochs", type=int, default=20)
+    parser.add_argument("--patience", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=0)
+    args = parser.parse_args()
+
+    sims = SimilarityTensor.load(args.sims_cache_dir)
+    layout = FeatureLayout(spaces=sims.spaces)
+    guesser_names = list(training_pool(args.guesser_pool_config).keys())
+    train_kwargs = dict(max_epochs=args.max_epochs, patience=args.patience, seed=args.seed)
+
+    data_root = args.data_root
+    checkpoints_root = data_root / "checkpoints"
+
+    # --- Generate: base + unsorted (same seed -> same underlying samples) ---
+    base_dir = data_root / "base"
+    unsorted_dir = data_root / "unsorted"
+    _generate_if_needed(base_dir, args.base_n, seed=args.seed, guesser_pool_config=args.guesser_pool_config, sims_cache_dir=args.sims_cache_dir)
+    _generate_if_needed(
+        unsorted_dir, args.base_n, seed=args.seed, guesser_pool_config=args.guesser_pool_config,
+        sims_cache_dir=args.sims_cache_dir, feature_builder=build_features_unsorted,
+    )
+
+    # --- Generate: pool-sensitivity sweep (same seed across configs -> same
+    # underlying board/clue samples, only guesser weighting differs) ---
+    pool_configs = {"uniform": {n: 1.0 for n in guesser_names}}
+    for n in guesser_names:
+        # e.g. "noisy_glove" -> "glove_heavy"
+        axis = n.replace("noisy_", "")
+        pool_configs[f"{axis}_heavy"] = {other: (3.0 if other == n else 1.0) for other in guesser_names}
+
+    pool_dirs = {}
+    for name, weights in pool_configs.items():
+        d = data_root / f"pool_{name}"
+        _generate_if_needed(
+            d, args.pool_sensitivity_n, seed=args.seed + 1, guesser_pool_config=args.guesser_pool_config,
+            sims_cache_dir=args.sims_cache_dir, guesser_weights=weights,
+        )
+        pool_dirs[name] = d
+
+    # --- Derive: drop-space (x n_spaces) + averaged-concatenation, from base ---
+    drop_space_dirs = {}
+    for space in sims.spaces:
+        d = data_root / f"drop_{space}"
+        _derive_if_needed(base_dir, d, lambda f, s=space: drop_space(f, layout, s))
+        drop_space_dirs[space] = d
+
+    averaged_dir = data_root / "averaged"
+    _derive_if_needed(base_dir, averaged_dir, lambda f: average_concatenation(f, layout))
+
+    # --- Train every variant ---
+    variants = {"full": base_dir, "unsorted": unsorted_dir, "averaged": averaged_dir}
+    variants.update({f"drop_{space}": d for space, d in drop_space_dirs.items()})
+    variants.update({f"pool_{name}": d for name, d in pool_dirs.items()})
+
+    results = {name: _train_variant(name, d, checkpoints_root, train_kwargs) for name, d in variants.items()}
+    results["linear_baseline"] = _train_variant("linear_baseline", base_dir, checkpoints_root, train_kwargs, model_factory=LinearScorer)
+
+    importances = _linear_feature_importance(checkpoints_root / "linear_baseline", layout)
+
+    report_path = data_root / "report.md"
+    _write_report(report_path, results, importances)
+    print(f"\nreport written to {report_path}")
+
+    print(f"\n{'variant':20s} {'n':>8s} {'val_loss':>10s} {'val_acc':>9s}")
+    for name, m in sorted(results.items(), key=lambda kv: kv[1]["val_loss"]):
+        print(f"{name:20s} {m['n_examples']:8d} {m['val_loss']:10.4f} {m['val_accuracy']:9.4f}")
+
+
+if __name__ == "__main__":
+    main()

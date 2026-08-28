@@ -62,6 +62,7 @@ import argparse
 import random
 import time
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
@@ -189,7 +190,15 @@ def generate(
     guesser_pool_config: Path = DEFAULT_POOL_CONFIG,
     sims_cache_dir: Path = DEFAULT_CACHE_DIR,
     board_vocabulary: list[str] | None = None,
+    feature_builder: Callable[[Board, str, SimilarityTensor, int], np.ndarray] = build_features,
+    guesser_weights: dict[str, float] | None = None,
 ) -> int:
+    """`feature_builder` and `guesser_weights` exist for SCOPE §9's
+    ablations (scripts/run_ablation_study.py), not as CLI flags: swapping
+    in `build_features_unsorted` reproduces the exact same sampled
+    boards/clues/guessers for a given `seed` (feature computation never
+    consumes randomness), and `guesser_weights` skews which guesser labels
+    each example without changing anything else about the sampling."""
     # Hardcoded default, not a CLI flag: training data must never include a
     # held-out board word by construction, the same way held-out guessers
     # used to be enforced by training_pool() rather than by convention.
@@ -201,6 +210,7 @@ def generate(
     guesser_names = list(guessers.keys())
     if not guesser_names:
         raise ValueError(f"training_pool({guesser_pool_config}) is empty -- nothing to sample from")
+    guesser_choice_weights = [guesser_weights[name] for name in guesser_names] if guesser_weights is not None else None
 
     rng = random.Random(seed)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -224,8 +234,12 @@ def generate(
             if clue is None:
                 continue
 
-            guesser = guessers[rng.choice(guesser_names)]
-            features[filled] = build_features(board, clue, sims, turn_index)
+            if guesser_choice_weights is not None:
+                guesser_name = rng.choices(guesser_names, weights=guesser_choice_weights, k=1)[0]
+            else:
+                guesser_name = rng.choice(guesser_names)
+            guesser = guessers[guesser_name]
+            features[filled] = feature_builder(board, clue, sims, turn_index)
             ks[filled], rewards[filled] = simulate_natural_stop(board, clue, guesser, sims)
             seeds[filled] = board.seed
             filled += 1

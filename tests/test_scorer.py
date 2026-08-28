@@ -8,6 +8,7 @@ from codenames.scorer import (
     DEFAULT_MISS_PENALTY,
     N_K_CLASSES,
     OWN_REWARD,
+    LinearScorer,
     Scorer,
     expected_reward_and_best_n,
     reward_matrix,
@@ -92,3 +93,21 @@ class TestScorer:
         x = torch.randn(8, 103)
         probs = model.predict_proba(x)
         assert torch.allclose(probs.sum(dim=-1), torch.ones(8), atol=1e-5)
+
+
+class TestLinearScorer:
+    def test_forward_shape(self):
+        model = LinearScorer(input_dim=103)
+        x = torch.randn(8, 103)
+        logits = model(x)
+        assert logits.shape == (8, N_K_CLASSES)
+
+    def test_predict_proba_sums_to_one(self):
+        model = LinearScorer(input_dim=103)
+        x = torch.randn(8, 103)
+        probs = model.predict_proba(x)
+        assert torch.allclose(probs.sum(dim=-1), torch.ones(8), atol=1e-5)
+
+    def test_has_no_hidden_layers(self):
+        model = LinearScorer(input_dim=103)
+        assert isinstance(model.net, torch.nn.Linear)

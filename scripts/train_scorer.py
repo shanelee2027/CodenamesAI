@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import csv
 from pathlib import Path
+from typing import Callable
 
 import matplotlib
 
@@ -173,7 +174,12 @@ def train(
     patience: int = 5,
     lr: float = 1e-3,
     seed: int = 0,
+    model_factory: Callable[[int], nn.Module] = Scorer,
 ) -> Path:
+    """`model_factory` exists for SCOPE §9's linear baseline
+    (scripts/run_ablation_study.py passes `LinearScorer`) -- everything
+    else here (splitting, early stopping, checkpointing, curves,
+    reliability diagrams) is architecture-agnostic."""
     torch.manual_seed(seed)
     output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -189,7 +195,7 @@ def train(
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
 
-    model = Scorer(input_dim=train_data.feature_dim).to(device)
+    model = model_factory(train_data.feature_dim).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
     checkpoint_path = output_dir / "scorer_best.pt"

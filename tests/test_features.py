@@ -12,6 +12,7 @@ from codenames.features import (
     FeatureLayout,
     build_features,
     build_features_batch,
+    build_features_unsorted,
     feature_dim,
 )
 from codenames.similarity import SimilarityTensor
@@ -173,3 +174,78 @@ class TestMissingVectorHandling:
         assert list(own_values_a).count(SENTINEL) == 1
         mask = vec[layout.mask_slice()]
         assert mask[:9].sum() == 9
+
+
+class TestBuildFeaturesUnsorted:
+    def test_same_width_as_sorted(self, tmp_path):
+        sims = make_sims(tmp_path, base_tensor())
+        board = make_board()
+        vec = build_features_unsorted(board, "clueone", sims, turn_index=0)
+        assert vec.shape == (feature_dim(len(SPACES)),)
+
+    def test_preserves_natural_order_instead_of_sorting(self, tmp_path):
+        tensor = base_tensor()
+        own_words = BOARD_WORDS[:9]  # Board0..Board8, in this natural order
+        ascending = np.linspace(0.1, 0.9, 9)
+        for i, w in enumerate(own_words):
+            tensor[CLUE_WORDS.index("clueone"), BOARD_WORDS.index(w), :] = ascending[i]
+        sims = make_sims(tmp_path, tensor)
+        board = make_board()
+
+        sorted_vec = build_features(board, "clueone", sims, turn_index=0)
+        unsorted_vec = build_features_unsorted(board, "clueone", sims, turn_index=0)
+
+        layout = FeatureLayout(spaces=SPACES)
+        sorted_own = sorted_vec[layout.space_slice("a")][:9]
+        unsorted_own = unsorted_vec[layout.space_slice("a")][:9]
+
+        np.testing.assert_allclose(sorted_own, ascending[::-1], atol=1e-3)
+        np.testing.assert_allclose(unsorted_own, ascending, atol=1e-3)
+        assert not np.allclose(sorted_own, unsorted_own)
+
+    def test_missing_vector_still_gets_sentinel_at_its_own_position(self, tmp_path):
+        tensor = base_tensor()
+        tensor[CLUE_WORDS.index("clueone"), BOARD_WORDS.index("Board1"), SPACES.index("a")] = np.nan
+        sims = make_sims(tmp_path, tensor)
+        board = make_board()
+
+        vec = build_features_unsorted(board, "clueone", sims, turn_index=0)
+        layout = FeatureLayout(spaces=SPACES)
+        own_a = vec[layout.space_slice("a")][:9]
+        assert own_a[1] == SENTINEL  # Board1 is the 2nd own word (index 1)
+        assert not np.isnan(vec).any()
+
+    def test_mask_and_scalars_match_sorted_builder(self, tmp_path):
+        sims = make_sims(tmp_path, base_tensor())
+        board = make_board(revealed=["Board0", "Board9"])
+        layout = FeatureLayout(spaces=SPACES)
+
+        sorted_vec = build_features(board, "clueone", sims, turn_index=2)
+        unsorted_vec = build_features_unsorted(board, "clueone", sims, turn_index=2)
+
+        np.testing.assert_array_equal(sorted_vec[layout.mask_slice()], unsorted_vec[layout.mask_slice()])
+        np.testing.assert_array_equal(sorted_vec[layout.scalar_slice()], unsorted_vec[layout.scalar_slice()])
+
+
+class TestFeatureLayoutDescribe:
+    def test_first_index_of_a_space_own_block(self):
+        layout = FeatureLayout(spaces=["a", "b"])
+        assert layout.describe(0) == "a/own/rank0"
+
+    def test_last_index_of_a_space_assassin_block(self):
+        layout = FeatureLayout(spaces=["a", "b"])
+        assert layout.describe(24) == "a/assassin/rank0"
+
+    def test_second_space_offset(self):
+        layout = FeatureLayout(spaces=["a", "b"])
+        assert layout.describe(25) == "b/own/rank0"
+
+    def test_mask_index(self):
+        layout = FeatureLayout(spaces=["a", "b"])
+        assert layout.describe(50) == "mask/own/rank0"
+
+    def test_scalar_indices(self):
+        layout = FeatureLayout(spaces=["a", "b"])
+        assert layout.describe(75) == "scalar/own_remaining"
+        assert layout.describe(76) == "scalar/turn_index"
+        assert layout.describe(77) == "scalar/score_differential"

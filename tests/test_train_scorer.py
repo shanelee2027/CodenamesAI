@@ -10,7 +10,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from train_scorer import ShardedTrainingData, _is_val_seed, train  # noqa: E402
 
-from codenames.scorer import N_K_CLASSES, Scorer  # noqa: E402
+from codenames.scorer import N_K_CLASSES, LinearScorer, Scorer  # noqa: E402
 
 FEATURE_DIM = 12
 
@@ -95,3 +95,21 @@ class TestTrain:
     def test_raises_when_no_validation_examples(self, data_dir, tmp_path):
         with pytest.raises(ValueError, match="no validation examples"):
             train(data_dir=data_dir, output_dir=tmp_path / "out", val_fraction=0.0, max_epochs=1)
+
+    def test_model_factory_trains_a_different_architecture(self, data_dir, tmp_path):
+        output_dir = tmp_path / "checkpoints"
+        checkpoint_path = train(
+            data_dir=data_dir,
+            output_dir=output_dir,
+            val_fraction=0.1,
+            batch_size=32,
+            max_epochs=2,
+            patience=2,
+            seed=0,
+            model_factory=LinearScorer,
+        )
+        checkpoint = torch.load(checkpoint_path, map_location="cpu")
+        model = LinearScorer(input_dim=checkpoint["input_dim"])
+        model.load_state_dict(checkpoint["model_state"])  # should not raise
+        with pytest.raises(RuntimeError):
+            Scorer(input_dim=checkpoint["input_dim"]).load_state_dict(checkpoint["model_state"])

@@ -78,6 +78,28 @@ class Scorer(nn.Module):
         return torch.softmax(self.forward(x), dim=-1)
 
 
+class LinearScorer(nn.Module):
+    """SCOPE §6 baseline 4: a linear model over the exact same feature
+    vector the MLP uses, no hidden layers. Same interface as Scorer so it's
+    a drop-in alternative for scripts/train_scorer.py's model_factory --
+    the gap between this and Scorer is the project's headline result (§6:
+    "baselines 3 and 4 are the informative pair ... the gap between 3 and 5
+    is the project's headline result"). Its weight matrix is also what
+    makes the model interpretable: see codenames.features.FeatureLayout.describe."""
+
+    def __init__(self, input_dim: int):
+        super().__init__()
+        self.input_dim = input_dim
+        self.net = nn.Linear(input_dim, N_K_CLASSES)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
+
+    @torch.no_grad()
+    def predict_proba(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.softmax(self.forward(x), dim=-1)
+
+
 def reward_matrix(miss_penalty: float = DEFAULT_MISS_PENALTY, max_k: int = MAX_K) -> np.ndarray:
     """(max_k+1, max_k+1) matrix, reward_matrix[k, n] = reward(k, n). Built
     once per risk-aversion setting; play-time scoring is then just a matrix
