@@ -19,6 +19,16 @@ Variants trained:
   different guesser-selection weights.
 - linear_baseline: the base dataset, trained with LinearScorer instead of
   Scorer (SCOPE §6 baseline 4).
+- noise_<value> (opt-in via --noise-levels): fresh datasets, one per
+  requested noise_std, each generated from a temporary copy of the
+  guesser pool config with every guesser's noise_std overridden to that
+  value (same spaces, same per-guesser seeds 1/2/3) -- since NoisyGuesser
+  draws `rng.normal(0, noise_std)` from a seed-determined stream, the same
+  seed at a different noise_std is the same underlying draws at a
+  different scale, so levels are directly comparable, not just similarly
+  distributed. Same generation seed as `base` too, so all noise levels
+  (and `full`, effectively noise_std=whatever's in the default pool
+  config) share the identical board/clue sample sequence as well.
 
 The 6 dataset-generation calls above are independent (separate output
 dirs, no shared mutable state) and CPU-bound, so they run across a
@@ -35,6 +45,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
@@ -72,6 +83,24 @@ def _generation_job(job: dict) -> None:
     output_dir = job.pop("output_dir")
     n_examples = job.pop("n_examples")
     _generate_if_needed(output_dir, n_examples, **job)
+
+
+def _noise_level_tag(noise_std: float) -> str:
+    return str(noise_std).replace(".", "_")
+
+
+def _write_noise_pool_config(base_pool_config: Path, noise_std: float, output_path: Path) -> Path:
+    """A copy of base_pool_config with every noisy guesser's noise_std
+    overridden -- same spaces and per-guesser seeds, so only the noise
+    magnitude differs between levels, not which guesser is which or what
+    its underlying (pre-noise) random stream looks like."""
+    config = json.loads(base_pool_config.read_text())
+    for entry in config["guessers"]:
+        if entry.get("type") == "noisy":
+            entry["params"]["noise_std"] = noise_std
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(config))
+    return output_path
 
 
 def _derive_if_needed(src_dir: Path, dst_dir: Path, transform) -> None:
@@ -140,7 +169,17 @@ def main() -> None:
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max-workers", type=int, default=None, help="generation-phase worker processes (default: os.cpu_count())")
+    parser.add_argument(
+        "--noise-levels",
+        type=str,
+        default="",
+        help="comma-separated noise_std values to sweep (e.g. '0.0,0.03,0.06,0.1,0.15'); "
+        "empty (default) skips the noise sweep entirely. Each level trains its own "
+        "'noise_<value>' variant from a fresh dataset generated with that noise_std, "
+        "otherwise identical to the default guesser pool config.",
+    )
     args = parser.parse_args()
+    noise_levels = [float(x) for x in args.noise_levels.split(",") if x.strip()]
 
     sims = SimilarityTensor.load(args.sims_cache_dir)
     layout = FeatureLayout(spaces=sims.spaces)
@@ -163,6 +202,19 @@ def main() -> None:
         pool_configs[f"{axis}_heavy"] = {other: (3.0 if other == n else 1.0) for other in guesser_names}
     pool_dirs = {name: data_root / f"pool_{name}" for name in pool_configs}
 
+    # Noise-std sweep (opt-in): same generation seed as base, so it's the
+    # same underlying board/clue samples -- only the guesser noise
+    # magnitude differs between levels and against `full`.
+    noise_pool_configs = {}
+    noise_dirs = {}
+    for noise_std in noise_levels:
+        tag = _noise_level_tag(noise_std)
+        pool_config_path = _write_noise_pool_config(
+            args.guesser_pool_config, noise_std, data_root / "pool_configs" / f"noise_{tag}.json"
+        )
+        noise_pool_configs[tag] = pool_config_path
+        noise_dirs[tag] = data_root / f"noise_{tag}"
+
     jobs = [
         {"output_dir": base_dir, "n_examples": args.base_n, "seed": args.seed, **common},
         {
@@ -173,6 +225,13 @@ def main() -> None:
     jobs.extend(
         {"output_dir": pool_dirs[name], "n_examples": args.pool_sensitivity_n, "seed": args.seed + 1, "guesser_weights": weights, **common}
         for name, weights in pool_configs.items()
+    )
+    jobs.extend(
+        {
+            "output_dir": noise_dirs[tag], "n_examples": args.base_n, "seed": args.seed,
+            "guesser_pool_config": noise_pool_configs[tag], "sims_cache_dir": args.sims_cache_dir,
+        }
+        for tag in noise_pool_configs
     )
 
     print(f"[generate] running {len(jobs)} generation jobs across up to {args.max_workers or 'os.cpu_count()'} workers")
@@ -195,6 +254,7 @@ def main() -> None:
     variants = {"full": base_dir, "unsorted": unsorted_dir, "averaged": averaged_dir}
     variants.update({f"drop_{space}": d for space, d in drop_space_dirs.items()})
     variants.update({f"pool_{name}": d for name, d in pool_dirs.items()})
+    variants.update({f"noise_{tag}": d for tag, d in noise_dirs.items()})
 
     results = {name: _train_variant(name, d, checkpoints_root, train_kwargs) for name, d in variants.items()}
     results["linear_baseline"] = _train_variant("linear_baseline", base_dir, checkpoints_root, train_kwargs, model_factory=LinearScorer)
