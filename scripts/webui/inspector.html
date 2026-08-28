@@ -187,7 +187,7 @@
     <label>top</label>
     <input id="topK" type="number" min="1" max="50" value="10" style="width:60px;" title="How many candidate clues to show, best first.">
     <label>max rarity %</label>
-    <input id="maxRarity" type="number" min="0" max="100" step="5" placeholder="100 (no filter)" style="width:110px;" title="Exclude clues rarer than this percentile of the clue vocabulary (0 = only the most common words, 100 = no filtering). Screens out obscure picks like 'confectionery'. No effect on 'random' (nothing to rank).">
+    <input id="maxRarity" type="number" min="0" max="100" step="5" value="90" placeholder="100 (no filter)" style="width:110px;" title="Exclude clues rarer than this percentile of the clue vocabulary (0 = only the most common words, 100 = no filtering). Screens out obscure picks like 'confectionery'. No effect on 'random' (nothing to rank).">
     <button id="getAiClue" class="primary">Get AI clues</button>
     <span id="aiClueReadout" class="sub" style="margin:0 0 0 4px;"></span>
   </div>
@@ -205,8 +205,9 @@
     <label>sim. noise</label>
     <select id="simNoise" title="Which noise-level guesser pool the 'if this clue+number were actually played' panel simulates against -- independent of which noise level the codemaster was trained under.">
       <option value="0.0">0.0</option>
-      <option value="0.03" selected>0.03 (default)</option>
+      <option value="0.03">0.03</option>
       <option value="0.06">0.06</option>
+      <option value="0.08" selected>0.08 (default)</option>
       <option value="0.1">0.1</option>
       <option value="0.15">0.15</option>
     </select>
@@ -429,6 +430,8 @@ function refresh() {
   else loadState();
 }
 
+const DEFAULT_CODEMASTER = 'learned:noise_0_08';
+
 async function loadCodemasters() {
   const data = await fetchJSON('/api/codemasters');
   const select = document.getElementById('codemaster');
@@ -439,6 +442,7 @@ async function loadCodemasters() {
     opt.textContent = name;
     select.appendChild(opt);
   }
+  if (data.codemasters.includes(DEFAULT_CODEMASTER)) select.value = DEFAULT_CODEMASTER;
 }
 
 let lastCandidates = [];

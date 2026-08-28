@@ -132,12 +132,24 @@ def _best_epoch_metrics(checkpoint_dir: Path) -> dict:
 
 def _train_variant(name: str, data_dir: Path, checkpoints_root: Path, train_kwargs: dict, model_factory=Scorer) -> dict:
     out_dir = checkpoints_root / name
+    n_examples = sum(len(np.load(p, mmap_mode="r")) for p in data_dir.glob("outcome_*.npy"))
+
+    # Mirrors _generate_if_needed's skip-if-exists: re-running with an
+    # extended --noise-levels list (e.g. adding one new level) shouldn't
+    # retrain every variant that already has a checkpoint on disk.
+    if (out_dir / "scorer_best.pt").exists() and (out_dir / "training_curves.csv").exists():
+        metrics = _best_epoch_metrics(out_dir)
+        metrics["train_seconds"] = 0.0
+        metrics["n_examples"] = n_examples
+        print(f"[skip] {name} already trained (val_loss={metrics['val_loss']:.4f} val_acc={metrics['val_accuracy']:.4f})")
+        return metrics
+
     print(f"[train] {name}")
     t0 = time.time()
     train(data_dir=data_dir, output_dir=out_dir, model_factory=model_factory, **train_kwargs)
     metrics = _best_epoch_metrics(out_dir)
     metrics["train_seconds"] = time.time() - t0
-    metrics["n_examples"] = sum(len(np.load(p, mmap_mode="r")) for p in data_dir.glob("outcome_*.npy"))
+    metrics["n_examples"] = n_examples
     print(f"  val_loss={metrics['val_loss']:.4f} val_acc={metrics['val_accuracy']:.4f} ({metrics['train_seconds']:.0f}s)")
     return metrics
 

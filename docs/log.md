@@ -1255,4 +1255,49 @@ server: unfiltered top-5 for one seed included "stretching"/"overlooking"
 correctly dropped both in favor of lower-percentile alternatives
 ("fort" 1.8, "area" 0.2). All 184 tests still pass (no regressions).
 
+## Post-M9: an in-between noise level (0.08), and making run_ablation_study.py's training step actually cache-aware
+
+Following up on the noise anecdote above, the user wanted a 6th noise
+level in between the two they'd been comparing (0.06 felt too sharp, 0.1
+too conservative) -- 0.08. Before adding it, checked whether re-running
+`run_ablation_study.py --noise-levels "...,0.08,..." --noise-only` would
+actually only train the one new model, since that's the entire point of
+`_generate_if_needed`'s skip-if-exists mechanism. Turned out it half-did:
+**generation** was already properly cache-aware (skips a variant whose
+shards already exist on disk), but **training** was not --
+`_train_variant` called `train()` unconditionally for every variant in
+the run, so extending `--noise-levels` would have silently retrained all
+5 existing models along with the new one every time, even though their
+checkpoints were already sitting right there. Fixed by mirroring the
+same skip-if-exists pattern onto `_train_variant`: if
+`checkpoints/<name>/scorer_best.pt` and `training_curves.csv` already
+exist, read the existing `training_curves.csv` for its best-epoch metrics
+and skip straight to reporting them, instead of calling `train()` again.
+
+Verified this actually works before trusting it: reran with
+`--noise-levels "0.0,0.03,0.06,0.08,0.1,0.15"` and confirmed via
+directory mtimes that only `cache/m9/noise_0_08/` was freshly touched,
+the other 5 untouched. Log output confirmed the same at the training
+step -- `[skip] noise_0_03 already trained (val_loss=0.9766
+val_acc=0.6350)` etc. for the 5 existing ones, `[train] noise_0_08`
+actually running (11s) for the new one alone. Total run time: seconds,
+not the ~13 minutes a full 6-level regeneration would have cost.
+
+Result: `noise_0_08` -> val_loss=1.3017, val_acc=0.5358 -- lands exactly
+where expected between `noise_0_06` (1.1788/0.5704) and `noise_0_1`
+(1.4123/0.5024) in the monotonic curve, consistent with everything else
+in the sweep. (Per the entry above, these numbers describe how
+predictable the 0.08-noise task is, not "how good" 0.08 is for actual
+play -- that comparison still needs the arena, not val_accuracy.)
+
+Also set new web UI defaults per the user's request: `max_rarity=90`,
+default codemaster `learned:noise_0_08`, default simulation noise `0.08`
+(`scripts/webui/inspector.html`'s `DEFAULT_CODEMASTER` constant and the
+`maxRarity`/`simNoise` inputs' default values).
+
+All 184 tests pass (`_train_variant`'s new skip path has no dedicated
+unit test, same as the rest of run_ablation_study.py -- it's the
+integration test, verified by actually running it, per its own module
+docstring).
+
 ## M10 — Human evaluation

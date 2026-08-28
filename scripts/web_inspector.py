@@ -59,7 +59,7 @@ SIMS = SimilarityTensor.load()
 # need a fresh guesser pool AND wouldn't correspond to any trained
 # learned:noise_* codemaster, so the play-time noise dial is restricted
 # to exactly these rather than a free-form number.
-NOISE_LEVELS = [0.0, 0.03, 0.06, 0.1, 0.15]
+NOISE_LEVELS = [0.0, 0.03, 0.06, 0.08, 0.1, 0.15]
 DEFAULT_NOISE = 0.03
 _BASE_POOL_CONFIG = json.loads(DEFAULT_POOL_CONFIG.read_text())
 
