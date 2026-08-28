@@ -215,7 +215,7 @@
       </div>
       <div class="panel">
         <h2>If this clue+number were actually played</h2>
-        <div id="simulation">Click "Get AI clue" to see a simulated turn per guesser (attempts capped at number+1, stops on the first non-own reveal).</div>
+        <div id="simulation">Click "Get AI clue" to see a simulated turn per guesser (attempts capped at number, stops on the first non-own reveal).</div>
       </div>
       <div class="panel">
         <h2>Per-space top rankings</h2>
@@ -327,7 +327,7 @@ function renderSpaces(topPerSpace) {
 
 function renderSimulation(sim) {
   const el = document.getElementById('simulation');
-  if (!sim) { el.innerHTML = 'Click "Get AI clue" to see a simulated turn per guesser (attempts capped at number+1, stops on the first non-own reveal).'; return; }
+  if (!sim) { el.innerHTML = 'Click "Get AI clue" to see a simulated turn per guesser (attempts capped at number, stops on the first non-own reveal).'; return; }
   el.innerHTML = '';
   for (const r of sim.results) {
     const row = document.createElement('div');

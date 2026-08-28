@@ -64,7 +64,7 @@ def play_turn(board: Board, codemaster: Codemaster, guesser: Guesser, sims: Simi
     clue, number = codemaster.give_clue(board, sims)
     candidates = [w for w in board.words if not board.is_revealed(w)]
     ranked = guesser.rank_candidates(clue, candidates, sims)
-    attempts = ranked[: number + 1]
+    attempts = ranked[:number]
 
     if not attempts:
         return TurnResult(clue=clue, number=number, ended_reason="no_guesses")

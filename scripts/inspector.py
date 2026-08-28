@@ -13,7 +13,7 @@ baseline, which needs CMA-ES tuning against the guesser pool (M8).
 Labeled as such in the output.
 
 "What each guesser would pick" only shows each guesser's own preference
-ranking, not a full simulated turn -- the number+1 attempt cap and
+ranking, not a full simulated turn -- the number attempt cap and
 turn-ending-on-a-miss rule are game-loop concerns (M6), not built yet.
 
 Usage:
@@ -114,7 +114,7 @@ def main() -> None:
     parser.add_argument("--clue", required=True)
     parser.add_argument("--reveal", nargs="*", default=[], help="board words to mark as already revealed")
     parser.add_argument("--top", type=int, default=25, help="how many board words to show in the per-space ranking (default: all 25)")
-    parser.add_argument("--guesser-top", type=int, default=5, help="how many picks to show per guesser (default: 5, since a real turn only gets number+1 attempts)")
+    parser.add_argument("--guesser-top", type=int, default=5, help="how many picks to show per guesser (default: 5, since a real turn only gets number attempts)")
     args = parser.parse_args()
 
     sims = SimilarityTensor.load()

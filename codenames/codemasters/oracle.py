@@ -63,10 +63,9 @@ class OracleCodemaster(Codemaster):
 
     def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
         # number = the intended word count directly (matches
-        # codemasters/_util.py::natural_number's convention) -- the
-        # standard Codenames "one bonus guess beyond what you announced"
-        # rule is still applied by codenames.game.play_turn, unchanged.
-        # Floored at 1, same as every other codemaster here: a run length
+        # codemasters/_util.py::natural_number's convention) -- announcing
+        # n grants exactly n guesses (codenames.game.play_turn), no bonus
+        # attempt. Floored at 1, same as every other codemaster here: a run length
         # of 0 (this space's single best-ranked word isn't even own) still
         # has to be announced as *something*.
         run_length, combined = self._score_all_clues(board, sims)

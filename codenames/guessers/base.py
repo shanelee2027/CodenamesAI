@@ -40,7 +40,7 @@ class Guesser(ABC):
         likely first. May return fewer than all candidates if this
         guesser would voluntarily stop early (see
         ConfidenceThresholdGuesser) -- the caller combines this with the
-        number+1 attempt cap and turn-ending-on-a-miss rule (both handled
+        number attempt cap and turn-ending-on-a-miss rule (both handled
         by the game loop in M6, not here) to determine what's actually
         played."""
         scores = self.score_candidates(clue, candidate_words, sims)

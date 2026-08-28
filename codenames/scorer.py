@@ -24,16 +24,30 @@ exactly the kind of choice CLAUDE.md says to flag rather than pick silently.
 codemasters.base.MAX_CLUE_NUMBER and the training labels' cap -- see
 scripts/generate_training_data.py):
 
-    reward(k, n) = k * OWN_REWARD + miss_penalty   if k <= n   (natural
+    reward(k, n) = k * OWN_REWARD + miss_penalty   if k < n    (natural
                                                      stop happens within
-                                                     the n+1-attempt budget)
-                 = (n + 1) * OWN_REWARD             if k > n    (budget runs
+                                                     the n-attempt budget)
+                 = n * OWN_REWARD                   if k >= n   (budget runs
                                                      out first, no miss
                                                      encountered)
 
+A clue announcing n gives exactly n guesses -- no standard-Codenames "+1
+bonus guess" here. That bonus exists in real play because a human team can
+judge, guess by guess, whether one more stab is worth the risk; this
+project's guessers don't reason about the budget at all, they just rank
+candidates, so granting an automatic extra attempt would just be free
+expected value with no corresponding judgment behind it. See
+docs/log.md's numbering-convention entries for the full history (an
+earlier revision floored the *announced* number at 1 but kept n+1
+attempts; this revision removes the bonus attempt entirely).
+
 k=MAX_K is a right-censored "MAX_K or more" bucket (see the training-data
-docstring); treating it as exactly MAX_K here is a second, smaller
-approximation, and only actually bites when n == MAX_K.
+docstring). Since n never exceeds MAX_K (candidate_n's range), a censored
+k always means the true k is >= n too, so it always lands correctly in
+the budget-exhausted branch -- no approximation error here (this is a
+nice side effect of dropping the n+1 bonus attempt: under the old n+1
+rule, n could reach MAX_K while attempts could still exceed what k=MAX_K
+could represent, which is where that approximation used to bite).
 """
 
 from __future__ import annotations
@@ -109,8 +123,8 @@ def reward_matrix(miss_penalty: float = DEFAULT_MISS_PENALTY, max_k: int = MAX_K
     k_grid, n_grid = np.meshgrid(k_vals, n_vals, indexing="ij")
 
     natural_stop = k_grid * OWN_REWARD + miss_penalty
-    budget_exhausted = (n_grid + 1) * OWN_REWARD
-    return np.where(k_grid <= n_grid, natural_stop, budget_exhausted).astype(np.float32)
+    budget_exhausted = n_grid * OWN_REWARD
+    return np.where(k_grid < n_grid, natural_stop, budget_exhausted).astype(np.float32)
 
 
 def expected_reward_and_best_n(
@@ -125,11 +139,10 @@ def expected_reward_and_best_n(
     for).
 
     `min_n=1` excludes n=0 from consideration: reward_matrix's formula
-    treats n=0 as a legitimate one-attempt play (attempts = n+1 = 1), but
-    every other codemaster in this project floors its announced number at
-    1 (codemasters/_util.py::natural_number), so the learned codemaster
-    does too by default, for consistency -- not because n=0 is
-    mathematically invalid."""
+    treats n=0 as a legitimate (if useless -- 0 attempts, reward always 0)
+    play, but every other codemaster in this project floors its announced
+    number at 1 (codemasters/_util.py::natural_number), so the learned
+    codemaster does too by default, for consistency."""
     matrix = reward_matrix(miss_penalty)  # (n_k, n_n), columns n=0..MAX_K
     expected = probs @ matrix  # (batch, n_n) -- E[reward|clue,n] for every n
     candidate_n = np.arange(matrix.shape[1])

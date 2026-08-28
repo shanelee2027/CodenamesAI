@@ -45,8 +45,8 @@ class TestPlayTurn:
     def test_all_own_reveals_exhaust_guesses(self):
         board = make_board()
         cm = FixedCodemaster(number=2)
-        # Two own words, both guessed -- attempts = number+1 = 3, but only
-        # two own words offered so it never hits a miss.
+        # Two own words, both guessed -- attempts = number = 2, exactly
+        # matching the two own words offered so it never hits a miss.
         guesser = ScriptedGuesser(["Board0", "Board1"])
         turn = play_turn(board, cm, guesser, sims=None)
         assert turn.ended_reason == "exhausted_guesses"

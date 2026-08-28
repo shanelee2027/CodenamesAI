@@ -1055,4 +1055,57 @@ sweep rather than a single before/after guess.
   still wants *some* imperfection modeled); `0.0` is available any time
   via `--noise-levels` if that tradeoff is revisited.
 
+## Post-M9: dropped the +1 bonus guess entirely (real rule change, not just naming)
+
+While testing the web inspector, the user noticed a clue of "organism 1"
+still let the guesser take 2 guesses. Earlier in the project (see the
+numbering-convention entry above) the explicit decision was to keep the
+standard Codenames `n+1`-attempts rule and only fix what the *announced*
+number meant. This time, after thinking it over, the user asked for the
+actual rule to change: a clue announcing `n` should grant exactly `n`
+guesses, not `n+1` -- reasoning that in normal human play, the `+1` is a
+bonus a team *chooses* to spend when it still feels confident, not a
+default extra guess every clue gets, and this project's guessers have no
+notion of "still feels confident" to make that judgment call with.
+
+Changed:
+- `codenames/game.py::play_turn`: `attempts = ranked[:number]` (was
+  `ranked[: number + 1]`).
+- `scripts/web_inspector.py::_simulate_turn`: same change, it's a
+  read-only duplicate of the same logic for the UI's turn-simulation panel.
+- `codenames/scorer.py::reward_matrix`: the play-time reward formula had
+  the `n+1` budget baked directly into its math (`budget_exhausted =
+  (n+1) * OWN_REWARD`, `natural_stop` applied when `k <= n`). Shifted to
+  `budget_exhausted = n * OWN_REWARD`, `natural_stop` when `k < n`.
+- A nice side effect: the module docstring's old caveat about the
+  top k-bucket (`k=MAX_K`, right-censored "MAX_K or more") being a
+  "second, smaller approximation" is now just gone. Under the old `n+1`
+  rule, `n` could reach `MAX_K` while attempts could exceed what a
+  censored `k=MAX_K` could represent, forcing an assumed miss at the
+  bonus attempt. Since `n` never exceeds `MAX_K` and there's no bonus
+  attempt anymore, a censored `k` always means the true `k >= n`, which
+  always lands correctly in the budget-exhausted branch regardless of
+  how far past `MAX_K` the true value actually is. `TestExpectedRewardAndBestN`'s
+  tests were rewritten around this -- e.g. a clue certain to get `k=4`
+  now correctly prefers `n=4` (it used to prefer `n=3`, to dodge the
+  since-removed approximation).
+- No training-data regeneration needed: `scripts/generate_training_data.py`'s
+  `simulate_natural_stop` (the thing that produces the `k` labels) has
+  never depended on the announced `number` at all -- it simulates a
+  guesser's *natural* stopping point over an unlimited ranking, capped at
+  `MAX_K`. Only the play-time scoring math (`reward_matrix`,
+  `expected_reward_and_best_n`) and the actual game loop's attempt count
+  needed to change, both pure functions of already-trained `P(k|clue)`
+  outputs.
+- Updated comments/docstrings/help-text referencing the old `n+1`
+  convention across `codenames/guessers/base.py`,
+  `codenames/codemasters/oracle.py`, `scripts/inspector.py`, and the web
+  UI's simulation-panel placeholder text (`scripts/webui/inspector.html`).
+- `docs/SCOPE.md`'s play-time-scoring section now documents this as an
+  explicit divergence from standard Codenames rules.
+
+All 169 tests pass after the change (several in `tests/test_scorer.py`
+were rewritten, not just relabeled, since the actual reward values for a
+given `(k, n)` pair changed).
+
 ## M10 — Human evaluation

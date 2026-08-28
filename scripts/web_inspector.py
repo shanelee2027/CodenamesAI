@@ -189,12 +189,12 @@ def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str,
 def _simulate_turn(board: Board, clue: str, number: int, guesser, sims: SimilarityTensor) -> dict:
     """What actually happens if (clue, number) is played against one
     guesser, from the current board state -- same stop-on-first-miss /
-    number+1-attempts logic as codenames.game.play_turn, but read-only
+    number-attempts logic as codenames.game.play_turn, but read-only
     (peeks at role_of, never reveals) since the same board is reused
     across every guesser in one request."""
     candidates = [w for w in board.words if not board.is_revealed(w)]
     ranked = guesser.rank_candidates(clue, candidates, sims)
-    attempts = ranked[: number + 1]
+    attempts = ranked[:number]
 
     guesses = []
     reward = 0.0

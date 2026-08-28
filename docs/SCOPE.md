@@ -120,6 +120,19 @@ score(clue)         = E[reward | clue, best_n]
 Reward: +1 per own word, 0 and stop on neutral, −1 and stop on opponent,
 −10 and stop on assassin. The assassin penalty is the risk-aversion parameter.
 
+**Divergence from standard Codenames: no bonus guess.** A clue announcing
+`n` grants exactly `n` attempts here, not the standard rule's `n+1`
+("guess your `n` words, plus one bonus if you're still confident"). The
+bonus exists in real play because a human team can judge, mid-turn,
+whether one more guess is worth the risk; the guessers in this project
+don't reason about the attempt budget at all — they just rank
+candidates — so an automatic extra attempt would be free expected value
+with no judgment behind it. See `docs/log.md`'s numbering-convention
+entries for the history (an earlier revision kept `n+1` attempts and only
+changed what the announced number *meant*; this one removes the bonus
+attempt itself, at the user's explicit direction after noticing a
+clue of "word 1" still let the guesser take 2 guesses).
+
 **Score all ~250k candidates.** Do not build a candidate generator. With the
 precomputed tensor, scoring the full vocabulary is one gather plus one small
 forward pass — milliseconds on the target GPU. A generator would add a
