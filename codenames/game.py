@@ -7,8 +7,11 @@ board; the game is won by revealing every own word before the assassin, and
 a turn ends the moment a non-own word is revealed or the codemaster's
 attempts run out.
 
-Reward per SCOPE §2 (play-time scoring): +1 per own word, 0 and stop on
-neutral, -1 and stop on opponent, -10 and stop on assassin.
+Reward per SCOPE §2 (play-time scoring): +1 per own word, -0.2 and stop
+on neutral, -1 and stop on opponent, -10 and stop on assassin. Neutral
+being non-zero (rather than a true no-op) is deliberate: it still costs a
+turn and reveals no information toward winning, so it should be mildly
+penalized rather than treated as free -- see docs/log.md.
 """
 
 from __future__ import annotations
@@ -30,7 +33,7 @@ if TYPE_CHECKING:
 
 ROLE_REWARD: dict[Role, float] = {
     Role.OWN: 1.0,
-    Role.NEUTRAL: 0.0,
+    Role.NEUTRAL: -0.2,
     Role.OPPONENT: -1.0,
     Role.ASSASSIN: -10.0,
 }

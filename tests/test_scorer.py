@@ -60,16 +60,17 @@ class TestRewardMatrix:
         assert reward_matrix().shape == (N_OUTCOME_CLASSES, MAX_K + 1)
 
     def test_defaults_are_the_true_game_reward_table_not_baseline_3s(self):
-        # Confirmed this session: neutral defaults to 0.0 (the real §2
-        # reward), not SCOPE baseline-3's separate untuned -0.3 constant.
+        # neutral defaults to -0.2 (the real §2 reward -- a neutral guess
+        # still burns a turn for no progress, so it's mildly penalized,
+        # not free), not SCOPE baseline-3's separate untuned -0.3 constant.
         m = reward_matrix()
         cls = outcome_class(0, Role.NEUTRAL)
-        assert m[cls, 1] == pytest.approx(0.0)
+        assert m[cls, 1] == pytest.approx(-0.2)
 
     def test_natural_stop_charges_the_causes_own_value(self):
         m = reward_matrix()
         # k=1, n=2 (k < n -> natural stop, 1 own word then the miss).
-        assert m[outcome_class(1, Role.NEUTRAL), 2] == pytest.approx(1 * OWN_REWARD + 0.0)
+        assert m[outcome_class(1, Role.NEUTRAL), 2] == pytest.approx(1 * OWN_REWARD - 0.2)
         assert m[outcome_class(1, Role.OPPONENT), 2] == pytest.approx(1 * OWN_REWARD - 1.0)
         assert m[outcome_class(1, Role.ASSASSIN), 2] == pytest.approx(1 * OWN_REWARD + DEFAULT_MISS_PENALTY)
 
@@ -90,7 +91,7 @@ class TestRewardMatrix:
     def test_own_reward_scales_both_branches(self):
         m = reward_matrix(own_reward=2.0)
         assert m[outcome_class(3, Role.NEUTRAL), 1] == pytest.approx(1 * 2.0)  # budget branch
-        assert m[outcome_class(1, Role.NEUTRAL), 2] == pytest.approx(1 * 2.0 + 0.0)  # natural branch
+        assert m[outcome_class(1, Role.NEUTRAL), 2] == pytest.approx(1 * 2.0 - 0.2)  # natural branch
 
     def test_neutral_reward_only_affects_neutral_causes(self):
         m = reward_matrix(neutral_reward=-0.3)

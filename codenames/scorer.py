@@ -8,7 +8,7 @@ formula that turns that distribution into a (clue, number) choice.
 model predicted only P(k|clue) -- it said nothing about *why* a stop
 happened (neutral, opponent, or assassin all collapsed into "not own"),
 so every stop had to be charged the same flat worst-case `miss_penalty`
-at scoring time, since the per-category reward table (neutral 0,
+at scoring time, since the per-category reward table (neutral -0.2,
 opponent -1, assassin -10) couldn't be recovered from k alone. That's
 resolved here by predicting the *cause* too: the label space widens from
 5 classes (k in 0..MAX_K) to `N_OUTCOME_CLASSES` = `MAX_K * 3 + 1` = 13
@@ -39,10 +39,12 @@ depending on which role stopped the rollout. `assassin_reward` (default
 -10, matching `DEFAULT_MISS_PENALTY`) is the one meant to double as a
 "risk aversion" knob per SCOPE's own "the assassin penalty is the
 risk-aversion parameter" -- the other three default to the real game's
-`ROLE_REWARD` values (own +1, neutral 0, opponent -1), not baseline-3's
+`ROLE_REWARD` values (own +1, neutral -0.2, opponent -1), not baseline-3's
 separate untuned -0.3-for-neutral constant (`codemasters/linear_scorer.py`),
 since this is the reward the model is actually meant to optimize, not an
-illustrative heuristic. All four are exposed as independent runtime
+illustrative heuristic. Neutral being mildly negative (not a true 0) is
+deliberate: a neutral guess still burns a turn and gives no progress
+toward winning, so it's not actually free -- see docs/log.md. All four are exposed as independent runtime
 parameters (see `codenames/codemasters/learned.py` and the web UI) so any
 of them can be explored without retraining.
 

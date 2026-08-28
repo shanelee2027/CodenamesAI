@@ -1810,4 +1810,44 @@ as a new `docs/versions/v1.1.md` (mirroring v1.md's self-play section
 structure) plus a "Model 1.1" subsection in the README right after Model
 1, both explicit about the non-comparability caveat.
 
+## Reward table revision: neutral is no longer 0.0
+
+Requested: `ROLE_REWARD[Role.NEUTRAL]` (the true game reward, `codenames/
+game.py`) changed from 0.0 to -0.2. Reasoning: a neutral guess still
+burns a turn and produces no progress toward winning, so treating it as a
+true no-op understated its cost -- it should be mildly penalized, just
+less severely than an opponent guess (-1). This reverses the earlier
+explicit decision (see this file's `(k, cause)` redesign entry above) to
+default neutral to 0.0 specifically *because* it was "the true game
+value" -- the true value itself is what changed here, not the modeling
+choice to use it as the default.
+
+Single source of truth: `ROLE_REWARD` in `codenames/game.py`, which
+`codenames/scorer.py::reward_matrix`/`expected_reward_and_best_n` and
+`codenames/codemasters/learned.py::LearnedCodemaster`'s `neutral_reward`
+parameter both default from. Since none of the four reward values are
+baked into training (see the `(k, cause)` redesign entry), no checkpoint
+needed retraining -- this only changes default *scoring*-time behavior:
+what `LearnedCodemaster` picks when `neutral_reward` isn't explicitly
+overridden, and the reward value actually logged during real games
+(`codenames/game.py::play_turn`).
+
+**This does change the codemaster's actual clue choices**, though --
+`LearnedCodemaster` uses this reward when picking the best `(clue, n)`,
+so it's a real behavior change, not just a documentation update. The
+self-play tables already in the README / `docs/versions/v1.md` /
+`docs/versions/v1.1.md` were generated under the old `neutral_reward=0.0`
+default and are now stale relative to current default behavior (flagged
+to the user, not rerun automatically -- rerunning is cheap via
+`scripts/run_arena.py` if wanted).
+
+Updated: `codenames/game.py` (constant + docstring), `codenames/
+scorer.py` (module docstring's reward-table description), `scripts/
+webui/inspector.html` (neutral reward field's placeholder, 0 -> -0.2),
+`docs/versions/v1.md` (defaults description). `tests/test_scorer.py`'s
+two tests that asserted the *default* neutral reward is exactly 0.0
+updated to -0.2 (tests that pass `neutral_reward` explicitly as a
+parameter, e.g. `test_neutral_reward_only_affects_neutral_causes`, were
+unaffected). 194 tests pass.
+
 ## Human evaluation (not started)
