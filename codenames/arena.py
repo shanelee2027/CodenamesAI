@@ -49,6 +49,18 @@ class CrossPlayResult:
     assassin_rate: float
     mean_turns: float
     mean_own_words_per_clue: float
+    # Per-guess role breakdown, not per-game: of every individual word
+    # actually guessed across every turn of every game, what fraction was
+    # each role. Sums to 1.0. Distinct from assassin_rate above (a per-GAME
+    # rate -- exactly one assassin card exists per board and hitting it
+    # always ends the game immediately, so assassin_rate IS "how often the
+    # assassin is hit"; guess_assassin_rate is the much smaller "what
+    # fraction of all guesses, including every correct one, were the
+    # assassin").
+    guess_own_rate: float
+    guess_opponent_rate: float
+    guess_neutral_rate: float
+    guess_assassin_rate: float
 
 
 def _init_db(db_path: Path) -> sqlite3.Connection:
@@ -142,7 +154,10 @@ def run_arena(
 
     conn = _init_db(db_path)
     stats: dict[tuple[str, str], dict[str, float]] = defaultdict(
-        lambda: {"games": 0, "wins": 0, "losses": 0, "turns": 0, "turn_count": 0, "own_words": 0}
+        lambda: {
+            "games": 0, "wins": 0, "losses": 0, "turns": 0, "turn_count": 0, "own_words": 0,
+            "guesses": 0, "guess_own": 0, "guess_opponent": 0, "guess_neutral": 0, "guess_assassin": 0,
+        }
     )
     worker_rss: dict[int, int] = {}
 
@@ -163,6 +178,9 @@ def run_arena(
             for turn in result.turns:
                 s["turn_count"] += 1
                 s["own_words"] += sum(1 for _, role in turn.guesses if role == Role.OWN)
+                for _, role in turn.guesses:
+                    s["guesses"] += 1
+                    s[f"guess_{role.value}"] += 1
 
             worker_rss[pid] = max(worker_rss.get(pid, 0), rss_kb)
 
@@ -179,6 +197,10 @@ def run_arena(
             assassin_rate=s["losses"] / s["games"],
             mean_turns=s["turns"] / s["games"],
             mean_own_words_per_clue=(s["own_words"] / s["turn_count"]) if s["turn_count"] else 0.0,
+            guess_own_rate=(s["guess_own"] / s["guesses"]) if s["guesses"] else 0.0,
+            guess_opponent_rate=(s["guess_opponent"] / s["guesses"]) if s["guesses"] else 0.0,
+            guess_neutral_rate=(s["guess_neutral"] / s["guesses"]) if s["guesses"] else 0.0,
+            guess_assassin_rate=(s["guess_assassin"] / s["guesses"]) if s["guesses"] else 0.0,
         )
         for (cm_name, g_name), s in stats.items()
     }

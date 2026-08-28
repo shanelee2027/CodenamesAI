@@ -74,6 +74,17 @@ def main() -> None:
             f"{100 * r.win_rate:6.1f}% {100 * r.assassin_rate:9.1f}% {r.mean_turns:7.2f} {r.mean_own_words_per_clue:9.3f}"
         )
 
+    print("\nper-guess role breakdown (of every word actually guessed, not per-game):")
+    breakdown_header = f"{'codemaster':16s} {'guesser':20s} {'own%':>7s} {'opponent%':>10s} {'neutral%':>9s} {'assassin%':>10s}"
+    print(breakdown_header)
+    print("-" * len(breakdown_header))
+    for (cm_name, g_name), r in sorted(results.items()):
+        print(
+            f"{cm_name:16s} {g_name:20s} "
+            f"{100 * r.guess_own_rate:6.1f}% {100 * r.guess_opponent_rate:9.1f}% "
+            f"{100 * r.guess_neutral_rate:8.1f}% {100 * r.guess_assassin_rate:9.1f}%"
+        )
+
     print(f"\nper-worker peak RSS ({len(worker_rss)} worker process(es)):")
     for pid, rss_kb in sorted(worker_rss.items()):
         print(f"  pid {pid}: {rss_kb / 1024:.1f} MB")

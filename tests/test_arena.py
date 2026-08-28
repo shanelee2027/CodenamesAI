@@ -68,6 +68,9 @@ class TestRunArena:
             assert 0.0 <= r.win_rate <= 1.0
             assert 0.0 <= r.assassin_rate <= 1.0
             assert r.mean_turns > 0
+            rates = (r.guess_own_rate, r.guess_opponent_rate, r.guess_neutral_rate, r.guess_assassin_rate)
+            assert all(0.0 <= rate <= 1.0 for rate in rates)
+            assert sum(rates) == pytest.approx(1.0)  # every guess lands on exactly one role
 
         assert results[("random", "space_a_holdout")].held_out is True
         assert results[("random", "space_a")].held_out is False

@@ -143,7 +143,26 @@ highest. Because those four reward values live outside training entirely,
 any of them — including `assassin_reward`, which doubles as a risk-aversion
 knob — can be changed at play time with no retraining.
 
-Full detail (attempts rule, the six trained noise-level checkpoints and
+**How it actually plays.** Full games (not just single-turn scoring),
+`noise_std=0.08` codemaster against that same noise level's guessers, 900
+games (`codenames/arena.py`):
+
+| win rate | assassin-hit rate | mean game length |
+|---|---|---|
+| 97.1% | 2.9% | 6.43 turns |
+
+Per-guess role breakdown — of every individual word actually guessed
+across all 900 games:
+
+| own | opponent | neutral | assassin |
+|---|---|---|---|
+| 85.2% | 5.9% | 8.7% | 0.3% |
+
+For context against the baselines above under the same setup: `centroid`
+87.0% win / 13.0% assassin-hit, `linear_scorer` 71.4% / 28.6%, `random`
+11.1% / 88.9%.
+
+Full detail (attempts rule, all six trained noise-level checkpoints and
 their results, what the web UI exposes on top of this, open questions for
 the next model) is in [`docs/versions/v1.md`](docs/versions/v1.md).
 

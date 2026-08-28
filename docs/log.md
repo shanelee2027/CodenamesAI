@@ -1374,4 +1374,57 @@ the actual named model, matching how the project's own iteration story
 
 No code changed, docs only. All 184 tests still pass.
 
+## First real self-play evaluation, and a per-guess role breakdown for the arena
+
+The user wanted the README's new "Model 1" section to have actual metrics,
+not just an architecture description: run real full games with the
+noise_0.08 codemaster against the noise_0.08 guesser pool, and report
+average game length, assassin-hit rate, and how often each card type gets
+hit.
+
+`codenames/arena.py` already had win_rate/assassin_rate/mean_turns
+per (codemaster, guesser) pair, but nothing broke guesses down by role.
+Added four fields to `CrossPlayResult` -- `guess_own_rate`,
+`guess_opponent_rate`, `guess_neutral_rate`, `guess_assassin_rate` -- the
+fraction of every individual guess (across every turn of every game, not
+per-game) landing on each role, tallied alongside the existing stats in
+`run_arena()`'s single pass over results (no second DB query needed).
+Deliberately named distinctly from the existing `assassin_rate` field,
+which is a per-*game* rate (exactly one assassin card exists per board and
+hitting it always ends the game immediately -- confirmed via
+`play_game`'s logic, so `assassin_rate` already *was* "how often the
+assassin is hit," no new field needed for that one).
+`scripts/run_arena.py` prints this as a second table under the existing
+one rather than widening the main table to 11 columns.
+
+Ran it for real: `python scripts/run_arena.py --n-boards 300
+--guesser-pool-config cache/m9/pool_configs/noise_0_08.json --checkpoint
+cache/m9/checkpoints/noise_0_08/scorer_best.pt`. A 50-board timing probe
+first (166s for 12 codemaster x guesser pairs with 4 workers) to size the
+real run before committing to it; the full 300-board run (3600 games, 8
+workers) took 859s (~14 min), landing inside the estimated window.
+`LearnedCodemaster` runs its forward pass on CPU by default, which is
+almost certainly the dominant per-turn cost here (~28 GFLOPs over the full
+~111k-clue vocabulary every turn) -- noted as a real but nuanced
+optimization target in conversation (GPU doesn't trivially help the
+arena's process-parallel structure; the actual win would be batching
+multiple games' turns into one large forward pass rather than many small
+per-process ones), not acted on.
+
+Results, `learned:noise_0_08` vs. that noise level's 3 guessers, 900 games:
+97.1% win rate, 2.9% assassin-hit rate, 6.43 mean turns -- every game ended
+in a win or an assassin hit, zero timeouts, so those two rates sum to
+exactly 100% as expected. Per-guess breakdown: 85.2% own, 5.9% opponent,
+8.7% neutral, 0.3% assassin. Same setup against the fixed baselines for
+context: centroid 87.0%/13.0%, linear_scorer 71.4%/28.6%, random
+11.1%/88.9% (win/assassin-hit). Both tables now live in
+`docs/versions/v1.md` (full breakdown) and the README (summary).
+
+Added a test asserting the four new per-guess rates are valid
+probabilities summing to 1.0 (`tests/test_arena.py`); didn't assert exact
+values since the fixture board's real (non-uniform) role distribution
+combined with tied similarity scores makes the exact guess sequence
+untestable without over-specifying guesser tie-breaking behavior. All 184
+tests pass.
+
 ## Human evaluation (not started)
