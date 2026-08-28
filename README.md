@@ -143,28 +143,42 @@ highest. Because those four reward values live outside training entirely,
 any of them — including `assassin_reward`, which doubles as a risk-aversion
 knob — can be changed at play time with no retraining.
 
-**How it actually plays.** Full games (not just single-turn scoring),
-`noise_std=0.08` codemaster against that same noise level's guessers, 900
-games (`codenames/arena.py`). Win rate isn't reported on its own here —
-every game ends in either a win or an assassin hit, so it's always just
+**How it actually plays**, against every baseline above, same setup for
+all four: full games (not just single-turn scoring), each codemaster
+against `noise_std=0.08`'s 3 guessers, 900 games each
+(`codenames/arena.py`). Win rate isn't its own column here — every game
+ends in either a win or an assassin hit, so it's always just
 `1 - assassin-hit rate`, and it can't tell "plays it safe" apart from
-"actually finds its own words efficiently." The per-guess breakdown and
-the turns split are more informative:
+"actually finds its own words efficiently":
 
-| assassin-hit rate | mean game length (all games) | mean game length (wins only) |
-|---|---|---|
-| 3.2% | 6.46 turns | 6.58 turns |
-
-Per-guess role breakdown — of every individual word actually guessed
-across all 900 games:
-
-| own | opponent | neutral | assassin |
+| codemaster | assassin-hit rate | turns (all games) | turns (wins only) |
 |---|---|---|---|
-| 84.2% | 6.7% | 8.7% | 0.3% |
+| **model 1 (learned)** | **3.2%** | **6.46** | **6.58** |
+| centroid | 12.0% | 7.66 | 8.16 |
+| linear_scorer | 27.2% | 19.43 | 19.88 |
+| random | 88.5% | 9.64 | 15.49 |
 
-For context against the baselines above under the same setup, by
-assassin-hit rate: `centroid` 12.0%, `linear_scorer` 27.2%, `random`
-88.5%.
+Per-guess role breakdown — of every individual word actually guessed,
+across all 900 games per codemaster:
+
+| codemaster | own | opponent | neutral | assassin |
+|---|---|---|---|---|
+| **model 1 (learned)** | **84.2%** | **6.7%** | **8.7%** | **0.3%** |
+| centroid | 83.3% | 8.2% | 7.3% | 1.2% |
+| linear_scorer | 39.7% | 31.2% | 27.7% | 1.3% |
+| random | 34.9% | 31.4% | 26.7% | 7.0% |
+
+A few things worth reading off these together, not just the headline
+assassin-hit number: `centroid`'s per-guess breakdown looks almost as
+strong as model 1's (83.3% own vs. 84.2%), but its assassin-hit rate is
+4x higher (12.0% vs. 3.2%) — it's picking own-words about as often when
+it succeeds, it's just meaningfully worse at avoiding the one guess that
+ends the game. `linear_scorer` and `random` both guess own-words less
+than half the time model 1 or centroid do, and `random`'s "wins only"
+turn count (15.49) is more than double its "all games" figure (9.64) —
+its rare wins take a lot longer than its typical (early-assassin-ending)
+game, unlike the learned model's two turn-length figures, which stay
+close together.
 
 Full detail (attempts rule, all six trained noise-level checkpoints and
 their results, what the web UI exposes on top of this, open questions for
