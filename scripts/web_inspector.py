@@ -6,10 +6,12 @@ new dependency) instead of printed to a terminal. This lets you click cards
 to reveal them and re-type clues interactively instead of re-running a CLI
 command each time.
 
-Also lets you test codemasters (random/centroid/linear_scorer, plus any
-trained "learned" checkpoint found under cache/checkpoints/ or
-cache/m9/checkpoints/*/ -- auto-discovered at startup, no flag needed for
-the common case) and simulate the resulting turn against every guesser.
+Also lets you test codemasters (random/centroid/linear_scorer, an
+"oracle:numberbatch" upper-bound explorer -- see codenames/codemasters/
+oracle.py -- and any trained "learned" checkpoint found under
+cache/checkpoints/ or cache/m9/checkpoints/*/, auto-discovered at startup,
+no flag needed for the common case) and simulate the resulting turn
+against every guesser.
 
 Usage:
     python scripts/web_inspector.py [--port 8000]
@@ -27,7 +29,7 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 
 from codenames.board import Board, Role, is_legal_clue
-from codenames.codemasters import CentroidCodemaster, LinearScorerCodemaster, RandomCodemaster
+from codenames.codemasters import CentroidCodemaster, LinearScorerCodemaster, OracleCodemaster, RandomCodemaster
 from codenames.game import ROLE_REWARD
 from codenames.guessers import load_pool
 from codenames.similarity import SimilarityTensor
@@ -75,6 +77,8 @@ CODEMASTERS: dict = {
     "centroid": CentroidCodemaster(seed=0),
     "linear_scorer": LinearScorerCodemaster(),
 }
+if "numberbatch" in SIMS.spaces:
+    CODEMASTERS["oracle:numberbatch"] = OracleCodemaster(space="numberbatch")
 CODEMASTERS.update(_load_learned_codemasters())
 
 

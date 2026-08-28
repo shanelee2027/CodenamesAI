@@ -9,6 +9,7 @@ from codenames.board import Board, Card, Role
 from codenames.codemasters.base import MAX_CLUE_NUMBER, Codemaster
 from codenames.codemasters.centroid import CentroidCodemaster
 from codenames.codemasters.linear_scorer import DEFAULT_WEIGHTS, LinearScorerCodemaster
+from codenames.codemasters.oracle import OracleCodemaster
 from codenames.codemasters.random_clue import RandomCodemaster
 from codenames.similarity import SimilarityTensor
 
@@ -153,3 +154,68 @@ class TestLinearScorerCodemaster:
         second = cm.give_clue(board, sims)
         assert first == second
         assert first[0] in sims.clue_words
+
+
+def _suppress_unused_clues(tensor: np.ndarray, used: list[str]) -> None:
+    # Every other clue in the fixture defaults to a uniform 0.05
+    # everywhere; a flat tie's stable sort happens to favor own words
+    # (they're listed first in BOARD_WORDS' role order), which would
+    # accidentally give unused clues a large run length. Rank an
+    # opponent word first for every unused clue so it can never compete.
+    for clue in CLUE_WORDS:
+        if clue not in used:
+            tensor[CLUE_WORDS.index(clue), BOARD_WORDS.index("Board9"), :] = 0.99
+
+
+class TestOracleCodemaster:
+    def test_picks_the_clue_with_the_longest_consecutive_own_run(self, tmp_path):
+        tensor = base_tensor()
+        clue_idx = CLUE_WORDS.index("ownfavored")
+        # Top 5 by similarity are own words (descending, no ties), 6th is
+        # an opponent word ranked just below them -- run length exactly 5.
+        for i, value in enumerate([0.95, 0.90, 0.85, 0.80, 0.75]):
+            tensor[clue_idx, BOARD_WORDS.index(f"Board{i}"), :] = value
+        tensor[clue_idx, BOARD_WORDS.index("Board9"), :] = 0.70  # opponent, blocks the run
+        _suppress_unused_clues(tensor, ["ownfavored"])
+        sims = make_sims(tmp_path, tensor)
+
+        board = make_board()
+        cm = OracleCodemaster(space="a")
+        clue, number = cm.give_clue(board, sims)
+        assert clue == "ownfavored"
+        assert number == 4  # run of 5 own words -> number = 5 - 1
+
+    def test_top_k_reports_run_length_as_score_and_agrees_with_give_clue(self, tmp_path):
+        tensor = base_tensor()
+        # "ownfavored": run of 3. "mixedclue": run of 1.
+        tensor[CLUE_WORDS.index("ownfavored"), BOARD_WORDS.index("Board0"), :] = 0.95
+        tensor[CLUE_WORDS.index("ownfavored"), BOARD_WORDS.index("Board1"), :] = 0.90
+        tensor[CLUE_WORDS.index("ownfavored"), BOARD_WORDS.index("Board2"), :] = 0.85
+        tensor[CLUE_WORDS.index("ownfavored"), BOARD_WORDS.index("Board9"), :] = 0.10  # opponent, blocks
+        tensor[CLUE_WORDS.index("mixedclue"), BOARD_WORDS.index("Board3"), :] = 0.95
+        tensor[CLUE_WORDS.index("mixedclue"), BOARD_WORDS.index("Board9"), :] = 0.50  # opponent, blocks
+        _suppress_unused_clues(tensor, ["ownfavored", "mixedclue"])
+        sims = make_sims(tmp_path, tensor)
+
+        board = make_board()
+        cm = OracleCodemaster(space="a")
+        top2 = cm.top_k_clues(board, sims, k=2)
+        assert [c for c, _, _ in top2] == ["ownfavored", "mixedclue"]
+        assert top2[0][1:] == (2, 3.0)  # number=run-1=2, score=run=3.0
+        assert top2[1][1:] == (0, 1.0)
+
+        clue, number = cm.give_clue(board, sims)
+        assert (clue, number) == top2[0][:2]
+
+    def test_zero_run_length_clamps_number_to_zero(self, tmp_path):
+        # Every clue's single highest-similarity word is an opponent word
+        # -- the best achievable run length is 0 for all of them. Number
+        # must clamp to 0, not go negative.
+        tensor = base_tensor()
+        for clue in CLUE_WORDS:
+            tensor[CLUE_WORDS.index(clue), BOARD_WORDS.index("Board9"), :] = 0.99
+        sims = make_sims(tmp_path, tensor)
+        board = make_board()
+        cm = OracleCodemaster(space="a")
+        _, number = cm.give_clue(board, sims)
+        assert number == 0

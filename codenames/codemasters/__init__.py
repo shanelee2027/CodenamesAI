@@ -2,6 +2,7 @@ from .base import MAX_CLUE_NUMBER, Codemaster
 from .centroid import CentroidCodemaster
 from .learned import LearnedCodemaster
 from .linear_scorer import DEFAULT_WEIGHTS, LinearScorerCodemaster
+from .oracle import OracleCodemaster
 from .random_clue import RandomCodemaster
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "LinearScorerCodemaster",
     "DEFAULT_WEIGHTS",
     "LearnedCodemaster",
+    "OracleCodemaster",
 ]
