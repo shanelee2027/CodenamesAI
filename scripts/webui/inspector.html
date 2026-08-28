@@ -167,6 +167,8 @@
   <div class="controls">
     <label>codemaster</label>
     <select id="codemaster"></select>
+    <label>risk aversion</label>
+    <input id="riskAversion" type="number" step="0.5" placeholder="-10 (default)" style="width:110px;" title="Only affects 'learned:*' codemasters -- the miss penalty used when scoring candidate clues. Blank = model's default (-10).">
     <button id="getAiClue" class="primary">Get AI clue</button>
     <span id="aiClueReadout" class="sub" style="margin:0 0 0 4px;"></span>
   </div>
@@ -400,7 +402,9 @@ async function loadCodemasters() {
 async function getAiClue() {
   const seed = currentSeed();
   const codemaster = document.getElementById('codemaster').value;
-  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&reveal=${encodeURIComponent(currentReveal())}`);
+  const riskAversion = document.getElementById('riskAversion').value.trim();
+  const riskParam = riskAversion ? `&risk_aversion=${encodeURIComponent(riskAversion)}` : '';
+  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&reveal=${encodeURIComponent(currentReveal())}${riskParam}`);
   if (data.error) {
     document.getElementById('aiClueReadout').textContent = data.error;
     return;

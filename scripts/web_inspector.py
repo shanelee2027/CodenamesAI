@@ -6,6 +6,11 @@ new dependency) instead of printed to a terminal. This lets you click cards
 to reveal them and re-type clues interactively instead of re-running a CLI
 command each time.
 
+Also lets you test codemasters (random/centroid/linear_scorer, plus any
+trained "learned" checkpoint found under cache/checkpoints/ or
+cache/m9/checkpoints/*/ -- auto-discovered at startup, no flag needed for
+the common case) and simulate the resulting turn against every guesser.
+
 Usage:
     python scripts/web_inspector.py [--port 8000]
 Then open http://localhost:8000 in a browser.
@@ -33,14 +38,44 @@ HTML_PATH = Path(__file__).parent / "webui" / "inspector.html"
 SIMS = SimilarityTensor.load()
 POOL = load_pool()
 
-# Populated in main() once --checkpoint (if given) is known -- request
-# handling just reads whatever's here, so this must be set before the
-# server starts serving.
+
+def _discover_checkpoints() -> dict[str, Path]:
+    """Scan the usual output locations -- scripts/train_scorer.py's default
+    output dir and scripts/run_ablation_study.py's per-variant checkpoints
+    -- for trained models, so the web UI can offer a "learned" codemaster
+    without needing a --checkpoint flag for the common case."""
+    found: dict[str, Path] = {}
+    default = Path("cache/checkpoints/scorer_best.pt")
+    if default.exists():
+        found["checkpoints"] = default
+    for path in sorted(Path("cache/m9/checkpoints").glob("*/scorer_best.pt")):
+        found[path.parent.name] = path
+    return found
+
+
+def _load_learned_codemasters() -> dict:
+    from codenames.codemasters import LearnedCodemaster
+
+    learned = {}
+    for label, path in _discover_checkpoints().items():
+        try:
+            learned[f"learned:{label}"] = LearnedCodemaster(path)
+        except Exception as e:
+            # e.g. linear_baseline's checkpoint holds a LinearScorer, whose
+            # state dict doesn't match Scorer's architecture -- skip rather
+            # than fail the whole server over one incompatible checkpoint.
+            print(f"skipping checkpoint {path} ({label}): {e}")
+    return learned
+
+
+# CODEMASTERS is finalized before the server starts serving (main() may add
+# an explicit --checkpoint on top of whatever auto-discovery found).
 CODEMASTERS: dict = {
     "random": RandomCodemaster(seed=0),
     "centroid": CentroidCodemaster(seed=0),
     "linear_scorer": LinearScorerCodemaster(),
 }
+CODEMASTERS.update(_load_learned_codemasters())
 
 
 def _nan_to_none(value: float) -> float | None:
@@ -127,11 +162,17 @@ def _parse_reveal(query: dict) -> list[str]:
     return raw.split(",") if raw else []
 
 
-def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str) -> dict:
+def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str, risk_aversion: str = "") -> dict:
     if codemaster_name not in CODEMASTERS:
         return {"error": f"unknown codemaster {codemaster_name!r}, choices: {list(CODEMASTERS)}"}
+    codemaster = CODEMASTERS[codemaster_name]
+    if risk_aversion and hasattr(codemaster, "miss_penalty"):
+        # Only LearnedCodemaster has this knob; set directly on the shared
+        # instance rather than threading it through give_clue()'s interface
+        # -- fine for a single-user local dev tool.
+        codemaster.miss_penalty = float(risk_aversion)
     board = _make_board(seed, reveal)
-    clue, number = CODEMASTERS[codemaster_name].give_clue(board, SIMS)
+    clue, number = codemaster.give_clue(board, SIMS)
     return {"codemaster": codemaster_name, "clue": clue, "number": number}
 
 
@@ -219,7 +260,8 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/give_clue":
             seed = int(query.get("seed", ["42"])[0])
             codemaster_name = query.get("codemaster", [""])[0]
-            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name)
+            risk_aversion = query.get("risk_aversion", [""])[0]
+            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, risk_aversion)
             self._send_json(response, status=400 if "error" in response else 200)
             return
 
@@ -241,16 +283,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
-        "--checkpoint", type=Path, default=None, help="scorer checkpoint from scripts/train_scorer.py -- adds a 'learned' codemaster if given"
+        "--checkpoint",
+        type=Path,
+        default=None,
+        help="extra scorer checkpoint to load as 'learned', e.g. one outside the auto-scanned "
+        "cache/checkpoints/ and cache/m9/checkpoints/*/ locations. Not required for the common "
+        "case -- checkpoints in those locations are picked up automatically at startup (see the "
+        "'learned:<name>' entries in the codemaster dropdown). Risk aversion is set from the web UI, not a flag.",
     )
-    parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for the learned codemaster (default: -10.0, see codenames.scorer)")
     args = parser.parse_args()
 
     if args.checkpoint is not None:
         from codenames.codemasters import LearnedCodemaster
 
-        learned_kwargs = {} if args.risk_aversion is None else {"miss_penalty": args.risk_aversion}
-        CODEMASTERS["learned"] = LearnedCodemaster(args.checkpoint, **learned_kwargs)
+        CODEMASTERS["learned"] = LearnedCodemaster(args.checkpoint)
         print(f"loaded learned codemaster from {args.checkpoint}")
 
     server = ThreadingHTTPServer(("localhost", args.port), Handler)
