@@ -1,0 +1,24 @@
+{
+  "_comment": "Single-guesser exploratory pool testing HistoryAwareGuesser (codenames/guessers/history_aware.py) -- wraps the exact same base as configs/guesser_pool_blend.json (weighted blend across all three spaces, noise_std=0.08) so an arena run against this pool is directly comparable to one against guesser_pool_blend.json: the only difference is whether the guesser can claim the earned bonus guess described in codenames/guessers/base.py's module docstring. Deliberately paired this way rather than combined into one pool entry, so a run_arena.py comparison isolates the effect of history-awareness specifically.",
+  "guessers": [
+    {
+      "name": "history_aware_blend",
+      "type": "history_aware",
+      "params": {
+        "base": {
+          "type": "noisy",
+          "params": {
+            "base": {
+              "type": "blend",
+              "params": {
+                "weights": { "glove": 0.3, "numberbatch": 0.5, "wikipedia2vec": 0.2 }
+              }
+            },
+            "noise_std": 0.08,
+            "seed": 1
+          }
+        }
+      }
+    }
+  ]
+}

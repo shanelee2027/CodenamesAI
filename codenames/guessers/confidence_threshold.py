@@ -18,8 +18,22 @@ class ConfidenceThresholdGuesser(Guesser):
     def score_candidates(self, clue: str, candidate_words: list[str], sims: SimilarityTensor) -> dict[str, float]:
         return self.base.score_candidates(clue, candidate_words, sims)
 
-    def rank_candidates(self, clue: str, candidate_words: list[str], sims: SimilarityTensor) -> list[str]:
-        ranked = self.base.rank_candidates(clue, candidate_words, sims)
+    def rank_candidates(
+        self,
+        clue: str,
+        candidate_words: list[str],
+        sims: SimilarityTensor,
+        number: int | None = None,
+        history: list[tuple[str, int]] | None = None,
+    ) -> list[str]:
+        # `number`/`history` forwarded so a history-aware base still gets
+        # a chance to use its bonus guess; this wrapper itself never
+        # claims one (bonus_guesses stays at the Guesser default of 0),
+        # so nesting a HistoryAwareGuesser under this one would have its
+        # bonus silently suppressed -- not a composition this project
+        # currently builds, flagged here rather than silently working
+        # halfway if someone tries it.
+        ranked = self.base.rank_candidates(clue, candidate_words, sims, number=number, history=history)
         scores = self.score_candidates(clue, candidate_words, sims)
         stopped = []
         for w in ranked:

@@ -5,9 +5,12 @@ import json
 import numpy as np
 import pytest
 
+from codenames.board import Role
+from codenames.game import TurnResult
 from codenames.guessers.base import Guesser
 from codenames.guessers.blend import BlendGuesser
 from codenames.guessers.confidence_threshold import ConfidenceThresholdGuesser
+from codenames.guessers.history_aware import HistoryAwareGuesser
 from codenames.guessers.noisy import NoisyGuesser
 from codenames.guessers.rank_based import RankBasedGuesser
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG, held_out_pool, load_pool, training_pool
@@ -295,3 +298,156 @@ class TestRegistry:
         path.write_text(json.dumps(config))
         with pytest.raises(ValueError, match="not_a_real_type"):
             load_pool(path)
+
+    def test_history_aware_pool_config_loads(self):
+        from pathlib import Path
+
+        path = Path(__file__).parent.parent / "configs" / "guesser_pool_history_aware.json"
+        entries = load_pool(path)
+        assert list(entries) == ["history_aware_blend"]
+        guesser = entries["history_aware_blend"].guesser
+        assert isinstance(guesser, HistoryAwareGuesser)
+        assert isinstance(guesser.base, NoisyGuesser)
+        assert isinstance(guesser.base.base, BlendGuesser)
+
+
+def make_turn(clue: str, number: int, guesses: list[tuple[str, Role]], ended_reason: str) -> TurnResult:
+    return TurnResult(clue=clue, number=number, guesses=guesses, ended_reason=ended_reason)
+
+
+class TestGuesserUpdateHistory:
+    """The generic backlog bookkeeping on the Guesser base class -- usable
+    by any guesser, not just HistoryAwareGuesser (see base.py's
+    docstring)."""
+
+    def test_a_miss_creates_a_backlog_entry_for_the_shortfall(self, sims):
+        g = SingleSpaceGuesser(space="a")
+        turn = make_turn("clue", number=3, guesses=[("Apple", Role.OWN), ("Banana", Role.OPPONENT)], ended_reason="opponent")
+        # number=3, only 1 correct before the miss -> 2 still owed.
+        history = g.update_history([], "clue", 3, turn, candidates_before_turn=BOARD_WORDS, sims=sims)
+        assert history == [("clue", 2)]
+
+    def test_a_clean_finish_creates_no_backlog(self, sims):
+        g = SingleSpaceGuesser(space="a")
+        turn = make_turn("clue", number=1, guesses=[("Apple", Role.OWN)], ended_reason="exhausted_guesses")
+        history = g.update_history([], "clue", 1, turn, candidates_before_turn=BOARD_WORDS, sims=sims)
+        assert history == []
+
+    def test_assassin_creates_no_backlog(self, sims):
+        # The game is over at that point -- nothing left to carry forward.
+        g = SingleSpaceGuesser(space="a")
+        turn = make_turn("clue", number=2, guesses=[("Doghouse", Role.ASSASSIN)], ended_reason="assassin")
+        history = g.update_history([], "clue", 2, turn, candidates_before_turn=BOARD_WORDS, sims=sims)
+        assert history == []
+
+    def test_a_wrong_guess_does_not_touch_existing_owed_counts(self, sims):
+        # Both turns share the fixture's one registered clue ("clue") --
+        # a real game's backlog entries always name a clue that was
+        # actually given earlier, so a fresh, unregistered clue string
+        # isn't a realistic scenario here (and would raise KeyError, since
+        # scoring an unregistered clue isn't something this guesser is
+        # ever asked to do in real play).
+        g = SingleSpaceGuesser(space="a")
+        turn = make_turn("clue", number=1, guesses=[("Banana", Role.OPPONENT)], ended_reason="opponent")
+        history = g.update_history([("clue", 2)], "clue", 1, turn, candidates_before_turn=BOARD_WORDS, sims=sims)
+        # The pre-existing entry survives unchanged (Banana isn't "clue"'s
+        # own top pick -- Apple is -- so no collision credit either); a
+        # new entry for this turn's own miss is added too (number=1, 0
+        # correct -> 1 owed).
+        assert ("clue", 2) in history
+        assert history.count(("clue", 2)) == 1
+        assert ("clue", 1) in history
+
+    def test_collision_decrements_and_can_retire_a_backlog_entry(self, sims):
+        # SingleSpaceGuesser(space="a") ranks Apple highest for "clue" --
+        # if a *different* clue's turn happens to correctly guess Apple
+        # too, the "clue" backlog entry should be credited, not left
+        # thinking Apple is still separately owed. "clue2" is only ever
+        # used as this turn's own clue name here (never re-scored, since
+        # this turn didn't end in a miss), so it doesn't need to be a
+        # real registered clue in `sims`.
+        g = SingleSpaceGuesser(space="a")
+        turn = make_turn("clue2", number=1, guesses=[("Apple", Role.OWN)], ended_reason="exhausted_guesses")
+        history = g.update_history([("clue", 1)], "clue2", 1, turn, candidates_before_turn=BOARD_WORDS, sims=sims)
+        # owed was 1, decremented to 0 by the collision -> entry retired.
+        assert history == []
+
+    def test_collision_decrements_without_retiring_when_more_is_still_owed(self, sims):
+        g = SingleSpaceGuesser(space="a")
+        turn = make_turn("clue2", number=1, guesses=[("Apple", Role.OWN)], ended_reason="exhausted_guesses")
+        history = g.update_history([("clue", 2)], "clue2", 1, turn, candidates_before_turn=BOARD_WORDS, sims=sims)
+        assert history == [("clue", 1)]
+
+
+def _make_two_clue_sims(tmp_path, board_words: list[str], clue_scores: dict[str, dict[str, float]]) -> SimilarityTensor:
+    clue_words = list(clue_scores)
+    tensor = np.array([[[clue_scores[c][w]] for w in board_words] for c in clue_words], dtype=np.float16)
+    np.save(tmp_path / "similarity_tensor.npy", tensor)
+    (tmp_path / "clue_vocab.json").write_text(json.dumps(clue_words))
+    (tmp_path / "board_vocab.json").write_text(json.dumps(board_words))
+    (tmp_path / "similarity_meta.json").write_text(json.dumps({"spaces": ["a"], "shape": list(tensor.shape)}))
+    return SimilarityTensor.load(cache_dir=tmp_path)
+
+
+class TestHistoryAwareGuesser:
+    """z-score-normalized cross-clue merge, checked against hand-computed
+    z-scores (see docs/log.md's hubness investigation for why raw scores
+    aren't compared directly)."""
+
+    WORDS = ["A", "B", "C"]
+    # z(fruit) = {A: 1.2247, B: 0.0, C: -1.2247} -- A is fruit's clear top pick.
+    FRUIT = {"A": 0.9, "B": 0.5, "C": 0.1}
+    # z(kitchen) = {A: -0.162, B: 1.298, C: -1.136} -- B is kitchen's top
+    # pick, but its raw scores are all much closer together than fruit's,
+    # which raw-score comparison would miss entirely (kitchen's raw
+    # values are all higher than fruit's C and even close to fruit's B).
+    KITCHEN = {"A": 0.62, "B": 0.65, "C": 0.60}
+
+    def test_no_history_behaves_exactly_like_the_base_guesser(self, tmp_path):
+        sims = _make_two_clue_sims(tmp_path, self.WORDS, {"kitchen": self.KITCHEN, "fruit": self.FRUIT})
+        base = SingleSpaceGuesser(space="a")
+        g = HistoryAwareGuesser(base=base)
+        assert g.rank_candidates("kitchen", self.WORDS, sims, number=1, history=None) == base.rank_candidates(
+            "kitchen", self.WORDS, sims
+        )
+        assert g.bonus_guesses("kitchen", self.WORDS, sims, number=1, history=None) == 0
+        assert g.bonus_guesses("kitchen", self.WORDS, sims, number=1, history=[]) == 0
+
+    def test_competitive_backlog_word_earns_the_bonus_and_is_inserted_by_zscore(self, tmp_path):
+        sims = _make_two_clue_sims(tmp_path, self.WORDS, {"kitchen": self.KITCHEN, "fruit": self.FRUIT})
+        g = HistoryAwareGuesser(base=SingleSpaceGuesser(space="a"))
+        history = [("fruit", 1)]
+
+        # Merged order: kitchen's own ranking is B, A, C (raw: .65, .62, .60).
+        # A is also fruit's top pick (z=1.2247), which beats kitchen's own
+        # z for A (-0.162) and C (-1.136) but not B's (1.298) -- so A
+        # should be spliced in right after B.
+        ranked = g.rank_candidates("kitchen", self.WORDS, sims, number=1, history=history)
+        assert ranked == ["B", "A", "C"]
+
+        # number=1: A lands at index 1, within the top number+1=2 -> earns
+        # the bonus.
+        assert g.bonus_guesses("kitchen", self.WORDS, sims, number=1, history=history) == 1
+
+    def test_backlog_word_outside_reach_does_not_earn_the_bonus(self, tmp_path):
+        sims = _make_two_clue_sims(tmp_path, self.WORDS, {"kitchen": self.KITCHEN, "fruit": self.FRUIT})
+        g = HistoryAwareGuesser(base=SingleSpaceGuesser(space="a"))
+        history = [("fruit", 1)]
+        # number=0: A still lands at index 1 in the merged ranking, which
+        # is outside the top number+1=1 -- not competitive enough to
+        # spend the one bonus on.
+        assert g.bonus_guesses("kitchen", self.WORDS, sims, number=0, history=history) == 0
+
+    def test_no_valid_backlog_candidate_means_no_bonus(self, tmp_path):
+        # "absent" has no vector at all for any candidate (NaN throughout,
+        # same sentinel-handling as a real embedding space with no
+        # coverage) -- nothing to spend a bonus on even though it's a
+        # real, registered clue with a pending backlog entry.
+        nan = float("nan")
+        sims = _make_two_clue_sims(
+            tmp_path, self.WORDS, {"kitchen": self.KITCHEN, "absent": {"A": nan, "B": nan, "C": nan}}
+        )
+        g = HistoryAwareGuesser(base=SingleSpaceGuesser(space="a"))
+        history = [("absent", 1)]
+        assert g.bonus_guesses("kitchen", self.WORDS, sims, number=1, history=history) == 0
+        assert g.rank_candidates("kitchen", self.WORDS, sims, number=1, history=history) == ["B", "A", "C"]

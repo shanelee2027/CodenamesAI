@@ -63,6 +63,12 @@ def _play_batch_group(
     semantics per board -- see this module's docstring."""
     game_results = {b.seed: GameResult(seed=b.seed) for b in boards}
     turn_count = {b.seed: 0 for b in boards}
+    # Per-board backlog state (see codenames/guessers/base.py) -- kept
+    # here rather than inside GameResult since it's guesser bookkeeping,
+    # not a result field, mirroring codenames.game.play_game's local
+    # `history` variable but keyed by board since many boards are driven
+    # in lockstep here instead of one game at a time.
+    history_by_seed: dict[int, list[tuple[str, int]]] = {b.seed: [] for b in boards}
     active: dict[int, Board] = {b.seed: b for b in boards}
 
     while active:
@@ -97,11 +103,17 @@ def _play_batch_group(
             clue = top_legal_clue(sims, board, scores)
             number = int(best_n[sims.clue_index[clue.lower()]])
 
-            turn = _play_turn(board, codemaster, guesser, sims, clue_and_number=(clue, number))
+            candidates_before_turn = [w for w in board.words if not board.is_revealed(w)]
+            turn = _play_turn(
+                board, codemaster, guesser, sims, clue_and_number=(clue, number), history=history_by_seed[board.seed]
+            )
             result = game_results[board.seed]
             result.turns.append(turn)
             result.total_reward += turn.reward
             turn_count[board.seed] += 1
+            history_by_seed[board.seed] = guesser.update_history(
+                history_by_seed[board.seed], clue, number, turn, candidates_before_turn, sims
+            )
 
             if turn.ended_reason == "assassin":
                 result.outcome = "loss"

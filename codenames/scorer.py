@@ -50,6 +50,10 @@ of them can be explored without retraining.
 
 A clue announcing n gives exactly n guesses -- no standard-Codenames "+1
 bonus guess" (see docs/log.md's numbering-convention entries for why).
+This formula always assumes exactly n: a guesser that claims an earned
+bonus guess (`Guesser.bonus_guesses`, see codenames/guessers/base.py) can
+make real play slightly outperform what this reward calculation
+predicted, since the codemaster's own math has no notion of it.
 
 k=MAX_K is a right-censored "MAX_K or more" bucket (see the training-data
 docstring). Since n never exceeds MAX_K, a censored k always means the

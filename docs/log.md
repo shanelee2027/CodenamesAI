@@ -1895,4 +1895,104 @@ per-guesser breakdown table) with the new numbers, both explicit that
 they supersede the pre-rerun figures rather than being a second data
 point. 194 tests still pass (no test asserted these values).
 
+## Cross-turn clue memory: a backlog-aware guesser with an earned bonus guess
+
+Picked up `docs/versions/v1.md`'s open question #1: let a guesser use
+misses from previous clues in its reasoning, guesser-side only, no
+codemaster or training changes.
+
+**The mechanism, settled through discussion before building anything:**
+a miss ending a turn early (announced number `n`, only `k < n` correct
+before the miss) leaves `n - k` own-words plausibly still unaccounted
+for by that clue. A later turn's guesser can spend one earned bonus
+guess -- real Codenames' standard `n+1` rule, deliberately dropped
+earlier in this project (see the numbering-convention entries above)
+specifically because guessers had no "still feels confident" signal to
+justify it -- chasing whichever pending backlog word looks most
+confident. Key design points, each explicitly worked through with the
+user before implementing:
+- **No stored cursor.** A backlog entry is just `(old_clue, owed_count)`.
+  Re-ranking `old_clue` against whatever's still unrevealed always
+  reproduces its best remaining candidate, since anything already
+  resolved has already dropped out of the candidate pool -- no need to
+  remember *which* word specifically.
+- **Collision handling.** If this turn's own correct guesses include the
+  word an old backlog clue would itself rank top, that word is assumed
+  to satisfy *both* clues at once (counted fully for both, not split) --
+  the owed count decrements. Without this, a coincidental double-match
+  would leave a backlog entry believing a word is still owed that was
+  never really missing, risking a later guess spent chasing a word that
+  doesn't exist.
+- **Bonus capped at exactly +1 per turn**, matching real Codenames,
+  regardless of how many backlog entries are pending -- extra backlog
+  just takes longer to clear, one per turn.
+- **Only the new guesser uses it.** Every existing guesser's
+  `bonus_guesses` stays at the `Guesser` base class default of 0, so
+  their behavior is provably unchanged (verified: all 194 pre-existing
+  tests pass unmodified against the widened interface). Framed as: the
+  bonus was always technically available to any guesser (that's the real
+  Codenames rule), they just never had a reason to use it before.
+
+**The comparability problem -- investigated empirically before building,
+at the user's request, rather than assumed.** The natural mechanism is a
+merge: whichever candidate (this turn's own, or a pending backlog word)
+has the higher similarity score goes first. That only works if scores
+from *different* clues are on a comparable scale. Checked directly
+against the real similarity tensor: sampled ~2000 clue words, computed
+each one's mean similarity to the full board vocabulary, and correlated
+that against `wordfreq` frequency. Result: r=0.84 for GloVe, r=0.32 for
+Numberbatch, r=0.38 for Wikipedia2vec. This is the well-known "hubness"
+effect in cosine-similarity embedding spaces -- frequent/central words
+read as vaguely similar to almost everything, rare/technical ones read
+as dissimilar to almost everything, regardless of real topical
+relevance -- and the cross-clue swing in *baseline* similarity (~0.34
+hottest-to-coldest in the sample) dwarfs the ~0.08 std that actually
+separates a good candidate from a bad one within one clue's own ranking.
+Concretely: "move"/"since"/"about" (common, generic) sat at the top of
+the "similar to everything" list; "mirtazapine"/"lysenkoism" (rare,
+technical) at the bottom -- nothing about actual topical relevance.
+Fixed by z-scoring every clue's scores against that same clue's own
+similarity distribution over the full board vocabulary before any
+cross-clue comparison, chosen over a percentile/rank-based alternative
+as the simpler first-pass version.
+
+**Built:**
+- `codenames/guessers/base.py`: `Guesser.rank_candidates`/new
+  `bonus_guesses`/new `update_history` -- the last one is a *generic*,
+  concrete method (not abstract), so any guesser gets correct backlog
+  bookkeeping automatically even if it never reads `history` itself.
+- `codenames/guessers/history_aware.py::HistoryAwareGuesser` -- wraps any
+  base guesser, does the z-score merge, decides whether the best pending
+  backlog candidate is competitive enough to be worth the one available
+  bonus.
+- `codenames/game.py::play_turn`/`play_game`: thread `history` through
+  (`budget = number + guesser.bonus_guesses(...)`); `codenames/scorer.py`
+  and `game.py`'s module docstrings updated to note the codemaster's own
+  reward math still assumes exactly `n` and is unaware of the bonus
+  (real play with a bonus-claiming guesser slightly outperforms what
+  that math predicted -- one-directional, harmless).
+- `codenames/gpu_arena.py::_play_batch_group`: mirrors the same
+  history-threading per board (keyed by seed), so a `HistoryAwareGuesser`
+  gets identical treatment whether evaluated via the GPU-batched path
+  (learned codemasters) or the plain CPU arena.
+- `configs/guesser_pool_history_aware.json`: wraps the exact same base as
+  `configs/guesser_pool_blend.json` (only difference: history-awareness),
+  specifically so an arena comparison between the two pools isolates the
+  effect of this feature -- not yet run for real self-play numbers.
+- Registry support (`type: "history_aware"`), `codenames/guessers/__init__.py`
+  export.
+
+**Tests**: `Guesser.update_history`'s generic bookkeeping (miss creates
+correct-sized backlog, clean finish/assassin create none, wrong guesses
+never touch existing owed counts, collision decrements/retires correctly)
+and `HistoryAwareGuesser`'s z-score merge (hand-verified against real
+z-score arithmetic: a competitive backlog word gets spliced into the
+ranking and earns the bonus; a non-competitive one or one with no valid
+score doesn't) -- 13 new tests, 207 total, all passing. Also smoke-tested
+against the real similarity tensor via `scripts/run_arena.py
+--guesser-pool-config configs/guesser_pool_history_aware.json` (10
+boards): ran cleanly, `own/clue` exceeded 1.0 in every case, confirming
+the bonus mechanism actually fires against real data, not just the
+synthetic test fixtures.
+
 ## Human evaluation (not started)
