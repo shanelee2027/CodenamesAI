@@ -169,17 +169,26 @@ def train(
     data_dir: Path,
     output_dir: Path,
     val_fraction: float = 0.1,
-    batch_size: int = 512,
+    batch_size: int = 2048,
     max_epochs: int = 50,
     patience: int = 5,
     lr: float = 1e-3,
     seed: int = 0,
     model_factory: Callable[[int], nn.Module] = Scorer,
+    num_workers: int = 4,
 ) -> Path:
     """`model_factory` exists for SCOPE §9's linear baseline
     (scripts/run_ablation_study.py passes `LinearScorer`) -- everything
     else here (splitting, early stopping, checkpointing, curves,
-    reliability diagrams) is architecture-agnostic."""
+    reliability diagrams) is architecture-agnostic.
+
+    `num_workers>0` prefetches batches in worker subprocesses (each
+    ShardedTrainingData.__getitem__ call is a small memmap read + copy --
+    otherwise that happens serially in the main process between GPU
+    steps). `batch_size` defaults much higher than a typical vision/NLP
+    model's would: this MLP is tiny, so the GPU is barely exercised per
+    step at small batch sizes -- bigger batches do more useful work per
+    kernel launch instead of just adding more (cheap) steps."""
     torch.manual_seed(seed)
     output_dir.mkdir(parents=True, exist_ok=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -192,8 +201,9 @@ def train(
             "generate more data or check that board seeds vary"
         )
 
-    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False)
+    loader_kwargs = dict(num_workers=num_workers, pin_memory=(device.type == "cuda"), persistent_workers=num_workers > 0)
+    train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True, **loader_kwargs)
+    val_loader = DataLoader(val_data, batch_size=batch_size, shuffle=False, **loader_kwargs)
 
     model = model_factory(train_data.feature_dim).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -245,11 +255,12 @@ def main() -> None:
     parser.add_argument("--data-dir", type=Path, default=Path("cache/training_data"))
     parser.add_argument("--output-dir", type=Path, default=Path("cache/checkpoints"))
     parser.add_argument("--val-fraction", type=float, default=0.1)
-    parser.add_argument("--batch-size", type=int, default=512)
+    parser.add_argument("--batch-size", type=int, default=2048)
     parser.add_argument("--max-epochs", type=int, default=50)
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=4, help="DataLoader prefetch workers (0 disables)")
     args = parser.parse_args()
 
     train(
@@ -261,6 +272,7 @@ def main() -> None:
         patience=args.patience,
         lr=args.lr,
         seed=args.seed,
+        num_workers=args.num_workers,
     )
 
 

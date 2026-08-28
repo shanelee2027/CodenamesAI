@@ -79,6 +79,7 @@ class TestTrain:
             max_epochs=2,
             patience=2,
             seed=0,
+            num_workers=0,
         )
 
         assert checkpoint_path == output_dir / "scorer_best.pt"
@@ -94,7 +95,7 @@ class TestTrain:
 
     def test_raises_when_no_validation_examples(self, data_dir, tmp_path):
         with pytest.raises(ValueError, match="no validation examples"):
-            train(data_dir=data_dir, output_dir=tmp_path / "out", val_fraction=0.0, max_epochs=1)
+            train(data_dir=data_dir, output_dir=tmp_path / "out", val_fraction=0.0, max_epochs=1, num_workers=0)
 
     def test_model_factory_trains_a_different_architecture(self, data_dir, tmp_path):
         output_dir = tmp_path / "checkpoints"
@@ -107,6 +108,7 @@ class TestTrain:
             patience=2,
             seed=0,
             model_factory=LinearScorer,
+            num_workers=0,
         )
         checkpoint = torch.load(checkpoint_path, map_location="cpu")
         model = LinearScorer(input_dim=checkpoint["input_dim"])

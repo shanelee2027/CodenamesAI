@@ -20,6 +20,13 @@ Variants trained:
 - linear_baseline: the base dataset, trained with LinearScorer instead of
   Scorer (SCOPE §6 baseline 4).
 
+The 6 dataset-generation calls above are independent (separate output
+dirs, no shared mutable state) and CPU-bound, so they run across a
+process pool (like codenames/arena.py's multiprocessing) instead of one
+after another -- this is the dominant cost (~40 min sequentially at
+moderate scale), while the 11 training runs after it are individually
+fast enough that parallelizing them too wasn't worth the added complexity.
+
 Usage:
     python scripts/run_ablation_study.py
 """
@@ -30,6 +37,7 @@ import argparse
 import csv
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -53,7 +61,17 @@ def _generate_if_needed(output_dir: Path, n_examples: int, **kwargs) -> None:
     print(f"[generate] {output_dir} ({n_examples} examples)")
     t0 = time.time()
     generate(n_examples=n_examples, shard_size=n_examples, output_dir=output_dir, **kwargs)
-    print(f"  done in {time.time() - t0:.0f}s")
+    print(f"  done: {output_dir} in {time.time() - t0:.0f}s")
+
+
+def _generation_job(job: dict) -> None:
+    """Top-level (picklable) wrapper so _generate_if_needed's independent
+    calls can run under ProcessPoolExecutor -- each writes to its own
+    output_dir, so there's no shared mutable state between jobs."""
+    job = dict(job)
+    output_dir = job.pop("output_dir")
+    n_examples = job.pop("n_examples")
+    _generate_if_needed(output_dir, n_examples, **job)
 
 
 def _derive_if_needed(src_dir: Path, dst_dir: Path, transform) -> None:
@@ -121,6 +139,7 @@ def main() -> None:
     parser.add_argument("--max-epochs", type=int, default=20)
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--max-workers", type=int, default=None, help="generation-phase worker processes (default: os.cpu_count())")
     args = parser.parse_args()
 
     sims = SimilarityTensor.load(args.sims_cache_dir)
@@ -130,32 +149,37 @@ def main() -> None:
 
     data_root = args.data_root
     checkpoints_root = data_root / "checkpoints"
+    common = dict(guesser_pool_config=args.guesser_pool_config, sims_cache_dir=args.sims_cache_dir)
 
-    # --- Generate: base + unsorted (same seed -> same underlying samples) ---
     base_dir = data_root / "base"
     unsorted_dir = data_root / "unsorted"
-    _generate_if_needed(base_dir, args.base_n, seed=args.seed, guesser_pool_config=args.guesser_pool_config, sims_cache_dir=args.sims_cache_dir)
-    _generate_if_needed(
-        unsorted_dir, args.base_n, seed=args.seed, guesser_pool_config=args.guesser_pool_config,
-        sims_cache_dir=args.sims_cache_dir, feature_builder=build_features_unsorted,
-    )
 
-    # --- Generate: pool-sensitivity sweep (same seed across configs -> same
-    # underlying board/clue samples, only guesser weighting differs) ---
+    # Pool-sensitivity sweep: same seed across configs -> same underlying
+    # board/clue samples, only guesser weighting differs.
     pool_configs = {"uniform": {n: 1.0 for n in guesser_names}}
     for n in guesser_names:
         # e.g. "noisy_glove" -> "glove_heavy"
         axis = n.replace("noisy_", "")
         pool_configs[f"{axis}_heavy"] = {other: (3.0 if other == n else 1.0) for other in guesser_names}
+    pool_dirs = {name: data_root / f"pool_{name}" for name in pool_configs}
 
-    pool_dirs = {}
-    for name, weights in pool_configs.items():
-        d = data_root / f"pool_{name}"
-        _generate_if_needed(
-            d, args.pool_sensitivity_n, seed=args.seed + 1, guesser_pool_config=args.guesser_pool_config,
-            sims_cache_dir=args.sims_cache_dir, guesser_weights=weights,
-        )
-        pool_dirs[name] = d
+    jobs = [
+        {"output_dir": base_dir, "n_examples": args.base_n, "seed": args.seed, **common},
+        {
+            "output_dir": unsorted_dir, "n_examples": args.base_n, "seed": args.seed,
+            "feature_builder": build_features_unsorted, **common,
+        },
+    ]
+    jobs.extend(
+        {"output_dir": pool_dirs[name], "n_examples": args.pool_sensitivity_n, "seed": args.seed + 1, "guesser_weights": weights, **common}
+        for name, weights in pool_configs.items()
+    )
+
+    print(f"[generate] running {len(jobs)} generation jobs across up to {args.max_workers or 'os.cpu_count()'} workers")
+    t0 = time.time()
+    with ProcessPoolExecutor(max_workers=args.max_workers) as pool:
+        list(pool.map(_generation_job, jobs))
+    print(f"[generate] all {len(jobs)} jobs done in {time.time() - t0:.0f}s")
 
     # --- Derive: drop-space (x n_spaces) + averaged-concatenation, from base ---
     drop_space_dirs = {}
