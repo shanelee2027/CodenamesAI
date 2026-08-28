@@ -25,6 +25,12 @@ word frequencies (not raw web-corpus rank, which badly overrates place
 names -- see docs/log.md) -- so an obscure pick like "confectionery" can
 be filtered out without retraining anything either.
 
+A second tab, "Full Game," picks one codemaster and one guesser and plays
+a real game to completion via codenames/game.py::play_game (both sides,
+one board, straight through to win/loss/timeout) -- unlike the main tab's
+single-turn, read-only peeks, this actually reveals words and shows the
+whole turn-by-turn history. See build_play_game_response.
+
 Usage:
     python scripts/web_inspector.py [--port 8000]
 Then open http://localhost:8000 in a browser.
@@ -44,7 +50,7 @@ import numpy as np
 from wordfreq import zipf_frequency
 from codenames.board import Board, Role, is_legal_clue
 from codenames.codemasters import CentroidCodemaster, OracleCodemaster, RandomCodemaster
-from codenames.game import ROLE_REWARD
+from codenames.game import DEFAULT_MAX_TURNS, ROLE_REWARD, play_game
 from codenames.guessers import load_pool
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.scorer import DEFAULT_MISS_PENALTY, OWN_REWARD
@@ -88,6 +94,24 @@ def _pool_config_at_noise(noise_std: float) -> dict:
 # per request.
 POOLS_BY_NOISE = {level: load_pool(_pool_config_at_noise(level)) for level in NOISE_LEVELS}
 POOL = POOLS_BY_NOISE[DEFAULT_NOISE]
+
+# Full-game mode (see build_play_game_response) picks one fixed guesser
+# by name rather than a noise-dial pool -- merges the 0.08-noise standard
+# pool (the level every trained noise_* checkpoint and the self-play
+# evals in docs/versions/v1.md actually use) with the history-aware
+# variants of the exact same guessers (configs/guesser_pool_history_aware*.json,
+# see codenames/guessers/history_aware.py) so both a guesser and its
+# history-aware counterpart are selectable side by side.
+GAME_GUESSERS = {name: entry.guesser for name, entry in POOLS_BY_NOISE[0.08].items()}
+GAME_GUESSERS.update(
+    {name: entry.guesser for name, entry in load_pool(Path("configs/guesser_pool_history_aware.json")).items()}
+)
+GAME_GUESSERS.update(
+    {
+        name: entry.guesser
+        for name, entry in load_pool(Path("configs/guesser_pool_history_aware_standard.json")).items()
+    }
+)
 
 
 def _build_clue_rarity_percentile(clue_words: list[str]) -> dict[str, float]:
@@ -380,6 +404,58 @@ def build_simulate_response(
     return {"clue": clue, "number": number, "noise": noise, "results": results}
 
 
+def build_play_game_response(
+    seed: int,
+    codemaster_name: str,
+    guesser_name: str,
+    reward_overrides: dict[str, str] | None = None,
+    max_turns: int = DEFAULT_MAX_TURNS,
+) -> dict:
+    """Runs codenames.game.play_game to completion (one codemaster
+    against one guesser, both chosen from the UI, playing both sides of
+    the same board) -- unlike build_simulate_response's single-turn,
+    read-only peek, this actually reveals words on a fresh Board via the
+    real game loop, same as codenames/arena.py's evaluation runs use, just
+    one game instead of hundreds."""
+    if codemaster_name not in CODEMASTERS:
+        return {"error": f"unknown codemaster {codemaster_name!r}, choices: {list(CODEMASTERS)}"}
+    if guesser_name not in GAME_GUESSERS:
+        return {"error": f"unknown guesser {guesser_name!r}, choices: {list(GAME_GUESSERS)}"}
+
+    codemaster = CODEMASTERS[codemaster_name]
+    _apply_reward_overrides(codemaster, reward_overrides or {})
+    guesser = GAME_GUESSERS[guesser_name]
+
+    board = Board.generate(seed=seed)
+    result = play_game(board, codemaster, guesser, SIMS, max_turns=max_turns)
+
+    turns = [
+        {
+            "clue": t.clue,
+            "number": t.number,
+            "guesses": [{"word": w, "role": ROLE_LABELS[r]} for w, r in t.guesses],
+            "reward": t.reward,
+            "ended_reason": t.ended_reason,
+            # Real Codenames' n+1 bonus, only claimed if the guesser has
+            # an earned reason to (see codenames/guessers/base.py) --
+            # surfaced so the turn log can call it out rather than
+            # leaving "why are there more guesses than the number" a
+            # silent mystery.
+            "bonus_used": len(t.guesses) == t.number + 1,
+        }
+        for t in result.turns
+    ]
+    return {
+        "seed": seed,
+        "codemaster": codemaster_name,
+        "guesser": guesser_name,
+        "outcome": result.outcome,
+        "total_reward": result.total_reward,
+        "turns": turns,
+        "board": _board_words_payload(board),
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args) -> None:  # keep stdout quiet
         pass
@@ -423,6 +499,19 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/codemasters":
             self._send_json({"codemasters": list(CODEMASTERS)})
+            return
+
+        if parsed.path == "/api/guessers":
+            self._send_json({"guessers": list(GAME_GUESSERS)})
+            return
+
+        if parsed.path == "/api/play_game":
+            seed = int(query.get("seed", ["42"])[0])
+            codemaster_name = query.get("codemaster", [""])[0]
+            guesser_name = query.get("guesser", [""])[0]
+            reward_overrides = {param: query.get(param, [""])[0] for param in _REWARD_PARAMS}
+            response = build_play_game_response(seed, codemaster_name, guesser_name, reward_overrides)
+            self._send_json(response, status=400 if "error" in response else 200)
             return
 
         if parsed.path == "/api/give_clue":

@@ -1995,4 +1995,37 @@ boards): ran cleanly, `own/clue` exceeded 1.0 in every case, confirming
 the bonus mechanism actually fires against real data, not just the
 synthetic test fixtures.
 
+## Web UI: a "Full Game" tab, playing both sides to completion
+
+Requested: a new UI mode/tab to pick a codemaster and a guesser and play
+a real game out to the end, rather than the existing tab's single-turn
+peeks.
+
+- `scripts/web_inspector.py::build_play_game_response` runs
+  `codenames.game.play_game` for real (reveals words on a fresh `Board`,
+  not a read-only peek like `build_simulate_response`), returns the full
+  turn-by-turn history plus final outcome/total reward/board state.
+  `GAME_GUESSERS` merges the 0.08-noise standard pool, the blend guesser,
+  and both history-aware variants built earlier this session into one
+  flat name -> guesser dict for a simple dropdown (independent of the
+  main tab's noise dial, since this is a separate mode with its own
+  controls). New `/api/guessers` and `/api/play_game` routes.
+- `scripts/webui/inspector.html`: added tab buttons (`#tabInspector`/
+  `#tabGame`) toggling visibility between the existing content (wrapped
+  in `#inspectorTab`, otherwise untouched) and a new `#gameTab` -- seed/
+  codemaster/guesser controls, the same 4 reward-override fields as the
+  main tab, a board render (colors shown upfront like the rest of this
+  dev tool, not hidden), a win/loss/timeout banner, and a turn-by-turn
+  log showing each clue/number/guesses/reward/ended_reason, with a
+  "bonus guess used" tag (`len(guesses) == number + 1`) so the earned-
+  bonus mechanic from the history-aware work above is visible rather than
+  a silent "why are there more guesses than the number" mystery.
+- Verified end-to-end against a live server (not just unit tests): all
+  new endpoints, an error case (unknown codemaster), a full game with
+  `learned:noise_0_08` + `history_aware_noisy_glove` showing real bonus
+  guesses firing, and the HTML page itself loading. 207 tests still pass
+  (no new automated tests -- this is a thin UI layer over already-tested
+  `play_game`/`load_pool`, matching how `build_simulate_response` and the
+  rest of this file were handled).
+
 ## Human evaluation (not started)

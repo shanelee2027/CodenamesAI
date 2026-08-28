@@ -1,0 +1,47 @@
+{
+  "_comment": "Standard 3-guesser pool (see configs/guesser_pool.json), each entry wrapped in HistoryAwareGuesser (codenames/guessers/history_aware.py) instead of left plain -- noise_std fixed at 0.08 (matching cache/m9/pool_configs/noise_0_08.json, the pool learned:noise_0_08 was actually trained/evaluated against, not guesser_pool.json's own default of 0.03) so an arena run against this config is directly comparable to one against noise_0_08.json: same three guessers, same weights/seeds, the only difference is whether each guesser can claim the earned bonus guess described in codenames/guessers/base.py's module docstring.",
+  "guessers": [
+    {
+      "name": "history_aware_noisy_glove",
+      "type": "history_aware",
+      "params": {
+        "base": {
+          "type": "noisy",
+          "params": {
+            "base": { "type": "single_space", "params": { "space": "glove" } },
+            "noise_std": 0.08,
+            "seed": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "history_aware_noisy_numberbatch",
+      "type": "history_aware",
+      "params": {
+        "base": {
+          "type": "noisy",
+          "params": {
+            "base": { "type": "single_space", "params": { "space": "numberbatch" } },
+            "noise_std": 0.08,
+            "seed": 2
+          }
+        }
+      }
+    },
+    {
+      "name": "history_aware_noisy_wikipedia2vec",
+      "type": "history_aware",
+      "params": {
+        "base": {
+          "type": "noisy",
+          "params": {
+            "base": { "type": "single_space", "params": { "space": "wikipedia2vec" } },
+            "noise_std": 0.08,
+            "seed": 3
+          }
+        }
+      }
+    }
+  ]
+}
