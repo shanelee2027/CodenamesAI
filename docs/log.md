@@ -1000,4 +1000,59 @@ real findings, not just UI polish:
   other codemaster's convention. Fixed; `number` now equals the run length
   directly everywhere.
 
+## Post-M9: noise sweep confirms the hypothesis, with a real gotcha along the way
+
+Followed up the noise-reduction entry above with an actual controlled
+sweep rather than a single before/after guess.
+
+- **Parallelized first.** `run_ablation_study.py`'s 6 (later 11, once the
+  noise sweep was added) dataset-generation calls are independent and
+  CPU-bound, so they moved from sequential to a `ProcessPoolExecutor`
+  (16 logical cores available) -- ~40min sequentially down to ~14min for
+  the full 1.6M-example run. Also tuned `train_scorer.py`'s `DataLoader`
+  (`num_workers=4`, `pin_memory`, default `batch_size` 512->2048): the
+  MLP is tiny enough that small batches barely exercise the GPU per step.
+- **Added an opt-in `--noise-levels` sweep**, structurally identical to
+  the pool-sensitivity sweep: one dataset+model per requested `noise_std`,
+  all sharing the same generation seed as `base` (identical underlying
+  board/clue samples) and the same per-guesser seeds (1/2/3), so only the
+  noise magnitude differs between levels -- a clean, directly-comparable
+  sweep rather than independently-noisy runs.
+- **First sweep run reused `cache/m9/`'s existing directories** (by
+  design -- `_generate_if_needed` skips anything already generated) and
+  produced a real gotcha: `full`'s val_loss was *identical* to
+  `noise_0_15`, not `noise_0_03` as expected. Turned out `base/`,
+  `unsorted/`, and the `pool_*` dirs were left over from the *original*
+  M9 run, generated back when the pool config's default was still
+  `noise_std=0.15` -- the noise-config-lowering commit only changed what
+  *future* generation would use, not anything already on disk. Caught by
+  literally reading the report table rather than assuming it was correct
+  -- worth remembering as a pattern (resumable/skip-existing pipelines
+  are exactly where a stale assumption hides silently, since nothing
+  errors, it just quietly reuses old data).
+- **Full clean rerun** (wiped `cache/m9/`, regenerated everything fresh)
+  gave numbers that are actually comparable to each other. Two headline
+  results:
+  1. **The noise sweep is a clean monotonic curve**: val_accuracy 77.6%
+     at `noise_std=0.0` down to 59.7% at the old `0.15` default -- an
+     18-point swing from one hyperparameter, confirming the
+     measured-std-based hypothesis (earlier entry) wasn't just plausible,
+     it was the dominant effect.
+  2. **SCOPE §6's headline comparison got dramatically clearer at the
+     lower noise level**: full MLP val_loss 0.5935 vs. linear baseline
+     0.8382 (were 0.9648 vs. 0.9843 in the original, noisier M9 run --
+     barely distinguishable). Every other ablation direction held too
+     (full beats every drop-space variant, beats averaged-concatenation,
+     clearly beats unsorted) and the pool-sensitivity ranking replicated
+     (numberbatch-heavy best, wikipedia2vec-heavy worst) -- same
+     qualitative story as the first M9 run, just now with a much larger,
+     more convincing margin now that noise isn't drowning out signal.
+- `docs/m9_ablation_report.md` updated to the clean rerun's numbers.
+  Noise remains at `0.03` in `configs/guesser_pool.json` (not lowered
+  further to 0.0) -- pure zero noise makes every guesser perfectly
+  deterministic given its embedding space, which was a deliberate
+  first-pass design choice (§3's "diversity in knowledge, not noise"
+  still wants *some* imperfection modeled); `0.0` is available any time
+  via `--noise-levels` if that tradeoff is revisited.
+
 ## M10 — Human evaluation
