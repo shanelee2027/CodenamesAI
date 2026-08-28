@@ -9,9 +9,15 @@ pool should contain.
 Config format: {"guessers": [{"name", "type", "params", "held_out"}, ...]}.
 `type` selects a class from GUESSER_CLASSES. `params` are passed as
 keyword args to that class's constructor. A wrapper guesser (noisy,
-confidence_threshold) references its base by name via `params.base` --
-that name must appear *earlier* in the list, since entries are built in
-order and a wrapper's base must already exist.
+confidence_threshold) references its base either:
+  - by name (a string) -- that name must appear *earlier* in the list,
+    since entries are built in order and a wrapper's base must already
+    exist as a separately-visible pool member; or
+  - inline (a nested `{"type", "params"}` object, no "name") -- built
+    anonymously and never added to the pool, for when a base only exists
+    to be wrapped and shouldn't also show up as its own pool entry (e.g.
+    configs/guesser_pool.json's noisy_* entries, which wrap a bare
+    single_space guesser that isn't meant to be independently sampled).
 """
 
 from __future__ import annotations
@@ -45,6 +51,24 @@ class GuesserEntry:
     held_out: bool
 
 
+def _resolve_base(base_spec, entry_name: str, built: dict[str, Guesser]) -> Guesser:
+    if isinstance(base_spec, str):
+        if base_spec not in built:
+            raise ValueError(
+                f"guesser {entry_name!r} references base {base_spec!r}, "
+                "which isn't defined earlier in the config"
+            )
+        return built[base_spec]
+    if isinstance(base_spec, dict):
+        # Anonymous inline base -- built but never added to `built`, so it
+        # can't be referenced by name and never appears as its own pool entry.
+        return _build_one(base_spec, built)
+    raise ValueError(
+        f"guesser {entry_name!r}'s base must be a string name or an inline "
+        f"{{'type', 'params'}} object, got {base_spec!r}"
+    )
+
+
 def _build_one(entry_config: dict, built: dict[str, Guesser]) -> Guesser:
     guesser_type = entry_config["type"]
     if guesser_type not in GUESSER_CLASSES:
@@ -52,13 +76,8 @@ def _build_one(entry_config: dict, built: dict[str, Guesser]) -> Guesser:
     cls = GUESSER_CLASSES[guesser_type]
     params = dict(entry_config.get("params", {}))
     if "base" in params:
-        base_name = params["base"]
-        if base_name not in built:
-            raise ValueError(
-                f"guesser {entry_config['name']!r} references base {base_name!r}, "
-                "which isn't defined earlier in the config"
-            )
-        params["base"] = built[base_name]
+        entry_name = entry_config.get("name", "<anonymous>")
+        params["base"] = _resolve_base(params["base"], entry_name, built)
     return cls(**params)
 
 

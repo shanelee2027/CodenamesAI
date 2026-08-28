@@ -25,6 +25,7 @@ from codenames.similarity import SimilarityTensor  # noqa: E402
 
 CLUE_WORDS = ["clueone", "cluetwo", "cluethree"]
 SPACES = ["a"]
+VOCAB = load_wordlist()
 
 
 @pytest.fixture
@@ -55,20 +56,30 @@ class TestSamplePartialBoard:
     def test_never_reveals_the_assassin(self):
         rng = __import__("random").Random(0)
         for _ in range(50):
-            board, _ = sample_partial_board(rng)
+            board, _ = sample_partial_board(rng, VOCAB)
             assassin = board.words_by_role(Role.ASSASSIN)[0]
             assert not board.is_revealed(assassin)
 
     def test_always_leaves_at_least_one_own_word_unrevealed(self):
         rng = __import__("random").Random(0)
         for _ in range(50):
-            board, _ = sample_partial_board(rng)
+            board, _ = sample_partial_board(rng, VOCAB)
             assert board.remaining(Role.OWN) >= 1
 
     def test_revealed_count_matches_turn_index_returned(self):
         rng = __import__("random").Random(1)
-        board, revealed_count = sample_partial_board(rng)
+        board, revealed_count = sample_partial_board(rng, VOCAB)
         assert revealed_count == len(board.revealed)
+
+    def test_boards_are_drawn_only_from_the_given_vocabulary(self):
+        # generate()'s real default is load_training_wordlist() -- verify
+        # the restriction is actually honored, using a small vocabulary
+        # here so a violation would be easy to spot.
+        rng = __import__("random").Random(2)
+        small_vocab = VOCAB[:30]
+        for _ in range(20):
+            board, _ = sample_partial_board(rng, small_vocab)
+            assert set(board.words) <= set(small_vocab)
 
 
 class TestSampleClue:
@@ -168,6 +179,30 @@ class TestGenerate:
             assert np.all((ks >= 0) & (ks <= MAX_K))
             total += len(features)
         assert total == 25
+
+    def test_default_board_vocabulary_is_the_training_wordlist(self, sims_cache_dir, guesser_pool_config, tmp_path, monkeypatch):
+        import generate_training_data as gtd
+
+        from codenames.board import load_training_wordlist
+
+        seen_vocab = []
+        original = gtd.sample_partial_board
+
+        def spy(rng, vocabulary):
+            seen_vocab.append(vocabulary)
+            return original(rng, vocabulary)
+
+        monkeypatch.setattr(gtd, "sample_partial_board", spy)
+        gtd.generate(
+            n_examples=5,
+            shard_size=5,
+            output_dir=tmp_path / "out",
+            seed=0,
+            guesser_pool_config=guesser_pool_config,
+            sims_cache_dir=sims_cache_dir,
+        )
+        assert seen_vocab
+        assert set(seen_vocab[0]) == set(load_training_wordlist())
 
     def test_never_samples_a_held_out_guesser(self, sims_cache_dir, guesser_pool_config, tmp_path, monkeypatch):
         import generate_training_data as gtd

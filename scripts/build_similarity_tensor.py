@@ -1,16 +1,23 @@
 """Build the similarity tensor's clue vocabulary and GloVe slice (SCOPE.md §M2).
 
-Clue vocabulary is a UNION across all three downloaded spaces' own
-vocabularies, not just GloVe's. This corrects an earlier version of this
-script that used only GloVe's top-N frequency-ranked words: that
-structurally prevented any word GloVe doesn't know (or ranks too low) from
-ever being a candidate clue, no matter how well another space knows it --
-directly undercutting SCOPE.md's own motivating example ("GloVe has no
-vector for [Technoblade] at all, and could not produce the clue at any
-threshold," implying another space *should* be able to supply it). See
-docs/log.md's M2 entry for the fuller writeup of the correction.
+**Revision (first-pass simplification, see docs/log.md):** clue vocabulary
+is now the INTERSECTION of all three downloaded spaces' own vocabularies,
+not their union. An earlier version of this script used only GloVe's
+top-N words, which structurally prevented any word GloVe doesn't know from
+ever being a candidate clue (the "Technoblade" problem); that was fixed by
+switching to a union. The union in turn reintroduced a related problem one
+level up: a clue could still be one only *some* guessers know, so a
+guesser's failure to guess it might reflect a real vocabulary gap rather
+than a genuinely bad clue -- exactly the effect SCOPE's diverse guesser
+pool (§3) is designed to average out across many guessers, but which
+becomes a real problem for a deliberately small first-pass pool. The
+intersection sidesteps it directly: every legal clue has a real vector in
+every space that's currently built, so no guesser in the pool is
+structurally disadvantaged by coverage gaps. This is a divergence from
+SCOPE.md's original union approach -- documented here and in docs/SCOPE.md
+and docs/log.md, not silently reverted.
 
-Per-space vocabulary contribution:
+Per-space vocabulary contribution (unchanged from the union version):
   - GloVe and Wikipedia2Vec are both frequency-descending ordered in their
     raw files (verified empirically) -- take each one's top --*-vocab-size
     alphabetic words via a token-only scan that stops early once enough
@@ -22,12 +29,14 @@ Per-space vocabulary contribution:
     total alphabetic vocabulary is modest (~359k), so all of it is
     included rather than attempting a rank cutoff.
 
-Every word in the final union gets a GloVe similarity value if GloVe's
-*full* 400k-word vocabulary has it (not just its top-250k) -- a word
-freshly added to the vocab by Numberbatch or Wikipedia2Vec might still
-exist further down GloVe's own list. Words with no GloVe vector at all get
-NaN in this slice, the same convention scripts/extend_similarity_tensor.py
-uses for the other spaces.
+Every word in the final intersection gets a GloVe similarity value if
+GloVe's *full* 400k-word vocabulary has it (not just its top-250k) -- a
+word whose presence in the intersection was actually decided by its rank
+in Wikipedia2Vec/Numberbatch might still exist further down GloVe's own
+list. In practice, since intersection membership already requires a
+GloVe-contribution hit, this GloVe slice should end up ~100% covered;
+kept as NaN-on-miss for consistency with extend_similarity_tensor.py
+rather than assuming that in code.
 
 Usage:
     python scripts/build_similarity_tensor.py
@@ -132,8 +141,8 @@ def main() -> None:
     )
     print(f"  found {len(nb_contribution)}")
 
-    clue_words = sorted(glove_contribution | wiki_contribution | nb_contribution)
-    print(f"clue vocabulary (union): {len(clue_words)} words")
+    clue_words = sorted(glove_contribution & wiki_contribution & nb_contribution)
+    print(f"clue vocabulary (intersection): {len(clue_words)} words")
 
     board_words = build_board_words(args.board_words)
     print(f"board vocabulary: {len(board_words)} words")
@@ -177,7 +186,7 @@ def main() -> None:
         "glove_source": str(glove_path),
         "glove_vocab_size_arg": args.glove_vocab_size,
         "wikipedia2vec_vocab_size_arg": args.wikipedia2vec_vocab_size,
-        "vocab_note": "union of glove/numberbatch/wikipedia2vec vocabularies, see script docstring",
+        "vocab_note": "intersection of glove/numberbatch/wikipedia2vec vocabularies (first-pass revision -- see script docstring and docs/log.md)",
     }, indent=2))
 
     total_time = time.time() - t0

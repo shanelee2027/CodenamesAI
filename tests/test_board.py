@@ -8,10 +8,36 @@ from codenames.board import (
     Board,
     Role,
     is_legal_clue,
+    load_holdout_wordlist,
+    load_training_wordlist,
     load_wordlist,
 )
 
 VOCAB = load_wordlist()
+
+
+class TestHoldoutWordlist:
+    def test_holdout_words_are_a_subset_of_the_full_vocabulary(self):
+        holdout = load_holdout_wordlist()
+        assert set(holdout) <= set(VOCAB)
+
+    def test_holdout_and_training_partition_the_full_vocabulary(self):
+        holdout = load_holdout_wordlist()
+        training = load_training_wordlist()
+        assert set(holdout) & set(training) == set()
+        assert set(holdout) | set(training) == set(VOCAB)
+        assert len(holdout) + len(training) == len(VOCAB)
+
+    def test_training_wordlist_excludes_every_holdout_word(self):
+        holdout = set(load_holdout_wordlist())
+        training = load_training_wordlist()
+        assert not any(w in holdout for w in training)
+
+    def test_holdout_set_is_large_enough_to_build_a_board_from_alone(self):
+        assert len(load_holdout_wordlist()) >= BOARD_SIZE
+
+    def test_training_set_is_large_enough_to_build_a_board_from_alone(self):
+        assert len(load_training_wordlist()) >= BOARD_SIZE
 
 
 class TestBoardGeneration:

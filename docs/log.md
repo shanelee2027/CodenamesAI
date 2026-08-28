@@ -799,6 +799,97 @@ two circular-import bugs the new dependency direction exposed. Notes:
   plumbing), plus 2 more in `tests/test_features.py` for
   `build_features_batch`. 134 tests total, all passing.
 
+## Design revision (post-M8): restricted vocab, 3-guesser noisy pool, held-out board words
+
+Not a milestone -- a deliberate revision of already-checked-off M2/M5 work,
+made before starting M9, after reviewing early arena/inspector results.
+
+**What prompted it:** anecdotally, numberbatch's per-clue rankings looked
+most reasonable across a few manual checks. The first proposal was to make
+numberbatch + noise *the* scoring metric, on the reasoning that a real
+spymaster can't know exactly how a guesser thinks, so some noise should
+stand in for that uncertainty.
+
+**Why that specific proposal was rejected:** it's structurally identical to
+the "GloVe alone" anti-pattern SCOPE §3 already warns against (a guesser
+with no vector for "Technoblade" guesses badly, so the clue gets labeled
+bad, so the model learns to avoid the exact clue the project wants to
+enable) -- just with a different embedding as the single source of truth.
+Gaussian noise only perturbs *that guesser's own* ranking; it can't
+simulate a listener with genuinely different knowledge (e.g. one who knows
+a proper noun numberbatch's graph doesn't cover). Noise models aleatoric
+uncertainty in one decision process; it doesn't substitute for testing
+against a structurally different one.
+
+**How it was resolved**, across several rounds of back-and-forth:
+
+1. **Restrict clue vocabulary to common words** (no pop-culture/proper-noun
+   push for this first pass) to shrink -- not eliminate -- the
+   different-embeddings-know-different-things problem. Landed on
+   *intersection* rather than a frequency-based cutoff: every legal clue
+   now has a real vector in every currently-built space, by construction.
+   Rebuilt `scripts/build_similarity_tensor.py`'s vocabulary from a union
+   (~532,738 words, the M2 fix) to an intersection: **111,440 words**, all
+   three spaces at 100% coverage (down from GloVe's ~52.8% coverage of the
+   old union). Real rebuild against the actual cached embedding files:
+   GloVe+intersection ~47s, Numberbatch extend ~6s, Wikipedia2Vec extend
+   ~256s (its source file has to be scanned for the candidate tokens, same
+   cost structure as the original M4 build). A pleasant side effect,
+   unplanned but not surprising: `generate_training_data.py`'s throughput
+   roughly *tripled* (~45-50/sec -> ~126/sec) purely from the clue
+   vocabulary shrinking ~4.8x, since the dominant per-example cost (§M7's
+   log entry) scales with vocabulary size.
+2. **Guesser pool: equal-weighted noisy version of each of the 3 currently-
+   built embeddings, all training-visible.** This is genuine knowledge
+   diversity (three different embedding types), not "one guesser + noise"
+   -- the same principle SCOPE §3 states, just a smaller pool (3 members,
+   not ~8) since this first pass doesn't need blends/rank-based/confidence-
+   threshold variety to make its point. Required one small registry
+   enhancement to get *exactly* 3 pool members rather than 3 wrappers plus
+   3 redundant raw bases: `codenames/guessers/registry.py`'s wrapper `base`
+   can now be an inline anonymous `{"type", "params"}` object, not just a
+   string name referencing an earlier, separately-visible pool entry.
+   Fully backward compatible (string bases still work). New
+   `configs/guesser_pool.json`: `noisy_glove`, `noisy_numberbatch`,
+   `noisy_wikipedia2vec`, `noise_std=0.15` (matching the old `noisy_blend`
+   convention), distinct seeds, no `held_out` on any entry.
+3. **Held-out guessers vs. held-out board words.** Proposed dropping
+   held-out entirely once the pool shrank to 3 (holding 2 out would leave
+   exactly one training-visible guesser -- the single-guesser problem
+   again, just via the held-out mechanism instead of the pool design).
+   Pushed back once: noise and held-out-ness address different failure
+   modes (aleatoric label noise vs. overfitting to the specific decision
+   functions trained against -- the latter is what M6's "off-diagonal
+   results are what matter" framing and M10's human eval both lean on).
+   Landed on a genuinely different mechanism instead of dropping the
+   concept: hold out *board words*, not guessers. 60 of the 400 board
+   words (`random.Random(42).sample(...)`, committed to
+   `codenames/assets/board_words_holdout.txt`) are now excluded from all
+   training data generation
+   (`codenames/board.py::load_training_wordlist()`,
+   wired into `scripts/generate_training_data.py::generate()`'s default).
+   This checks a different, complementary thing than held-out guessers did
+   (generalizing to unseen board *content* vs. unseen *listener type*) --
+   not a replacement in the sense of testing the same property a different
+   way, but a deliberate substitution given the pool is now too small to
+   afford the original mechanism.
+
+**Verification:** all 145 tests pass (11 new: registry inline-base +
+held-out-mechanism tests decoupled from default-pool composition, since
+the old tests conflated "does the mechanism work" with "does the current
+config happen to have this shape" -- exactly what just broke when the
+config changed; board holdout/training-wordlist partition tests).
+Real-cache smoke tests: `scripts/inspector.py` shows exactly 3 guessers,
+all tagged "training"; 200 sampled training boards, zero contained a
+held-out word.
+
+**Deferred, not forgotten:** fastText/Fandom corpus work (M0/M4's other
+half) is lower priority under this simplification -- it exists
+specifically to supply the pop-culture knowledge this first pass isn't
+depending on. M9's ablations (space/sort/concatenation, linear baseline,
+pool-sensitivity sweep) still make sense and pick up from here, now against
+the revised vocabulary and pool.
+
 ## M9 — Evaluation and ablations
 
 ## M10 — Human evaluation

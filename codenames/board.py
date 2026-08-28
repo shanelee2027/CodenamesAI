@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Iterable
 
 ASSET_WORDLIST_PATH = Path(__file__).parent / "assets" / "board_words.txt"
+ASSET_HOLDOUT_WORDLIST_PATH = Path(__file__).parent / "assets" / "board_words_holdout.txt"
 
 
 class Role(Enum):
@@ -129,6 +130,23 @@ class Board:
 
 def load_wordlist(path: Path = ASSET_WORDLIST_PATH) -> list[str]:
     return [line.strip() for line in path.read_text().splitlines() if line.strip()]
+
+
+def load_holdout_wordlist(path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]:
+    """The board words training data must never be sampled from (first-pass
+    generalization check in place of held-out guessers -- see docs/log.md).
+    60 of the 400 board words, chosen via
+    `random.Random(42).sample(load_wordlist(), 60)` -- fixed and committed
+    (codenames/assets/board_words_holdout.txt) rather than resampled at
+    runtime, so the split is transparent and inspectable."""
+    return [line.strip() for line in path.read_text().splitlines() if line.strip()]
+
+
+def load_training_wordlist(all_path: Path = ASSET_WORDLIST_PATH, holdout_path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]:
+    """load_wordlist() minus load_holdout_wordlist() -- what training data
+    generation (scripts/generate_training_data.py) samples boards from."""
+    holdout = set(load_holdout_wordlist(holdout_path))
+    return [w for w in load_wordlist(all_path) if w not in holdout]
 
 
 def _normalize(word: str) -> str:

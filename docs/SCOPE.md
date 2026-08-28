@@ -185,6 +185,45 @@ Two objectives, both worth reporting:
 The risk-aversion parameter moves along this curve. Report the tradeoff rather
 than picking one — it is the more interesting result.
 
+### First-pass simplification (post-M8 revision)
+
+Three deliberate divergences from the design above, adopted for a first pass
+that avoids the different-embeddings-know-different-things problem instead of
+solving it head-on. Full reasoning in docs/log.md's post-M8 design-revision
+entry; code-level detail in `scripts/build_similarity_tensor.py`,
+`configs/guesser_pool.json`, and `codenames/board.py`'s docstrings.
+
+1. **Clue vocabulary is an intersection, not a union**, of GloVe, Numberbatch,
+   and Wikipedia2Vec's vocabularies (111,440 words as of the current rebuild,
+   down from the ~532k-word union). Every legal clue now has a real vector in
+   every currently-built space, so no guesser can fail on a clue purely
+   because of a vocabulary gap — the exact effect the diverse pool below
+   exists to average out, which matters less once the pool is deliberately
+   small.
+2. **Guesser pool is 3 members, not ~8**: one per currently-built embedding
+   space, each wrapped in Gaussian noise, equally weighted, all
+   training-visible. No guessers are held out. This is still "diversity in
+   knowledge, not noise" (§3 above) — three different embeddings is genuine
+   knowledge diversity — just a smaller pool than originally targeted.
+3. **Generalization is checked via held-out board words, not held-out
+   guessers.** `codenames/assets/board_words_holdout.txt` holds 60 of the 400
+   board words out of all training data generation entirely
+   (`codenames/board.py::load_training_wordlist()`); a later evaluation pass
+   can build boards entirely from those unseen words to check whether the
+   model generalizes to board content it never trained on. This is an
+   orthogonal check to what held-out guessers used to test (generalizing to
+   an unseen *listener* vs. unseen *content*), not a replacement for it —
+   adopted because the smaller pool made held-out guessers costly relative to
+   their value (holding out 2 of only 3 guessers would leave a single
+   training-visible guesser, reproducing the single-guesser problem via the
+   held-out mechanism itself).
+
+fastText/the Fandom corpus (M0/M4's remaining half) is lower priority under
+this simplification, since it exists specifically to supply the kind of
+pop-culture/proper-noun knowledge this first pass is deliberately not
+depending on. Revisit all three points once fastText exists and/or before
+scaling past this first pass.
+
 ---
 
 ## 4. Method decisions and their justifications

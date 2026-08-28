@@ -10,7 +10,7 @@ from codenames.guessers.blend import BlendGuesser
 from codenames.guessers.confidence_threshold import ConfidenceThresholdGuesser
 from codenames.guessers.noisy import NoisyGuesser
 from codenames.guessers.rank_based import RankBasedGuesser
-from codenames.guessers.registry import DEFAULT_POOL_CONFIG, load_pool
+from codenames.guessers.registry import DEFAULT_POOL_CONFIG, held_out_pool, load_pool, training_pool
 from codenames.guessers.single_space import SingleSpaceGuesser
 from codenames.similarity import SimilarityTensor
 
@@ -174,19 +174,72 @@ class TestGuesserIsAbstract:
 class TestRegistry:
     def test_default_pool_config_loads(self):
         entries = load_pool(DEFAULT_POOL_CONFIG)
-        assert len(entries) == 8
+        assert len(entries) == 3
 
-    def test_exactly_two_held_out(self):
+    def test_default_pool_has_no_held_out_guessers(self):
+        # First-pass revision (see docs/log.md): generalization is checked
+        # via held-out board words instead of held-out guessers -- see
+        # codenames/board.py's load_holdout_wordlist().
         entries = load_pool(DEFAULT_POOL_CONFIG)
-        held_out = [name for name, e in entries.items() if e.held_out]
-        assert len(held_out) == 2
+        assert all(not e.held_out for e in entries.values())
 
-    def test_wrapper_guessers_resolve_base_by_name(self):
+    def test_default_pool_wraps_each_space_with_noise(self):
         entries = load_pool(DEFAULT_POOL_CONFIG)
-        assert isinstance(entries["noisy_blend"].guesser, NoisyGuesser)
-        assert isinstance(entries["noisy_blend"].guesser.base, BlendGuesser)
-        assert isinstance(entries["cautious_glove"].guesser, ConfidenceThresholdGuesser)
-        assert isinstance(entries["cautious_glove"].guesser.base, SingleSpaceGuesser)
+        expected = {
+            "noisy_glove": "glove",
+            "noisy_numberbatch": "numberbatch",
+            "noisy_wikipedia2vec": "wikipedia2vec",
+        }
+        for name, space in expected.items():
+            guesser = entries[name].guesser
+            assert isinstance(guesser, NoisyGuesser)
+            assert isinstance(guesser.base, SingleSpaceGuesser)
+            assert guesser.base.space == space
+
+    def test_held_out_flag_defaults_to_false(self, tmp_path):
+        config = {"guessers": [{"name": "a", "type": "single_space", "params": {"space": "x"}}]}
+        path = tmp_path / "pool.json"
+        path.write_text(json.dumps(config))
+        assert load_pool(path)["a"].held_out is False
+
+    def test_held_out_flag_when_true_is_respected(self, tmp_path):
+        config = {
+            "guessers": [
+                {"name": "a", "type": "single_space", "params": {"space": "x"}, "held_out": True},
+                {"name": "b", "type": "single_space", "params": {"space": "y"}},
+            ]
+        }
+        path = tmp_path / "pool.json"
+        path.write_text(json.dumps(config))
+        assert "a" not in training_pool(path)
+        assert "b" in training_pool(path)
+        assert "a" in held_out_pool(path)
+        assert "b" not in held_out_pool(path)
+
+    def test_inline_anonymous_base_is_not_a_separate_pool_entry(self, tmp_path):
+        config = {
+            "guessers": [
+                {
+                    "name": "wrapped",
+                    "type": "noisy",
+                    "params": {"base": {"type": "single_space", "params": {"space": "x"}}, "noise_std": 0.1, "seed": 1},
+                }
+            ]
+        }
+        path = tmp_path / "pool.json"
+        path.write_text(json.dumps(config))
+        entries = load_pool(path)
+        assert list(entries) == ["wrapped"]
+        assert isinstance(entries["wrapped"].guesser, NoisyGuesser)
+        assert isinstance(entries["wrapped"].guesser.base, SingleSpaceGuesser)
+        assert entries["wrapped"].guesser.base.space == "x"
+
+    def test_inline_base_with_invalid_type_raises(self, tmp_path):
+        config = {"guessers": [{"name": "bad", "type": "noisy", "params": {"base": 123, "noise_std": 0.1}}]}
+        path = tmp_path / "pool.json"
+        path.write_text(json.dumps(config))
+        with pytest.raises(ValueError, match="base"):
+            load_pool(path)
 
     def test_unknown_base_reference_raises(self, tmp_path):
         config = {

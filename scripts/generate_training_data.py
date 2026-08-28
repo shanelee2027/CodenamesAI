@@ -15,8 +15,10 @@ clue, sampled training-pool guesser) triple:
   +1 each, plus whatever ended the run -- another miss's reward, or nothing
   if it hit the k cap without a miss).
 
-Held-out guessers (SCOPE §3/§5) are never sampled here -- training data must
-not depend on them, by construction (`training_pool()`), not by convention.
+Guesser sampling still goes through `training_pool()` (SCOPE §3/§5's
+mechanism for "training code must never touch held-out guessers"), though
+the first-pass pool (configs/guesser_pool.json) currently has none held out
+-- see docs/log.md's post-M8 design-revision entry for why.
 
 **Clue sampling mix** (SCOPE §5 M7): ~60% top-k neighbors of a random
 own-word subset, ~30% top-k neighbors of one random board word of *any*
@@ -32,7 +34,11 @@ the assassin, and always leaving >=1 own word unrevealed -- a state where
 the game has already ended isn't a useful training example). `turn_index`
 is approximated as the total number of revealed words at sampling time,
 since these are synthetic states, not the output of an actually-played
-game.
+game. Boards are sampled from `load_training_wordlist()` (the full board
+vocabulary minus the held-out subset, board.py) by default -- generalization
+to boards built from never-seen words is checked separately, not trained
+against here (first-pass revision, see docs/log.md: this replaces held-out
+guessers as the generalization check).
 
 **Output** is sharded .npy files under `--output-dir` (default
 cache/training_data/, gitignored): `features_NNNNN.npy` (float32,
@@ -60,7 +66,7 @@ from pathlib import Path
 import numpy as np
 
 from codenames.board import MAX_CLUE_NUMBER as MAX_K
-from codenames.board import Board, Role, is_legal_clue
+from codenames.board import Board, Role, is_legal_clue, load_training_wordlist
 from codenames.clue_search import mean_from_columns, top_k_legal_clues
 from codenames.features import build_features, feature_dim
 from codenames.game import ROLE_REWARD
@@ -99,13 +105,15 @@ def _cached_mean_similarity_to_words(sims: SimilarityTensor, words: list[str]) -
     return mean_from_columns([_cached_column(sims, w) for w in words])
 
 
-def sample_partial_board(rng: random.Random) -> tuple[Board, int]:
+def sample_partial_board(rng: random.Random, vocabulary: list[str]) -> tuple[Board, int]:
     """A board with a random number of own/opponent/neutral words already
     revealed (never the assassin; always >=1 own word left unrevealed).
     Returns (board, revealed_count) -- revealed_count stands in for
-    `turn_index` in build_features."""
+    `turn_index` in build_features. `vocabulary` should be
+    `load_training_wordlist()` (the default in `generate()`) so training
+    data never includes a held-out board word -- see board.py."""
     seed = rng.randrange(2**31)
-    board = Board.generate(seed=seed)
+    board = Board.generate(seed=seed, vocabulary=vocabulary)
     revealed_count = 0
     for role in (Role.OWN, Role.OPPONENT, Role.NEUTRAL):
         words = board.words_by_role(role)
@@ -180,7 +188,14 @@ def generate(
     seed: int,
     guesser_pool_config: Path = DEFAULT_POOL_CONFIG,
     sims_cache_dir: Path = DEFAULT_CACHE_DIR,
+    board_vocabulary: list[str] | None = None,
 ) -> int:
+    # Hardcoded default, not a CLI flag: training data must never include a
+    # held-out board word by construction, the same way held-out guessers
+    # used to be enforced by training_pool() rather than by convention.
+    if board_vocabulary is None:
+        board_vocabulary = load_training_wordlist()
+
     sims = SimilarityTensor.load(sims_cache_dir)
     guessers = training_pool(guesser_pool_config)
     guesser_names = list(guessers.keys())
@@ -204,7 +219,7 @@ def generate(
 
         filled = 0
         while filled < this_shard_size:
-            board, turn_index = sample_partial_board(rng)
+            board, turn_index = sample_partial_board(rng, board_vocabulary)
             clue = sample_clue(rng, sims, board)
             if clue is None:
                 continue

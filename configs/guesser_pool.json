@@ -1,47 +1,32 @@
 {
-  "_comment": "Guesser pool composition (SCOPE.md §M5/§3). Entries build in order -- a wrapper guesser's 'base' must reference a name defined earlier in this list. Exactly 2 guessers are held_out: training code must never touch them (see codenames/guessers/registry.py). fastText has no guesser here yet -- it doesn't exist until M4's remaining half (needs the Fandom corpus); add a single_space entry with space='fasttext' once it does, most likely to the training-visible set given it's central to the project's own motivating case.",
+  "_comment": "Guesser pool composition (SCOPE.md §M5/§3), revised for a first-pass simplification -- see docs/log.md's post-M8 design-revision entry and docs/SCOPE.md's first-pass-simplifications note. Exactly one guesser per currently-built embedding space (fastText still doesn't exist -- M4's remaining half), each wrapped in Gaussian noise so it isn't perfectly predictable, equally weighted, ALL training-visible: no held_out guessers. Generalization is checked via held-out board words instead (codenames/board.py::load_holdout_wordlist/load_training_wordlist), not held-out guessers -- three genuinely different knowledge sources already gives real diversity without needing a fourth axis, and the clue vocabulary is now restricted to the intersection of all three spaces (scripts/build_similarity_tensor.py) so no guesser here is structurally disadvantaged by vocabulary coverage gaps. Each 'base' is an inline anonymous single_space guesser (see codenames/guessers/registry.py's inline-base support) rather than a separately-named pool entry, so the pool has exactly 3 members, not 3 noisy wrappers plus 3 redundant raw ones.",
   "guessers": [
     {
-      "name": "glove",
-      "type": "single_space",
-      "params": { "space": "glove" }
-    },
-    {
-      "name": "numberbatch",
-      "type": "single_space",
-      "params": { "space": "numberbatch" },
-      "held_out": true
-    },
-    {
-      "name": "wikipedia2vec",
-      "type": "single_space",
-      "params": { "space": "wikipedia2vec" }
-    },
-    {
-      "name": "blend_uniform",
-      "type": "blend",
-      "params": { "weights": { "glove": 1.0, "numberbatch": 1.0, "wikipedia2vec": 1.0 } }
-    },
-    {
-      "name": "blend_glove_heavy",
-      "type": "blend",
-      "params": { "weights": { "glove": 2.0, "numberbatch": 0.5, "wikipedia2vec": 0.5 } }
-    },
-    {
-      "name": "rank_based",
-      "type": "rank_based",
-      "params": { "spaces": ["glove", "numberbatch", "wikipedia2vec"] },
-      "held_out": true
-    },
-    {
-      "name": "noisy_blend",
+      "name": "noisy_glove",
       "type": "noisy",
-      "params": { "base": "blend_uniform", "noise_std": 0.15, "seed": 42 }
+      "params": {
+        "base": { "type": "single_space", "params": { "space": "glove" } },
+        "noise_std": 0.15,
+        "seed": 1
+      }
     },
     {
-      "name": "cautious_glove",
-      "type": "confidence_threshold",
-      "params": { "base": "glove", "threshold": 0.2 }
+      "name": "noisy_numberbatch",
+      "type": "noisy",
+      "params": {
+        "base": { "type": "single_space", "params": { "space": "numberbatch" } },
+        "noise_std": 0.15,
+        "seed": 2
+      }
+    },
+    {
+      "name": "noisy_wikipedia2vec",
+      "type": "noisy",
+      "params": {
+        "base": { "type": "single_space", "params": { "space": "wikipedia2vec" } },
+        "noise_std": 0.15,
+        "seed": 3
+      }
     }
   ]
 }
