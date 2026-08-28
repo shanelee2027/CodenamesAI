@@ -1782,4 +1782,32 @@ picks. Verified `POOLS_BY_NOISE` now contains `blend` alongside the 3
 standard guessers at all 6 noise levels. 194 tests still pass (no test
 constrained the web UI's pool composition, so nothing needed updating).
 
+## Model 1.1: self-play stats for the blend-guesser checkpoint
+
+Requested: stats on the new blend-guesser model, in the README, labeled
+as a subversion since only the guesser pool changed, not the scorer
+architecture.
+
+Ran `scripts/run_arena.py --n-boards 300 --checkpoint
+cache/blend_pool/checkpoints/scorer_best.pt --guesser-pool-config
+configs/guesser_pool_blend.json` (300 boards, 1 guesser in this pool ->
+300 games per codemaster, GPU-batched path, 59.5s total for all 4
+codemaster x guesser pairs). Results:
+
+- learned: 3.7% assassin-hit, 5.28 turns (all) / 5.41 (wins only), 84.7%
+  own-word rate.
+- centroid: 8.3% assassin-hit, 7.38 / 7.72 turns, 87.5% own-word rate --
+  note centroid's own-word rate actually beats model 1.1's here, unlike
+  against the standard 3-guesser pool, but its assassin-hit rate is still
+  more than double.
+- linear_scorer: 15.3% assassin-hit. random: 91.0%.
+
+Explicitly not a controlled model-1-vs-model-1.1 comparison -- different
+guesser pools mean different game difficulty (every codemaster does
+better here than against the standard pool, including random: 91.0% vs.
+88.5% assassin-hit), so the two runs aren't apples-to-apples. Documented
+as a new `docs/versions/v1.1.md` (mirroring v1.md's self-play section
+structure) plus a "Model 1.1" subsection in the README right after Model
+1, both explicit about the non-comparability caveat.
+
 ## Human evaluation (not started)

@@ -184,6 +184,49 @@ Full detail (attempts rule, all six trained noise-level checkpoints and
 their results, what the web UI exposes on top of this, open questions for
 the next model) is in [`docs/versions/v1.md`](docs/versions/v1.md).
 
+### Model 1.1: same scorer, a blended guesser
+
+A subversion, not a new architecture — identical `(k, cause)` scorer and
+feature vector as model 1 above, retrained against a different guesser
+pool: instead of 3 separate noisy single-space guessers, a single
+`BlendGuesser` (weighted average of cosine similarity across all three
+spaces — glove 0.3, numberbatch 0.5, wikipedia2vec 0.2 — plus
+`noise_std=0.08`). This is a real, flagged departure from
+[`docs/design-decisions.md`](docs/design-decisions.md)'s "diversity must
+be in knowledge, not noise" principle: there's only one (synthetic)
+listener here, not three differently-knowledgeable ones. Available in the
+web UI as `learned:blend`, and as a guesser choice (`blend`) alongside the
+standard 3.
+
+Self-play (300 seeded boards, model 1.1 vs. its own blend guesser,
+against the same baselines evaluated with that same guesser):
+
+| codemaster | assassin-hit rate | turns (all games) | turns (wins only) |
+|---|---|---|---|
+| **model 1.1 (learned)** | **3.7%** | **5.28** | **5.41** |
+| centroid | 8.3% | 7.38 | 7.72 |
+| linear_scorer | 15.3% | 19.68 | 19.90 |
+| random | 91.0% | 9.77 | 16.00 |
+
+| codemaster | own | opponent | neutral | assassin |
+|---|---|---|---|---|
+| **model 1.1 (learned)** | **84.7%** | **6.5%** | **8.5%** | **0.4%** |
+| centroid | 87.5% | 6.6% | 5.1% | 0.9% |
+| linear_scorer | 40.1% | 31.2% | 28.0% | 0.7% |
+| random | 34.7% | 31.0% | 27.3% | 7.0% |
+
+Same shape of result as model 1 against the standard pool: `centroid`'s
+own-word rate (87.5%) actually edges out model 1.1's (84.7%) here, but
+its assassin-hit rate is more than double (8.3% vs. 3.7%) — a single,
+more-informed blended listener makes the whole game easier for every
+codemaster (compare `random`'s 91.0% assassin-hit rate here against its
+88.5% against the standard pool), and model 1.1 converts that into
+noticeably shorter games (5.28 turns vs. model 1's 6.46 against the
+harder standard pool) without giving up any of its safety margin over the
+baselines. Not a controlled comparison against model 1 (different guesser
+pool, different game difficulty) — see
+[`docs/versions/v1.1.md`](docs/versions/v1.1.md) for the run details.
+
 ## Layout
 
 ```
