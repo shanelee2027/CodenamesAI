@@ -196,6 +196,16 @@ class TestRegistry:
             assert isinstance(guesser.base, SingleSpaceGuesser)
             assert guesser.base.space == space
 
+    def test_accepts_an_already_parsed_config_dict_not_just_a_path(self):
+        # scripts/web_inspector.py builds one in-memory pool per noise
+        # level by copying and editing the default config dict, so
+        # load_pool needs to accept that directly rather than requiring a
+        # round-trip through a temp file.
+        config = {"guessers": [{"name": "a", "type": "single_space", "params": {"space": "x"}}]}
+        entries = load_pool(config)
+        assert list(entries) == ["a"]
+        assert isinstance(entries["a"].guesser, SingleSpaceGuesser)
+
     def test_held_out_flag_defaults_to_false(self, tmp_path):
         config = {"guessers": [{"name": "a", "type": "single_space", "params": {"space": "x"}}]}
         path = tmp_path / "pool.json"

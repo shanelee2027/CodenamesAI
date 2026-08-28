@@ -185,10 +185,28 @@
     <select id="codemaster"></select>
     <label>top</label>
     <input id="topK" type="number" min="1" max="50" value="10" style="width:60px;" title="How many candidate clues to show, best first.">
-    <label>risk aversion</label>
-    <input id="riskAversion" type="number" step="0.5" placeholder="-10 (default)" style="width:110px;" title="Only affects 'learned:*' codemasters -- the miss penalty used when scoring candidate clues. Blank = model's default (-10).">
     <button id="getAiClue" class="primary">Get AI clues</button>
     <span id="aiClueReadout" class="sub" style="margin:0 0 0 4px;"></span>
+  </div>
+
+  <div class="controls">
+    <span class="sub" style="margin-right:4px;">reward values (learned:* only, blank = default) --</span>
+    <label>own</label>
+    <input id="ownReward" type="number" step="0.5" placeholder="1" style="width:70px;">
+    <label>neutral</label>
+    <input id="neutralReward" type="number" step="0.5" placeholder="0" style="width:70px;">
+    <label>opponent</label>
+    <input id="opponentReward" type="number" step="0.5" placeholder="-1" style="width:70px;">
+    <label>assassin (risk aversion)</label>
+    <input id="assassinReward" type="number" step="0.5" placeholder="-10" style="width:70px;">
+    <label>sim. noise</label>
+    <select id="simNoise" title="Which noise-level guesser pool the 'if this clue+number were actually played' panel simulates against -- independent of which noise level the codemaster was trained under.">
+      <option value="0.0">0.0</option>
+      <option value="0.03" selected>0.03 (default)</option>
+      <option value="0.06">0.06</option>
+      <option value="0.1">0.1</option>
+      <option value="0.15">0.15</option>
+    </select>
   </div>
 
   <div id="message"></div>
@@ -441,6 +459,21 @@ function renderAiCandidates(codemaster, candidates) {
   });
 }
 
+function rewardParams() {
+  const fields = {
+    own_reward: 'ownReward',
+    neutral_reward: 'neutralReward',
+    opponent_reward: 'opponentReward',
+    risk_aversion: 'assassinReward',
+  };
+  let params = '';
+  for (const [param, elementId] of Object.entries(fields)) {
+    const value = document.getElementById(elementId).value.trim();
+    if (value) params += `&${param}=${encodeURIComponent(value)}`;
+  }
+  return params;
+}
+
 async function selectCandidate(codemaster, index) {
   const c = lastCandidates[index];
   document.querySelectorAll('.candidate-row').forEach((row) => row.classList.toggle('active', Number(row.dataset.index) === index));
@@ -450,7 +483,8 @@ async function selectCandidate(codemaster, index) {
   await queryClue();
 
   const seed = currentSeed();
-  const simData = await fetchJSON(`/api/simulate?seed=${seed}&clue=${encodeURIComponent(c.clue)}&number=${c.number}&reveal=${encodeURIComponent(currentReveal())}`);
+  const noise = document.getElementById('simNoise').value;
+  const simData = await fetchJSON(`/api/simulate?seed=${seed}&clue=${encodeURIComponent(c.clue)}&number=${c.number}&reveal=${encodeURIComponent(currentReveal())}&noise=${noise}${rewardParams()}`);
   renderSimulation(simData);
 }
 
@@ -458,9 +492,7 @@ async function getAiClue() {
   const seed = currentSeed();
   const codemaster = document.getElementById('codemaster').value;
   const topK = document.getElementById('topK').value || 1;
-  const riskAversion = document.getElementById('riskAversion').value.trim();
-  const riskParam = riskAversion ? `&risk_aversion=${encodeURIComponent(riskAversion)}` : '';
-  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&top_k=${topK}&reveal=${encodeURIComponent(currentReveal())}${riskParam}`);
+  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&top_k=${topK}&reveal=${encodeURIComponent(currentReveal())}${rewardParams()}`);
   if (data.error) {
     document.getElementById('aiClueReadout').textContent = data.error;
     return;

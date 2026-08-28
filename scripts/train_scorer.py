@@ -38,14 +38,16 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
-from codenames.scorer import N_K_CLASSES, Scorer
+from codenames.scorer import N_OUTCOME_CLASSES, Scorer, decode_outcome_class
 
 
 class ShardedTrainingData(Dataset):
-    """Reads M7's sharded (features, k, seed) .npy triples, keeping only
-    rows whose board seed passes `seed_predicate`. Feature shards stay
-    memory-mapped (read-only); only the small k/seed arrays are loaded
-    fully, since filtering needs to inspect every row's seed anyway."""
+    """Reads M7's sharded (features, outcome, seed) .npy triples, keeping
+    only rows whose board seed passes `seed_predicate`. Feature shards
+    stay memory-mapped (read-only); only the small outcome/seed arrays
+    are loaded fully, since filtering needs to inspect every row's seed
+    anyway. `outcome` is `codenames.scorer.outcome_class(k, cause)`, one
+    of `N_OUTCOME_CLASSES` classes -- see scorer.py's module docstring."""
 
     def __init__(self, data_dir: Path, seed_predicate):
         feature_paths = sorted(data_dir.glob("features_*.npy"))
@@ -53,7 +55,7 @@ class ShardedTrainingData(Dataset):
             raise ValueError(f"no shards found in {data_dir} (expected features_*.npy)")
 
         self._features: list[np.memmap] = []
-        self._k: list[np.ndarray] = []
+        self._outcome: list[np.ndarray] = []
         self._row_map: list[tuple[int, int]] = []
 
         for path in feature_paths:
@@ -64,7 +66,7 @@ class ShardedTrainingData(Dataset):
                 continue
             shard_i = len(self._features)
             self._features.append(np.load(path, mmap_mode="r"))
-            self._k.append(np.load(data_dir / f"k_{idx}.npy"))
+            self._outcome.append(np.load(data_dir / f"outcome_{idx}.npy"))
             self._row_map.extend((shard_i, int(local)) for local in keep)
 
     @property
@@ -77,7 +79,7 @@ class ShardedTrainingData(Dataset):
     def __getitem__(self, i: int) -> tuple[torch.Tensor, int]:
         shard_i, local = self._row_map[i]
         x = np.array(self._features[shard_i][local], dtype=np.float32, copy=True)
-        y = int(self._k[shard_i][local])
+        y = int(self._outcome[shard_i][local])
         return torch.from_numpy(x), y
 
 
@@ -146,16 +148,17 @@ def _plot_training_curves(history: list[dict], output_path: Path) -> None:
 
 
 def _plot_reliability_diagrams(all_probs: np.ndarray, all_labels: np.ndarray, output_path: Path) -> None:
-    fig, axes = plt.subplots(1, N_K_CLASSES, figsize=(4 * N_K_CLASSES, 4), sharey=True)
-    for k in range(N_K_CLASSES):
-        mean_pred, freq, counts = _reliability_curve(all_probs[:, k], (all_labels == k).astype(np.float32))
-        ax = axes[k]
+    fig, axes = plt.subplots(1, N_OUTCOME_CLASSES, figsize=(3 * N_OUTCOME_CLASSES, 4), sharey=True)
+    for cls in range(N_OUTCOME_CLASSES):
+        mean_pred, freq, counts = _reliability_curve(all_probs[:, cls], (all_labels == cls).astype(np.float32))
+        ax = axes[cls]
         ax.plot([0, 1], [0, 1], "--", color="gray", label="perfect calibration")
         valid = counts > 0
         ax.plot(mean_pred[valid], freq[valid], marker="o", label="observed")
-        ax.set_title(f"k = {k}")
-        ax.set_xlabel("predicted P(k)")
-        if k == 0:
+        k, cause = decode_outcome_class(cls)
+        ax.set_title(f"k={k}\n{cause.value if cause else 'clean'}", fontsize=9)
+        ax.set_xlabel("predicted P")
+        if cls == 0:
             ax.set_ylabel("observed frequency")
         ax.set_xlim(0, 1)
         ax.set_ylim(0, 1)

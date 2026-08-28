@@ -39,6 +39,12 @@ fast enough that parallelizing them too wasn't worth the added complexity.
 
 Usage:
     python scripts/run_ablation_study.py
+    python scripts/run_ablation_study.py --noise-levels "0.0,0.03,0.06,0.1,0.15" --noise-only
+
+`--noise-only` skips every variant above except the noise sweep -- for
+refreshing just the web UI's learned:noise_* checkpoints
+(scripts/web_inspector.py) without paying for the other 6 axes, which
+aren't kept as permanent UI options.
 """
 
 from __future__ import annotations
@@ -113,7 +119,7 @@ def _derive_if_needed(src_dir: Path, dst_dir: Path, transform) -> None:
         idx = features_path.stem.split("_", 1)[1]
         features = np.load(features_path)
         np.save(dst_dir / f"features_{idx}.npy", transform(features).astype(np.float32))
-        for name in ("k", "seed"):
+        for name in ("outcome", "seed"):
             np.save(dst_dir / f"{name}_{idx}.npy", np.load(src_dir / f"{name}_{idx}.npy"))
 
 
@@ -131,7 +137,7 @@ def _train_variant(name: str, data_dir: Path, checkpoints_root: Path, train_kwar
     train(data_dir=data_dir, output_dir=out_dir, model_factory=model_factory, **train_kwargs)
     metrics = _best_epoch_metrics(out_dir)
     metrics["train_seconds"] = time.time() - t0
-    metrics["n_examples"] = sum(len(np.load(p, mmap_mode="r")) for p in data_dir.glob("k_*.npy"))
+    metrics["n_examples"] = sum(len(np.load(p, mmap_mode="r")) for p in data_dir.glob("outcome_*.npy"))
     print(f"  val_loss={metrics['val_loss']:.4f} val_acc={metrics['val_accuracy']:.4f} ({metrics['train_seconds']:.0f}s)")
     return metrics
 
@@ -140,21 +146,22 @@ def _linear_feature_importance(checkpoint_dir: Path, layout: FeatureLayout, top_
     checkpoint = torch.load(checkpoint_dir / "scorer_best.pt", map_location="cpu")
     model = LinearScorer(input_dim=checkpoint["input_dim"])
     model.load_state_dict(checkpoint["model_state"])
-    weight = model.net.weight.detach().numpy()  # (N_K_CLASSES, input_dim)
+    weight = model.net.weight.detach().numpy()  # (N_OUTCOME_CLASSES, input_dim)
     importance = np.linalg.norm(weight, axis=0)
     order = np.argsort(-importance)[:top_k]
     return [(layout.describe(int(i)), float(importance[i])) for i in order]
 
 
-def _write_report(path: Path, results: dict[str, dict], importances: list[tuple[str, float]]) -> None:
+def _write_report(path: Path, results: dict[str, dict], importances: list[tuple[str, float]] | None) -> None:
     lines = ["# M9 ablation study report\n", "| variant | n_examples | val_loss | val_accuracy |", "|---|---|---|---|"]
     for name, m in sorted(results.items(), key=lambda kv: kv[1]["val_loss"]):
         lines.append(f"| {name} | {m['n_examples']} | {m['val_loss']:.4f} | {m['val_accuracy']:.4f} |")
-    lines.append("\n## Linear baseline: top features by importance (L2 norm of weight across k-classes)\n")
-    lines.append("| feature | importance |")
-    lines.append("|---|---|")
-    for label, value in importances:
-        lines.append(f"| {label} | {value:.4f} |")
+    if importances is not None:
+        lines.append("\n## Linear baseline: top features by importance (L2 norm of weight across k-classes)\n")
+        lines.append("| feature | importance |")
+        lines.append("|---|---|")
+        for label, value in importances:
+            lines.append(f"| {label} | {value:.4f} |")
     path.write_text("\n".join(lines) + "\n")
 
 
@@ -178,8 +185,17 @@ def main() -> None:
         "'noise_<value>' variant from a fresh dataset generated with that noise_std, "
         "otherwise identical to the default guesser pool config.",
     )
+    parser.add_argument(
+        "--noise-only",
+        action="store_true",
+        help="skip base/unsorted/pool-sensitivity/drop-space/averaged/linear_baseline entirely -- "
+        "generate and train just the --noise-levels variants. For refreshing the web UI's "
+        "learned:noise_* checkpoints without paying for a full 11-variant study.",
+    )
     args = parser.parse_args()
     noise_levels = [float(x) for x in args.noise_levels.split(",") if x.strip()]
+    if args.noise_only and not noise_levels:
+        parser.error("--noise-only requires --noise-levels")
 
     sims = SimilarityTensor.load(args.sims_cache_dir)
     layout = FeatureLayout(spaces=sims.spaces)
@@ -201,6 +217,9 @@ def main() -> None:
         axis = n.replace("noisy_", "")
         pool_configs[f"{axis}_heavy"] = {other: (3.0 if other == n else 1.0) for other in guesser_names}
     pool_dirs = {name: data_root / f"pool_{name}" for name in pool_configs}
+    if args.noise_only:
+        pool_configs = {}
+        pool_dirs = {}
 
     # Noise-std sweep (opt-in): same generation seed as base, so it's the
     # same underlying board/clue samples -- only the guesser noise
@@ -215,13 +234,17 @@ def main() -> None:
         noise_pool_configs[tag] = pool_config_path
         noise_dirs[tag] = data_root / f"noise_{tag}"
 
-    jobs = [
-        {"output_dir": base_dir, "n_examples": args.base_n, "seed": args.seed, **common},
-        {
-            "output_dir": unsorted_dir, "n_examples": args.base_n, "seed": args.seed,
-            "feature_builder": build_features_unsorted, **common,
-        },
-    ]
+    jobs = []
+    if not args.noise_only:
+        jobs.extend(
+            [
+                {"output_dir": base_dir, "n_examples": args.base_n, "seed": args.seed, **common},
+                {
+                    "output_dir": unsorted_dir, "n_examples": args.base_n, "seed": args.seed,
+                    "feature_builder": build_features_unsorted, **common,
+                },
+            ]
+        )
     jobs.extend(
         {"output_dir": pool_dirs[name], "n_examples": args.pool_sensitivity_n, "seed": args.seed + 1, "guesser_weights": weights, **common}
         for name, weights in pool_configs.items()
@@ -240,26 +263,30 @@ def main() -> None:
         list(pool.map(_generation_job, jobs))
     print(f"[generate] all {len(jobs)} jobs done in {time.time() - t0:.0f}s")
 
-    # --- Derive: drop-space (x n_spaces) + averaged-concatenation, from base ---
-    drop_space_dirs = {}
-    for space in sims.spaces:
-        d = data_root / f"drop_{space}"
-        _derive_if_needed(base_dir, d, lambda f, s=space: drop_space(f, layout, s))
-        drop_space_dirs[space] = d
+    variants: dict[str, Path] = {}
+    importances = None
+    if not args.noise_only:
+        # --- Derive: drop-space (x n_spaces) + averaged-concatenation, from base ---
+        drop_space_dirs = {}
+        for space in sims.spaces:
+            d = data_root / f"drop_{space}"
+            _derive_if_needed(base_dir, d, lambda f, s=space: drop_space(f, layout, s))
+            drop_space_dirs[space] = d
 
-    averaged_dir = data_root / "averaged"
-    _derive_if_needed(base_dir, averaged_dir, lambda f: average_concatenation(f, layout))
+        averaged_dir = data_root / "averaged"
+        _derive_if_needed(base_dir, averaged_dir, lambda f: average_concatenation(f, layout))
 
-    # --- Train every variant ---
-    variants = {"full": base_dir, "unsorted": unsorted_dir, "averaged": averaged_dir}
-    variants.update({f"drop_{space}": d for space, d in drop_space_dirs.items()})
-    variants.update({f"pool_{name}": d for name, d in pool_dirs.items()})
+        variants = {"full": base_dir, "unsorted": unsorted_dir, "averaged": averaged_dir}
+        variants.update({f"drop_{space}": d for space, d in drop_space_dirs.items()})
+        variants.update({f"pool_{name}": d for name, d in pool_dirs.items()})
+
     variants.update({f"noise_{tag}": d for tag, d in noise_dirs.items()})
 
     results = {name: _train_variant(name, d, checkpoints_root, train_kwargs) for name, d in variants.items()}
-    results["linear_baseline"] = _train_variant("linear_baseline", base_dir, checkpoints_root, train_kwargs, model_factory=LinearScorer)
 
-    importances = _linear_feature_importance(checkpoints_root / "linear_baseline", layout)
+    if not args.noise_only:
+        results["linear_baseline"] = _train_variant("linear_baseline", base_dir, checkpoints_root, train_kwargs, model_factory=LinearScorer)
+        importances = _linear_feature_importance(checkpoints_root / "linear_baseline", layout)
 
     report_path = data_root / "report.md"
     _write_report(report_path, results, importances)

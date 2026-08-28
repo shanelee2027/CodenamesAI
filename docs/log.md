@@ -1108,4 +1108,95 @@ All 169 tests pass after the change (several in `tests/test_scorer.py`
 were rewritten, not just relabeled, since the actual reward values for a
 given `(k, n)` pair changed).
 
+## Post-M9: (k, cause) scorer redesign -- learn the difference between an opponent miss and an assassin miss
+
+The user's next question, working through the model design: "isn't the
+guesser unable to distinguish which specific board word is the
+assassin?" Answer, worked out in conversation: not the guesser (that's
+correct by design, it never sees roles), but the *scorer*. Its label was
+`k` alone -- how many own-words a guesser gets right before *any* miss --
+so a stop-on-neutral, a stop-on-opponent, and a stop-on-assassin all
+collapsed into the same training signal, and at scoring time every
+predicted miss got charged the same flat worst-case `miss_penalty`
+(-10, the assassin value). The model could never learn "this clue risks
+the opponent" as different from "this clue risks the assassin" -- both
+just looked like "risk of an early stop."
+
+Fix: widen the label from 5 classes (`k` in 0..4) to 13 classes, `(k,
+cause)` jointly -- `codenames.scorer.outcome_class`/`decode_outcome_class`
+pack/unpack `k*3 + cause_index` for `k` in 0..3 across
+{neutral,opponent,assassin}, plus one class for `k=MAX_K` (censored,
+cause undefined, no miss happened). `reward_matrix`/
+`expected_reward_and_best_n` now take four independent reward
+parameters -- `own_reward`, `neutral_reward`, `opponent_reward`,
+`assassin_reward` -- instead of one `miss_penalty`, so a natural-stop
+cell charges the *cause's own* value instead of a flattened one.
+Confirmed with the user before implementing: `neutral_reward` defaults to
+the true game's 0.0, not `codemasters/linear_scorer.py`'s baseline-3
+constant of -0.3 (an untuned illustrative value for a different, hand-
+coded codemaster, not something the actual scorer should be trained
+against).
+
+Also added, per the user's follow-up request: all four reward values are
+now runtime-adjustable in the web UI (previously only the assassin one,
+as "risk aversion"), for the same reason risk-aversion already was --
+none of them are baked into training, only into the scoring formula
+applied after inference. And a play-time noise-level dial on the turn-
+simulation panel, picking which of the 5 already-trained noise-level
+guesser pools (0.0/0.03/0.06/0.1/0.15) to simulate a clue against --
+independent of which noise level the codemaster itself was *trained*
+under, so a train/test noise mismatch can be explored directly
+(`codenames/guessers/registry.py::load_pool` widened to accept an
+in-memory config dict, not just a file path, so the 5 pools can be built
+once at server startup without writing temp files).
+
+Mechanically: `simulate_natural_stop` (scripts/generate_training_data.py)
+now returns `(k, cause, reward)` instead of `(k, reward)` -- it already
+computed the stopping role internally, just didn't return it. `generate()`
+encodes via `outcome_class` and writes `outcome_*.npy` shards (renamed
+from `k_*.npy`). No regeneration was needed for the *sampling* itself --
+board/clue/guesser sampling never depended on the label scheme -- but the
+*label* changed, so all training data needed fresh generation regardless
+(the old `k_*.npy` shards don't carry cause information at all).
+
+Also did the previously-agreed cleanup alongside this: the web UI's
+codemaster dropdown is now exactly `random`, `centroid`,
+`oracle:numberbatch`, plus 5 `learned:noise_*` entries (was 15+ stale M9
+ablation-study checkpoints). `web_inspector.py::_discover_checkpoints`
+now globs `noise_*/scorer_best.pt` specifically rather than every
+subdirectory, so a future full ablation-study rerun (drop-space,
+pool-sensitivity, etc. -- kept in `run_ablation_study.py` for research
+use, just not permanent UI options) won't repopulate the dropdown with
+those again. Added `--noise-only` to `run_ablation_study.py` so
+refreshing just the 5 UI checkpoints doesn't pay for the other 6 axes.
+
+**Retrain results** (`cache/m9/`, wiped and regenerated fresh under the
+new 13-class label, `--noise-levels "0.0,0.03,0.06,0.1,0.15" --noise-only`,
+200k examples each, ~754s generation for all 5 in parallel + ~1-2min
+training each):
+
+| noise_std | val_loss | val_accuracy |
+|---|---|---|
+| 0.0  | 0.8507 | 0.6810 |
+| 0.03 | 0.9766 | 0.6350 |
+| 0.06 | 1.1788 | 0.5704 |
+| 0.1  | 1.4123 | 0.5024 |
+| 0.15 | 1.6228 | 0.4332 |
+
+Same clean monotonic noise relationship as the original 5-class sweep, as
+expected -- noise magnitude is still the dominant effect, that finding
+didn't depend on the label scheme. Both val_loss and val_accuracy are not
+directly comparable to the old 5-class numbers (a 13-way classification
+problem has a higher entropy floor and more ways to be "close but wrong"
+than a 5-way one), so this isn't evidence of the new model doing worse --
+it's a harder, more informative prediction target by construction.
+`docs/m9_ablation_report.md` is deliberately left un-updated -- it's a
+dated snapshot of the old architecture's full 11-variant study, not
+reproduced today (out of scope for this change; would need a fresh full
+run, not just the noise axis, to be a fair comparison).
+
+All 184 tests pass (169 + 15 new: `outcome_class`/`decode_outcome_class`
+round-trip and validation tests, `reward_matrix`'s per-cause behavior,
+`load_pool` accepting a dict, `LearnedCodemaster`'s 3 new reward params).
+
 ## M10 — Human evaluation

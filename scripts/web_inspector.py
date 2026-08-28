@@ -6,12 +6,19 @@ new dependency) instead of printed to a terminal. This lets you click cards
 to reveal them and re-type clues interactively instead of re-running a CLI
 command each time.
 
-Also lets you test codemasters (random/centroid/linear_scorer, an
-"oracle:numberbatch" upper-bound explorer -- see codenames/codemasters/
-oracle.py -- and any trained "learned" checkpoint found under
-cache/checkpoints/ or cache/m9/checkpoints/*/, auto-discovered at startup,
-no flag needed for the common case) and simulate the resulting turn
-against every guesser.
+Also lets you test codemasters (random/centroid, an "oracle:numberbatch"
+upper-bound explorer -- see codenames/codemasters/oracle.py -- and any
+trained "learned" checkpoint found under cache/checkpoints/ or
+cache/m9/checkpoints/noise_*/, auto-discovered at startup, no flag needed
+for the common case -- currently the noise-sweep variants, see
+docs/log.md) and simulate the resulting turn against every guesser. Two
+things stay adjustable at request time with no retraining, since neither
+is baked into the trained model: the 4 reward values a learned
+codemaster's clue choice (and the simulated turn's displayed reward) are
+scored against (own/neutral/opponent/assassin -- see
+codenames/scorer.py's module docstring), and which noise-level guesser
+pool a turn gets simulated against (one of NOISE_LEVELS, independent of
+which noise level the codemaster itself was *trained* under).
 
 Usage:
     python scripts/web_inspector.py [--port 8000]
@@ -21,6 +28,7 @@ Then open http://localhost:8000 in a browser.
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -29,28 +37,58 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 
 from codenames.board import Board, Role, is_legal_clue
-from codenames.codemasters import CentroidCodemaster, LinearScorerCodemaster, OracleCodemaster, RandomCodemaster
+from codenames.codemasters import CentroidCodemaster, OracleCodemaster, RandomCodemaster
 from codenames.game import ROLE_REWARD
 from codenames.guessers import load_pool
+from codenames.guessers.registry import DEFAULT_POOL_CONFIG
+from codenames.scorer import DEFAULT_MISS_PENALTY, OWN_REWARD
 from codenames.similarity import SimilarityTensor
 from inspector import BASELINE_ROLE_WEIGHTS, ROLE_LABELS, baseline_score
 
 HTML_PATH = Path(__file__).parent / "webui" / "inspector.html"
 
 SIMS = SimilarityTensor.load()
-POOL = load_pool()
+
+# The same discrete noise levels scripts/run_ablation_study.py's
+# --noise-levels sweep trains against -- picking any other value would
+# need a fresh guesser pool AND wouldn't correspond to any trained
+# learned:noise_* codemaster, so the play-time noise dial is restricted
+# to exactly these rather than a free-form number.
+NOISE_LEVELS = [0.0, 0.03, 0.06, 0.1, 0.15]
+DEFAULT_NOISE = 0.03
+_BASE_POOL_CONFIG = json.loads(DEFAULT_POOL_CONFIG.read_text())
+
+
+def _pool_config_at_noise(noise_std: float) -> dict:
+    config = copy.deepcopy(_BASE_POOL_CONFIG)
+    for entry in config["guessers"]:
+        if entry.get("type") == "noisy":
+            entry["params"]["noise_std"] = noise_std
+    return config
+
+
+# One pool per noise level, built once at startup (load_pool accepts an
+# in-memory config dict, not just a file path -- see registry.py) so a
+# simulate request just picks one rather than reconstructing guessers
+# per request.
+POOLS_BY_NOISE = {level: load_pool(_pool_config_at_noise(level)) for level in NOISE_LEVELS}
+POOL = POOLS_BY_NOISE[DEFAULT_NOISE]
 
 
 def _discover_checkpoints() -> dict[str, Path]:
-    """Scan the usual output locations -- scripts/train_scorer.py's default
-    output dir and scripts/run_ablation_study.py's per-variant checkpoints
-    -- for trained models, so the web UI can offer a "learned" codemaster
-    without needing a --checkpoint flag for the common case."""
+    """Scan scripts/run_ablation_study.py's noise-sweep checkpoints for
+    trained models, so the web UI can offer "learned" codemasters without
+    needing a --checkpoint flag for the common case. Restricted to
+    noise_*/ specifically (not every subdirectory under
+    cache/m9/checkpoints/) so the dropdown stays limited to the 5
+    permanent noise-level variants even if a full ablation study run
+    (drop-space, pool-sensitivity, etc. -- not kept as UI options) leaves
+    its other checkpoints on disk too."""
     found: dict[str, Path] = {}
     default = Path("cache/checkpoints/scorer_best.pt")
     if default.exists():
         found["checkpoints"] = default
-    for path in sorted(Path("cache/m9/checkpoints").glob("*/scorer_best.pt")):
+    for path in sorted(Path("cache/m9/checkpoints").glob("noise_*/scorer_best.pt")):
         found[path.parent.name] = path
     return found
 
@@ -75,7 +113,6 @@ def _load_learned_codemasters() -> dict:
 CODEMASTERS: dict = {
     "random": RandomCodemaster(seed=0),
     "centroid": CentroidCodemaster(seed=0),
-    "linear_scorer": LinearScorerCodemaster(),
 }
 if "numberbatch" in SIMS.spaces:
     CODEMASTERS["oracle:numberbatch"] = OracleCodemaster(space="numberbatch")
@@ -166,15 +203,36 @@ def _parse_reveal(query: dict) -> list[str]:
     return raw.split(",") if raw else []
 
 
-def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str, risk_aversion: str = "", top_k: int = 1) -> dict:
+# Query-param name -> LearnedCodemaster attribute. "risk_aversion" keeps
+# its established name (-> miss_penalty, the assassin value) rather than
+# being renamed "assassin_reward" everywhere, since that's the field the
+# UI has always called it and matches SCOPE's own "risk aversion" framing.
+_REWARD_PARAMS = {
+    "risk_aversion": "miss_penalty",
+    "own_reward": "own_reward",
+    "neutral_reward": "neutral_reward",
+    "opponent_reward": "opponent_reward",
+}
+
+
+def _apply_reward_overrides(codemaster, overrides: dict[str, str]) -> None:
+    """Set any of LearnedCodemaster's 4 reward attributes directly on the
+    shared instance from raw (possibly empty) query-string values -- fine
+    for a single-user local dev tool. No-op for codemasters without these
+    attributes (everything except LearnedCodemaster)."""
+    for param, attr in _REWARD_PARAMS.items():
+        value = overrides.get(param, "")
+        if value and hasattr(codemaster, attr):
+            setattr(codemaster, attr, float(value))
+
+
+def build_give_clue_response(
+    seed: int, reveal: list[str], codemaster_name: str, reward_overrides: dict[str, str] | None = None, top_k: int = 1
+) -> dict:
     if codemaster_name not in CODEMASTERS:
         return {"error": f"unknown codemaster {codemaster_name!r}, choices: {list(CODEMASTERS)}"}
     codemaster = CODEMASTERS[codemaster_name]
-    if risk_aversion and hasattr(codemaster, "miss_penalty"):
-        # Only LearnedCodemaster has this knob; set directly on the shared
-        # instance rather than threading it through give_clue()'s interface
-        # -- fine for a single-user local dev tool.
-        codemaster.miss_penalty = float(risk_aversion)
+    _apply_reward_overrides(codemaster, reward_overrides or {})
     board = _make_board(seed, reveal)
 
     if top_k > 1 and hasattr(codemaster, "top_k_clues"):
@@ -186,12 +244,14 @@ def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str,
     return {"codemaster": codemaster_name, "clues": clues}
 
 
-def _simulate_turn(board: Board, clue: str, number: int, guesser, sims: SimilarityTensor) -> dict:
+def _simulate_turn(board: Board, clue: str, number: int, guesser, sims: SimilarityTensor, reward_table: dict) -> dict:
     """What actually happens if (clue, number) is played against one
     guesser, from the current board state -- same stop-on-first-miss /
     number-attempts logic as codenames.game.play_turn, but read-only
     (peeks at role_of, never reveals) since the same board is reused
-    across every guesser in one request."""
+    across every guesser in one request. `reward_table` lets the
+    displayed reward reflect whatever reward overrides the UI is
+    currently exploring, rather than always the true ROLE_REWARD."""
     candidates = [w for w in board.words if not board.is_revealed(w)]
     ranked = guesser.rank_candidates(clue, candidates, sims)
     attempts = ranked[:number]
@@ -202,7 +262,7 @@ def _simulate_turn(board: Board, clue: str, number: int, guesser, sims: Similari
     for word in attempts:
         role = board.role_of(word)
         guesses.append({"word": word, "role": ROLE_LABELS[role]})
-        reward += ROLE_REWARD[role]
+        reward += reward_table[role]
         if role != Role.OWN:
             ended_reason = role.value
             break
@@ -213,13 +273,23 @@ def _simulate_turn(board: Board, clue: str, number: int, guesser, sims: Similari
     return {"guesses": guesses, "reward": reward, "ended_reason": ended_reason}
 
 
-def build_simulate_response(seed: int, reveal: list[str], clue: str, number: int) -> dict:
+def build_simulate_response(
+    seed: int, reveal: list[str], clue: str, number: int, reward_overrides: dict[str, str] | None = None, noise: float = DEFAULT_NOISE
+) -> dict:
+    overrides = reward_overrides or {}
+    reward_table = {
+        Role.OWN: float(overrides.get("own_reward") or OWN_REWARD),
+        Role.NEUTRAL: float(overrides.get("neutral_reward") or ROLE_REWARD[Role.NEUTRAL]),
+        Role.OPPONENT: float(overrides.get("opponent_reward") or ROLE_REWARD[Role.OPPONENT]),
+        Role.ASSASSIN: float(overrides.get("risk_aversion") or DEFAULT_MISS_PENALTY),
+    }
+    pool = POOLS_BY_NOISE.get(noise, POOL)
     board = _make_board(seed, reveal)
     results = [
-        {"name": name, **_simulate_turn(board, clue, number, entry.guesser, SIMS)}
-        for name, entry in POOL.items()
+        {"name": name, **_simulate_turn(board, clue, number, entry.guesser, SIMS, reward_table)}
+        for name, entry in pool.items()
     ]
-    return {"clue": clue, "number": number, "results": results}
+    return {"clue": clue, "number": number, "noise": noise, "results": results}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -270,9 +340,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/give_clue":
             seed = int(query.get("seed", ["42"])[0])
             codemaster_name = query.get("codemaster", [""])[0]
-            risk_aversion = query.get("risk_aversion", [""])[0]
+            reward_overrides = {param: query.get(param, [""])[0] for param in _REWARD_PARAMS}
             top_k = int(query.get("top_k", ["1"])[0])
-            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, risk_aversion, top_k)
+            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, reward_overrides, top_k)
             self._send_json(response, status=400 if "error" in response else 200)
             return
 
@@ -280,10 +350,12 @@ class Handler(BaseHTTPRequestHandler):
             seed = int(query.get("seed", ["42"])[0])
             clue = query.get("clue", [""])[0].strip()
             number = int(query.get("number", ["1"])[0])
+            noise = float(query.get("noise", [str(DEFAULT_NOISE)])[0])
+            reward_overrides = {param: query.get(param, [""])[0] for param in _REWARD_PARAMS}
             if not clue:
                 self._send_json({"error": "clue is required"}, status=400)
                 return
-            self._send_json(build_simulate_response(seed, _parse_reveal(query), clue, number))
+            self._send_json(build_simulate_response(seed, _parse_reveal(query), clue, number, reward_overrides, noise))
             return
 
         self.send_response(404)

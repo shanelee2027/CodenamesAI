@@ -99,26 +99,47 @@ the similarity tensor; the network learns to read a similarity profile.
 
 ### The model
 
-MLP. Input ~115 → hidden (256, 256, 128) → 5 logits → softmax.
+MLP. Input ~115 → hidden (256, 256, 128) → 13 logits → softmax.
 
-Output is a **distribution over k**, the number of own-words the guesser will
-reveal before stopping (k ∈ 0..4). Not a scalar score.
+Output is a **distribution over (k, cause)**: `k` is the number of
+own-words the guesser will reveal before stopping (k ∈ 0..4), and `cause`
+is *which* role actually stopped it — neutral, opponent, or assassin
+(undefined/`None` when k=4, the right-censored "reached the cap clean, no
+miss" bucket). That's `4 values of k (0..3) × 3 causes + 1 censored class
+= 13` classes, not a scalar score, and not just a distribution over k
+alone (see `codenames/scorer.py`'s module docstring for why: an earlier
+version predicted k alone and had to charge every miss the same flat
+worst-case penalty, since it couldn't tell a neutral miss from an
+assassin one).
 
-Three reasons for a distribution:
-- Clue number selection falls out arithmetically (below).
-- Calibration is measurable — reliability diagrams are a real diagnostic.
-- Risk aversion becomes a runtime knob, adjustable without retraining.
+Reasons for a distribution over the full (k, cause) pair rather than a
+scalar:
+- Clue number selection falls out arithmetically (below), searched over
+  every n from one forward pass.
+- Calibration is measurable — reliability diagrams are a real diagnostic,
+  one per (k, cause) class.
+- All four reward values (own/neutral/opponent/assassin) become runtime
+  knobs, adjustable without retraining — not just the assassin one.
 
 ### Play-time scoring
 
 ```
-E[reward | clue, n] = Σ_k P(k | clue) · reward(k, n)
+E[reward | clue, n] = Σ_(k,cause) P(k, cause | clue) · reward(k, cause, n)
 best_n              = argmax_n E[reward | clue, n]
 score(clue)         = E[reward | clue, best_n]
 ```
 
-Reward: +1 per own word, 0 and stop on neutral, −1 and stop on opponent,
-−10 and stop on assassin. The assassin penalty is the risk-aversion parameter.
+`reward(k, cause, n)`: if the natural stop happens within the n-attempt
+budget (`k < n`), it's `k · own_reward + reward_of(cause)`; otherwise the
+budget runs out first (`k ≥ n`) and it's just `n · own_reward`, cause
+irrelevant. All four reward values are independent runtime parameters
+(`codenames/scorer.py::reward_matrix`/`expected_reward_and_best_n`,
+exposed on `LearnedCodemaster` and in the web UI) — defaults are the true
+game's own +1, neutral 0, opponent −1, assassin −10, not SCOPE
+baseline-3's separate untuned −0.3-for-neutral constant. The assassin
+value doubles as "the risk-aversion parameter" per this section's own
+framing, but unlike the model's earlier version, turning it down no
+longer also (incorrectly) discounts neutral/opponent risk along with it.
 
 **Divergence from standard Codenames: no bonus guess.** A clue announcing
 `n` grants exactly `n` attempts here, not the standard rule's `n+1`

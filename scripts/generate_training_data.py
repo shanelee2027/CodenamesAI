@@ -1,19 +1,27 @@
 """Generate training examples for M8's scorer (SCOPE.md §M7).
 
-Each example is (features, k, reward) for one (sampled board state, sampled
-clue, sampled training-pool guesser) triple:
+Each example is (features, outcome, reward) for one (sampled board state,
+sampled clue, sampled training-pool guesser) triple:
 
 - **features**: `build_features(board, clue, sims, turn_index)` -- §2's
   feature vector (see codenames/features.py).
-- **k**: how many own-words this guesser would reveal for this clue before
-  stopping, capped at MAX_K (matches §2's k in 0..4). Computed as a
-  side-effect-free rollout over the guesser's own ranking -- it peeks at
-  `board.role_of()` and never calls `board.reveal()`, so many (clue,
-  guesser) pairs can be evaluated against the exact same sampled board
-  state without needing a fresh copy per pair. See `simulate_natural_stop`.
+- **outcome**: `codenames.scorer.outcome_class(k, cause)`, packing two
+  things about this guesser's rollout into one training label: `k`, how
+  many own-words it revealed before stopping (capped at MAX_K, matching
+  §2's k in 0..4), and `cause`, which role (neutral/opponent/assassin)
+  actually stopped it -- `None` iff k==MAX_K (hit the cap clean, no miss).
+  Computed as a side-effect-free rollout over the guesser's own ranking --
+  it peeks at `board.role_of()` and never calls `board.reveal()`, so many
+  (clue, guesser) pairs can be evaluated against the exact same sampled
+  board state without needing a fresh copy per pair. See
+  `simulate_natural_stop`. Recording the cause (not just k) is what lets
+  `codenames.scorer.reward_matrix` charge a neutral miss, an opponent
+  miss, and an assassin miss differently instead of one flattened
+  worst-case penalty -- see scorer.py's module docstring.
 - **reward**: the reward SCOPE §2 attaches to that same rollout (own words
   +1 each, plus whatever ended the run -- another miss's reward, or nothing
-  if it hit the k cap without a miss).
+  if it hit the k cap without a miss). Diagnostic only -- not read by
+  scripts/train_scorer.py, which trains against `outcome` alone.
 
 Guesser sampling still goes through `training_pool()` (SCOPE §3/§5's
 mechanism for "training code must never touch held-out guessers"), though
@@ -42,7 +50,8 @@ guessers as the generalization check).
 
 **Output** is sharded .npy files under `--output-dir` (default
 cache/training_data/, gitignored): `features_NNNNN.npy` (float32,
-shard_size x feature_dim), `k_NNNNN.npy` (int32), `reward_NNNNN.npy`
+shard_size x feature_dim), `outcome_NNNNN.npy` (int32, one of
+`codenames.scorer.N_OUTCOME_CLASSES` classes), `reward_NNNNN.npy`
 (float32), `seed_NNNNN.npy` (int64, the sampled board's seed) -- each
 independently mmap-loadable. `seed` exists specifically so M8's training
 script can split by board seed rather than by row (SCOPE §4: "the same
@@ -73,6 +82,7 @@ from codenames.features import build_features, feature_dim
 from codenames.game import ROLE_REWARD
 from codenames.guessers.base import Guesser
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG, training_pool
+from codenames.scorer import outcome_class
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 CLUE_MIX = {"subset_topk": 0.6, "any_word_topk": 0.3, "random": 0.1}
@@ -155,11 +165,24 @@ def sample_clue(rng: random.Random, sims: SimilarityTensor, board: Board) -> str
     return rng.choice(candidates) if candidates else None
 
 
-def simulate_natural_stop(board: Board, clue: str, guesser: Guesser, sims: SimilarityTensor, max_k: int = MAX_K) -> tuple[int, float]:
+def simulate_natural_stop(
+    board: Board, clue: str, guesser: Guesser, sims: SimilarityTensor, max_k: int = MAX_K
+) -> tuple[int, Role | None, float]:
     """How many own-words `guesser` would reveal for `clue` before
-    stopping (capped at max_k), and the reward that rollout earns. Reads
-    board state (`role_of`) but never mutates it (`reveal`) -- lets many
-    (clue, guesser) pairs be evaluated against the same sampled board."""
+    stopping (capped at max_k), which role stopped it (None iff the cap
+    was hit with no miss), and the reward that rollout earns. Reads board
+    state (`role_of`) but never mutates it (`reveal`) -- lets many (clue,
+    guesser) pairs be evaluated against the same sampled board.
+
+    Assumes `ranked` always contains a non-own word by the time k would
+    otherwise reach max_k or `ranked` runs out -- true for this project's
+    board sampling (the assassin is never revealed by
+    `sample_partial_board`, so it's always an unrevealed candidate) and
+    guesser pool (none of them truncate their own ranking). If that
+    invariant is ever violated, a k<max_k result with no miss encountered
+    falls through to `(k, None, reward)`, which `codenames.scorer.
+    outcome_class` will reject rather than silently mislabel -- fail loud,
+    not silently wrong."""
     candidates = [w for w in board.words if not board.is_revealed(w)]
     ranked = guesser.rank_candidates(clue, candidates, sims)
 
@@ -171,11 +194,11 @@ def simulate_natural_stop(board: Board, clue: str, guesser: Guesser, sims: Simil
             k += 1
             reward += ROLE_REWARD[Role.OWN]
             if k >= max_k:
-                break
+                return k, None, reward
         else:
             reward += ROLE_REWARD[role]
-            break
-    return k, reward
+            return k, role, reward
+    return k, None, reward
 
 
 def _existing_shard_count(output_dir: Path) -> int:
@@ -223,7 +246,7 @@ def generate(
     while produced < n_examples:
         this_shard_size = min(shard_size, n_examples - produced)
         features = np.empty((this_shard_size, dim), dtype=np.float32)
-        ks = np.empty(this_shard_size, dtype=np.int32)
+        outcomes = np.empty(this_shard_size, dtype=np.int32)
         rewards = np.empty(this_shard_size, dtype=np.float32)
         seeds = np.empty(this_shard_size, dtype=np.int64)
 
@@ -240,13 +263,14 @@ def generate(
                 guesser_name = rng.choice(guesser_names)
             guesser = guessers[guesser_name]
             features[filled] = feature_builder(board, clue, sims, turn_index)
-            ks[filled], rewards[filled] = simulate_natural_stop(board, clue, guesser, sims)
+            k, cause, rewards[filled] = simulate_natural_stop(board, clue, guesser, sims)
+            outcomes[filled] = outcome_class(k, cause)
             seeds[filled] = board.seed
             filled += 1
             produced += 1
 
         np.save(output_dir / f"features_{shard_index:05d}.npy", features)
-        np.save(output_dir / f"k_{shard_index:05d}.npy", ks)
+        np.save(output_dir / f"outcome_{shard_index:05d}.npy", outcomes)
         np.save(output_dir / f"reward_{shard_index:05d}.npy", rewards)
         np.save(output_dir / f"seed_{shard_index:05d}.npy", seeds)
 

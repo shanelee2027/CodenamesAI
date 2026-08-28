@@ -1,53 +1,58 @@
 """The learned scorer (SCOPE.md §2, §M8): an MLP predicting a distribution
-over k -- how many own-words a guesser will reveal for a clue before
-stopping -- plus the play-time scoring formula that turns that distribution
-into a (clue, number) choice.
+over (k, cause) -- how many own-words a guesser will reveal for a clue
+before stopping, AND what stopped it (neutral / opponent / assassin, or
+nothing -- it ran out of budget clean) -- plus the play-time scoring
+formula that turns that distribution into a (clue, number) choice.
 
-**Resolving a gap in §2's play-time formula.** The model's output is *only*
-P(k|clue) -- it says nothing about *why* a stop happened (neutral, opponent,
-or assassin all just collapse into "not own"). But `reward(k, n)` needs a
-penalty value for that stop, and the per-category reward table (neutral 0,
-opponent -1, assassin -10) can't be recovered from k alone. Resolved (see
-project discussion) by taking SCOPE's own sentence -- "the assassin penalty
-is the risk-aversion parameter" -- literally: every stop, regardless of its
-true cause, is charged a single configurable `miss_penalty` (default -10,
-the assassin value) at *scoring* time, not baked into training. This keeps
-P(k|clue) exactly what §2 specifies (5 logits, nothing else) and keeps risk
-aversion a genuine runtime knob -- turning it down doesn't require
-retraining, because the model was never trained on any particular penalty
-value in the first place. The tradeoff: this is a worst-case-flavored
-simplification (a neutral miss is charged as if it might have been the
-assassin), not a per-category expectation -- documented here because it's
-exactly the kind of choice CLAUDE.md says to flag rather than pick silently.
+**Resolving a gap in §2's play-time formula.** An earlier version of this
+model predicted only P(k|clue) -- it said nothing about *why* a stop
+happened (neutral, opponent, or assassin all collapsed into "not own"),
+so every stop had to be charged the same flat worst-case `miss_penalty`
+at scoring time, since the per-category reward table (neutral 0,
+opponent -1, assassin -10) couldn't be recovered from k alone. That's
+resolved here by predicting the *cause* too: the label space widens from
+5 classes (k in 0..MAX_K) to `N_OUTCOME_CLASSES` = `MAX_K * 3 + 1` = 13
+(three causes for each k in 0..MAX_K-1, plus one censored "reached the
+cap, no miss" class for k=MAX_K -- see `outcome_class`/
+`decode_outcome_class`). The reward formula can then apply each cause's
+*true* value instead of one flattened number, and all four reward
+components (own/neutral/opponent/assassin) stay adjustable at *scoring*
+time, not baked into training -- turning any of them down doesn't require
+retraining, because the model was never trained against any particular
+reward value in the first place, only against the empirical (k, cause)
+outcome itself.
 
-**reward(k, n)**, for n and k both in 0..MAX_K (MAX_K=4, matching
-codemasters.base.MAX_CLUE_NUMBER and the training labels' cap -- see
-scripts/generate_training_data.py):
+**reward(k, cause, n)**, for n in 0..MAX_K and k in 0..MAX_K (MAX_K=4,
+matching codemasters.base.MAX_CLUE_NUMBER and the training labels' cap --
+see scripts/generate_training_data.py):
 
-    reward(k, n) = k * OWN_REWARD + miss_penalty   if k < n    (natural
-                                                     stop happens within
-                                                     the n-attempt budget)
-                 = n * OWN_REWARD                   if k >= n   (budget runs
-                                                     out first, no miss
-                                                     encountered)
+    reward(k, cause, n) = k * own_reward + reward_of(cause)   if k < n
+                                             (natural stop happens within
+                                             the n-attempt budget)
+                         = n * own_reward                      if k >= n
+                                             (budget runs out first, no
+                                             miss encountered -- cause is
+                                             irrelevant/undefined here)
+
+`reward_of(cause)` is `neutral_reward`/`opponent_reward`/`assassin_reward`
+depending on which role stopped the rollout. `assassin_reward` (default
+-10, matching `DEFAULT_MISS_PENALTY`) is the one meant to double as a
+"risk aversion" knob per SCOPE's own "the assassin penalty is the
+risk-aversion parameter" -- the other three default to the real game's
+`ROLE_REWARD` values (own +1, neutral 0, opponent -1), not baseline-3's
+separate untuned -0.3-for-neutral constant (`codemasters/linear_scorer.py`),
+since this is the reward the model is actually meant to optimize, not an
+illustrative heuristic. All four are exposed as independent runtime
+parameters (see `codenames/codemasters/learned.py` and the web UI) so any
+of them can be explored without retraining.
 
 A clue announcing n gives exactly n guesses -- no standard-Codenames "+1
-bonus guess" here. That bonus exists in real play because a human team can
-judge, guess by guess, whether one more stab is worth the risk; this
-project's guessers don't reason about the budget at all, they just rank
-candidates, so granting an automatic extra attempt would just be free
-expected value with no corresponding judgment behind it. See
-docs/log.md's numbering-convention entries for the full history (an
-earlier revision floored the *announced* number at 1 but kept n+1
-attempts; this revision removes the bonus attempt entirely).
+bonus guess" (see docs/log.md's numbering-convention entries for why).
 
 k=MAX_K is a right-censored "MAX_K or more" bucket (see the training-data
-docstring). Since n never exceeds MAX_K (candidate_n's range), a censored
-k always means the true k is >= n too, so it always lands correctly in
-the budget-exhausted branch -- no approximation error here (this is a
-nice side effect of dropping the n+1 bonus attempt: under the old n+1
-rule, n could reach MAX_K while attempts could still exceed what k=MAX_K
-could represent, which is where that approximation used to bite).
+docstring). Since n never exceeds MAX_K, a censored k always means the
+true k is >= n too, so it always lands correctly in the budget-exhausted
+branch regardless of cause -- no approximation error here.
 """
 
 from __future__ import annotations
@@ -62,14 +67,47 @@ from codenames.game import ROLE_REWARD
 
 OWN_REWARD = ROLE_REWARD[Role.OWN]
 DEFAULT_MISS_PENALTY = ROLE_REWARD[Role.ASSASSIN]  # -10.0, per SCOPE §2/§6
-N_K_CLASSES = MAX_K + 1  # k in 0..MAX_K -> 5 classes
+
+# Fixed order -- index into this list is how a cause is packed into a
+# class id. Only the three "you stopped on something that isn't your own
+# word" roles; OWN never stops a rollout (it's what increments k) and
+# there is no "assassin twice" etc. to represent.
+STOP_CAUSES: list[Role] = [Role.NEUTRAL, Role.OPPONENT, Role.ASSASSIN]
+N_STOP_CAUSES = len(STOP_CAUSES)
+
+# For each k in 0..MAX_K-1, one class per possible cause, plus one class
+# for k=MAX_K (censored -- reached the cap with no miss, cause undefined).
+N_OUTCOME_CLASSES = MAX_K * N_STOP_CAUSES + 1  # 4*3 + 1 = 13
+
+
+def outcome_class(k: int, cause: Role | None) -> int:
+    """Pack a (k, cause) rollout outcome into a single class id in
+    0..N_OUTCOME_CLASSES-1. `cause` must be None iff k==MAX_K (the
+    censored bucket -- the rollout hit the cap before any miss, so there
+    is no cause to record) and one of STOP_CAUSES otherwise (k<MAX_K
+    always means *something* stopped it)."""
+    if k >= MAX_K:
+        if cause is not None:
+            raise ValueError(f"k={k} >= MAX_K={MAX_K} (censored) must have cause=None, got {cause!r}")
+        return N_OUTCOME_CLASSES - 1
+    if cause is None:
+        raise ValueError(f"k={k} < MAX_K={MAX_K} must have a real cause, got None")
+    return k * N_STOP_CAUSES + STOP_CAUSES.index(cause)
+
+
+def decode_outcome_class(cls: int) -> tuple[int, Role | None]:
+    """Inverse of outcome_class."""
+    if cls == N_OUTCOME_CLASSES - 1:
+        return MAX_K, None
+    k, cause_idx = divmod(cls, N_STOP_CAUSES)
+    return k, STOP_CAUSES[cause_idx]
 
 
 class Scorer(nn.Module):
-    """MLP per SCOPE §2: input_dim -> (256, 256, 128) -> N_K_CLASSES logits.
-    Returns raw logits (not softmaxed) -- use torch.softmax(...) or
-    predict_proba() for an actual probability distribution; training uses
-    the logits directly with nn.CrossEntropyLoss."""
+    """MLP per SCOPE §2: input_dim -> (256, 256, 128) -> N_OUTCOME_CLASSES
+    logits. Returns raw logits (not softmaxed) -- use torch.softmax(...)
+    or predict_proba() for an actual probability distribution; training
+    uses the logits directly with nn.CrossEntropyLoss."""
 
     def __init__(self, input_dim: int):
         super().__init__()
@@ -81,7 +119,7 @@ class Scorer(nn.Module):
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, N_K_CLASSES),
+            nn.Linear(128, N_OUTCOME_CLASSES),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -104,7 +142,7 @@ class LinearScorer(nn.Module):
     def __init__(self, input_dim: int):
         super().__init__()
         self.input_dim = input_dim
-        self.net = nn.Linear(input_dim, N_K_CLASSES)
+        self.net = nn.Linear(input_dim, N_OUTCOME_CLASSES)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
@@ -114,26 +152,50 @@ class LinearScorer(nn.Module):
         return torch.softmax(self.forward(x), dim=-1)
 
 
-def reward_matrix(miss_penalty: float = DEFAULT_MISS_PENALTY, max_k: int = MAX_K) -> np.ndarray:
-    """(max_k+1, max_k+1) matrix, reward_matrix[k, n] = reward(k, n). Built
-    once per risk-aversion setting; play-time scoring is then just a matrix
-    multiply against a batch of P(k|clue) rows."""
-    k_vals = np.arange(max_k + 1)
-    n_vals = np.arange(max_k + 1)
-    k_grid, n_grid = np.meshgrid(k_vals, n_vals, indexing="ij")
+_CAUSE_REWARD_KEYS: dict[Role, str] = {
+    Role.NEUTRAL: "neutral_reward",
+    Role.OPPONENT: "opponent_reward",
+    Role.ASSASSIN: "assassin_reward",
+}
 
-    natural_stop = k_grid * OWN_REWARD + miss_penalty
-    budget_exhausted = n_grid * OWN_REWARD
-    return np.where(k_grid < n_grid, natural_stop, budget_exhausted).astype(np.float32)
+
+def reward_matrix(
+    own_reward: float = OWN_REWARD,
+    neutral_reward: float = ROLE_REWARD[Role.NEUTRAL],
+    opponent_reward: float = ROLE_REWARD[Role.OPPONENT],
+    assassin_reward: float = DEFAULT_MISS_PENALTY,
+    max_k: int = MAX_K,
+) -> np.ndarray:
+    """(N_OUTCOME_CLASSES, max_k+1) matrix, reward_matrix[class, n] =
+    reward(*decode_outcome_class(class), n). Built once per reward
+    setting; play-time scoring is then just a matrix multiply against a
+    batch of P(class|clue) rows."""
+    cause_reward = {Role.NEUTRAL: neutral_reward, Role.OPPONENT: opponent_reward, Role.ASSASSIN: assassin_reward}
+    n_classes = max_k * N_STOP_CAUSES + 1
+    n_vals = np.arange(max_k + 1)
+
+    matrix = np.empty((n_classes, max_k + 1), dtype=np.float32)
+    for cls in range(n_classes):
+        k, cause = decode_outcome_class(cls)
+        stop_reward = cause_reward[cause] if cause is not None else 0.0  # unused when cause is None (see below)
+        natural_stop = k * own_reward + stop_reward
+        budget_exhausted = n_vals * own_reward
+        matrix[cls] = np.where(k < n_vals, natural_stop, budget_exhausted)
+    return matrix
 
 
 def expected_reward_and_best_n(
-    probs: np.ndarray, miss_penalty: float = DEFAULT_MISS_PENALTY, min_n: int = 1
+    probs: np.ndarray,
+    own_reward: float = OWN_REWARD,
+    neutral_reward: float = ROLE_REWARD[Role.NEUTRAL],
+    opponent_reward: float = ROLE_REWARD[Role.OPPONENT],
+    assassin_reward: float = DEFAULT_MISS_PENALTY,
+    min_n: int = 1,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """probs: (batch, N_K_CLASSES) distribution over k for each candidate
-    clue. Returns (best_n, score), each shape (batch,): the number
-    maximizing expected reward, and the expected reward at that number --
-    SCOPE §2's `best_n = argmax_n E[reward|clue,n]` and
+    """probs: (batch, N_OUTCOME_CLASSES) distribution over (k, cause) for
+    each candidate clue. Returns (best_n, score), each shape (batch,): the
+    number maximizing expected reward, and the expected reward at that
+    number -- SCOPE §2's `best_n = argmax_n E[reward|clue,n]` and
     `score(clue) = E[reward|clue,best_n]`, vectorized over every candidate
     clue at once (the "one gather plus one small forward pass" §2 asks
     for).
@@ -143,7 +205,7 @@ def expected_reward_and_best_n(
     play, but every other codemaster in this project floors its announced
     number at 1 (codemasters/_util.py::natural_number), so the learned
     codemaster does too by default, for consistency."""
-    matrix = reward_matrix(miss_penalty)  # (n_k, n_n), columns n=0..MAX_K
+    matrix = reward_matrix(own_reward, neutral_reward, opponent_reward, assassin_reward)  # (n_classes, n_n)
     expected = probs @ matrix  # (batch, n_n) -- E[reward|clue,n] for every n
     candidate_n = np.arange(matrix.shape[1])
     allowed = candidate_n >= min_n

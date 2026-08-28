@@ -81,14 +81,18 @@ def _build_one(entry_config: dict, built: dict[str, Guesser]) -> Guesser:
     return cls(**params)
 
 
-def load_pool(config_path: Path = DEFAULT_POOL_CONFIG) -> dict[str, GuesserEntry]:
-    config = json.loads(config_path.read_text())
+def load_pool(config: Path | dict = DEFAULT_POOL_CONFIG) -> dict[str, GuesserEntry]:
+    """`config` is either a path to a pool config file, or an
+    already-parsed config dict (e.g. a copy of one with `noise_std`
+    overridden in memory -- see scripts/web_inspector.py's per-noise-level
+    pools -- without needing to write a temp file first)."""
+    parsed = json.loads(config.read_text()) if isinstance(config, Path) else config
     built: dict[str, Guesser] = {}
     entries: dict[str, GuesserEntry] = {}
-    for entry_config in config["guessers"]:
+    for entry_config in parsed["guessers"]:
         name = entry_config["name"]
         if name in built:
-            raise ValueError(f"duplicate guesser name {name!r} in {config_path}")
+            raise ValueError(f"duplicate guesser name {name!r} in {config}")
         guesser = _build_one(entry_config, built)
         built[name] = guesser
         entries[name] = GuesserEntry(name=name, guesser=guesser, held_out=entry_config.get("held_out", False))

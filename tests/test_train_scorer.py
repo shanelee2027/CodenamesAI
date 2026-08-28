@@ -10,18 +10,18 @@ import torch
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 from train_scorer import ShardedTrainingData, _is_val_seed, train  # noqa: E402
 
-from codenames.scorer import N_K_CLASSES, LinearScorer, Scorer  # noqa: E402
+from codenames.scorer import N_OUTCOME_CLASSES, LinearScorer, Scorer  # noqa: E402
 
 FEATURE_DIM = 12
 
 
 def _write_shard(data_dir: Path, index: int, n: int, rng: np.random.Generator) -> None:
     features = rng.random((n, FEATURE_DIM)).astype(np.float32)
-    ks = rng.integers(0, N_K_CLASSES, size=n).astype(np.int32)
+    outcomes = rng.integers(0, N_OUTCOME_CLASSES, size=n).astype(np.int32)
     rewards = rng.random(n).astype(np.float32)
     seeds = (np.arange(n) + index * n).astype(np.int64) % 1000  # spread across 0..999
     np.save(data_dir / f"features_{index:05d}.npy", features)
-    np.save(data_dir / f"k_{index:05d}.npy", ks)
+    np.save(data_dir / f"outcome_{index:05d}.npy", outcomes)
     np.save(data_dir / f"reward_{index:05d}.npy", rewards)
     np.save(data_dir / f"seed_{index:05d}.npy", seeds)
 
@@ -61,7 +61,7 @@ class TestShardedTrainingData:
         assert isinstance(x, torch.Tensor)
         assert x.shape == (FEATURE_DIM,)
         assert isinstance(y, int)
-        assert 0 <= y < N_K_CLASSES
+        assert 0 <= y < N_OUTCOME_CLASSES
 
     def test_feature_dim_matches_shard_width(self, data_dir):
         ds = ShardedTrainingData(data_dir, lambda s: np.ones_like(s, dtype=bool))

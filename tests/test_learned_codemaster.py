@@ -101,3 +101,14 @@ class TestLearnedCodemaster:
         # specific clue is already covered by test_scorer.py.
         cautious.give_clue(board, sims)
         lenient.give_clue(board, sims)
+
+    def test_own_neutral_opponent_rewards_are_also_runtime_adjustable(self, sims, checkpoint_path):
+        # Same idea as the risk-aversion test above, but for the other 3
+        # reward knobs added alongside it -- confirm they're accepted and
+        # run end-to-end without erroring (the math itself is covered by
+        # test_scorer.py's TestExpectedRewardAndBestN).
+        cm = LearnedCodemaster(checkpoint_path, own_reward=2.0, neutral_reward=-0.3, opponent_reward=-2.0)
+        board = make_board()
+        clue, number = cm.give_clue(board, sims)
+        assert clue in sims.clue_words
+        assert 1 <= number <= 4

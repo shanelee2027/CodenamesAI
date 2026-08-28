@@ -21,6 +21,7 @@ from codenames.board import Board, Card, Role, load_wordlist  # noqa: E402
 from codenames.features import feature_dim  # noqa: E402
 from codenames.game import ROLE_REWARD  # noqa: E402
 from codenames.guessers.base import Guesser  # noqa: E402
+from codenames.scorer import N_OUTCOME_CLASSES  # noqa: E402
 from codenames.similarity import SimilarityTensor  # noqa: E402
 
 CLUE_WORDS = ["clueone", "cluetwo", "cluethree"]
@@ -126,23 +127,34 @@ class TestSimulateNaturalStop:
     def test_caps_k_at_max_k_even_with_more_own_words_available(self):
         board = self._board()
         guesser = ScriptedGuesser([f"Board{i}" for i in range(9)])  # all 9 own words
-        k, reward = simulate_natural_stop(board, "clue", guesser, sims=None, max_k=MAX_K)
+        k, cause, reward = simulate_natural_stop(board, "clue", guesser, sims=None, max_k=MAX_K)
         assert k == MAX_K
+        assert cause is None
         assert reward == MAX_K * ROLE_REWARD[Role.OWN]
 
     def test_stops_and_scores_the_miss_on_first_non_own(self):
         board = self._board()
         guesser = ScriptedGuesser(["Board0", "Board9"])  # Board9 is OPPONENT
-        k, reward = simulate_natural_stop(board, "clue", guesser, sims=None)
+        k, cause, reward = simulate_natural_stop(board, "clue", guesser, sims=None)
         assert k == 1
+        assert cause == Role.OPPONENT
         assert reward == ROLE_REWARD[Role.OWN] + ROLE_REWARD[Role.OPPONENT]
 
     def test_zero_k_when_first_guess_is_not_own(self):
         board = self._board()
         guesser = ScriptedGuesser(["Board24"])  # ASSASSIN
-        k, reward = simulate_natural_stop(board, "clue", guesser, sims=None)
+        k, cause, reward = simulate_natural_stop(board, "clue", guesser, sims=None)
         assert k == 0
+        assert cause == Role.ASSASSIN
         assert reward == ROLE_REWARD[Role.ASSASSIN]
+
+    def test_neutral_cause_is_recorded_too(self):
+        board = self._board()
+        guesser = ScriptedGuesser(["Board0", "Board17"])  # Board17 is NEUTRAL
+        k, cause, reward = simulate_natural_stop(board, "clue", guesser, sims=None)
+        assert k == 1
+        assert cause == Role.NEUTRAL
+        assert reward == ROLE_REWARD[Role.OWN] + ROLE_REWARD[Role.NEUTRAL]
 
 
 class TestGenerate:
@@ -166,17 +178,17 @@ class TestGenerate:
         for path in feature_shards:
             features = np.load(path)
             idx = path.stem.split("_")[1]
-            ks = np.load(output_dir / f"k_{idx}.npy")
+            outcomes = np.load(output_dir / f"outcome_{idx}.npy")
             rewards = np.load(output_dir / f"reward_{idx}.npy")
             seeds = np.load(output_dir / f"seed_{idx}.npy")
 
             assert features.dtype == np.float32
             assert features.shape[1] == dim
-            assert ks.dtype == np.int32
+            assert outcomes.dtype == np.int32
             assert rewards.dtype == np.float32
             assert seeds.dtype == np.int64
-            assert len(ks) == len(features) == len(rewards) == len(seeds)
-            assert np.all((ks >= 0) & (ks <= MAX_K))
+            assert len(outcomes) == len(features) == len(rewards) == len(seeds)
+            assert np.all((outcomes >= 0) & (outcomes < N_OUTCOME_CLASSES))
             total += len(features)
         assert total == 25
 
