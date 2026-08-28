@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CodenamesAI Inspector</title>
+<style>
+  :root {
+    --own: #3b6ea5;
+    --opponent: #a5453b;
+    --neutral: #c2a878;
+    --assassin: #1b1b1b;
+    --bg: #16181d;
+    --panel: #1f232b;
+    --border: #333844;
+    --text: #e8e8ec;
+    --dim: #8b8f99;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 20px; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+    background: var(--panel);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .controls label { font-size: 12px; color: var(--dim); }
+  .controls input {
+    background: #12141a;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 6px;
+    font-size: 14px;
+  }
+  #seed { width: 80px; }
+  #clue { width: 220px; }
+  button {
+    background: #2a2f3a;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 7px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button:hover { background: #353b48; }
+  button.primary { background: #3b6ea5; border-color: #4a7fb8; }
+  button.primary:hover { background: #4a7fb8; }
+
+  .message { font-size: 13px; padding: 8px 12px; border-radius: 6px; margin-bottom: 16px; }
+  .message.warn { background: #3a2f1a; color: #e0c07a; border: 1px solid #5a4a2a; }
+  .message.ok { background: #1a3a2a; color: #7ae0a8; border: 1px solid #2a5a3a; }
+
+  .layout { display: grid; grid-template-columns: minmax(0, 520px) 1fr; gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  .card {
+    position: relative;
+    border-radius: 8px;
+    padding: 10px 6px;
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 58px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 2px solid transparent;
+    user-select: none;
+    color: #fff;
+  }
+  .card.own { background: var(--own); }
+  .card.opponent { background: var(--opponent); }
+  .card.neutral { background: var(--neutral); color: #2a2117; }
+  .card.assassin { background: var(--assassin); }
+  .card.revealed { opacity: 0.35; text-decoration: line-through; }
+  .card .mean {
+    font-size: 11px;
+    font-weight: 400;
+    opacity: 0.9;
+  }
+  .legend { display: flex; gap: 14px; margin: 10px 0 18px; font-size: 12px; color: var(--dim); flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); margin: 0 0 10px; }
+
+  .spaces-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .space-col { min-width: 130px; }
+  .space-col h3 { font-size: 12px; margin: 0 0 6px; color: var(--dim); }
+  .space-col ol { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.7; }
+  .role-tag { font-size: 10px; opacity: 0.7; }
+
+  .guesser-row { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .guesser-row:last-child { border-bottom: none; }
+  .guesser-name { min-width: 140px; font-weight: 600; }
+  .tag { font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 6px; }
+  .tag.training { background: #1a3a2a; color: #7ae0a8; }
+  .tag.held-out { background: #3a1a1a; color: #e07a7a; }
+  .picks { display: flex; gap: 6px; flex-wrap: wrap; color: var(--dim); }
+  .chip { padding: 2px 8px; border-radius: 10px; font-size: 12px; }
+  .chip.own { background: var(--own); color: #fff; }
+  .chip.opponent { background: var(--opponent); color: #fff; }
+  .chip.neutral { background: var(--neutral); color: #2a2117; }
+  .chip.assassin { background: var(--assassin); color: #fff; }
+
+  table.baseline { border-collapse: collapse; font-size: 13px; width: 100%; }
+  table.baseline td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  table.baseline td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .total-row td { font-weight: 700; border-bottom: none; padding-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>CodenamesAI Inspector</h1>
+  <div class="sub">Click a card to mark it revealed. Type a clue and hit Ask (or Enter).</div>
+
+  <div class="controls">
+    <label>seed</label>
+    <input id="seed" type="number" value="42">
+    <button id="newBoard">New board</button>
+    <button id="randomSeed">Random seed</button>
+    <span style="width:1px;height:20px;background:var(--border);margin:0 4px;"></span>
+    <label>clue</label>
+    <input id="clue" type="text" placeholder="e.g. king" autocomplete="off">
+    <button id="ask" class="primary">Ask</button>
+  </div>
+
+  <div id="message"></div>
+
+  <div class="legend">
+    <span><span class="swatch" style="background:var(--own)"></span>own</span>
+    <span><span class="swatch" style="background:var(--opponent)"></span>opponent</span>
+    <span><span class="swatch" style="background:var(--neutral)"></span>neutral</span>
+    <span><span class="swatch" style="background:var(--assassin)"></span>assassin</span>
+  </div>
+
+  <div class="layout">
+    <div>
+      <div id="board" class="board"></div>
+    </div>
+    <div>
+      <div class="panel">
+        <h2>What each guesser would pick</h2>
+        <div id="guessers">Type a clue to see guesser predictions.</div>
+      </div>
+      <div class="panel">
+        <h2>Per-space top rankings</h2>
+        <div id="spaces" class="spaces-row"></div>
+      </div>
+      <div class="panel">
+        <h2>Baseline score (untuned preview)</h2>
+        <div id="baseline"></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const revealed = new Set();
+let lastWords = [];
+
+function roleClass(role) { return role.toLowerCase(); }
+
+async function fetchJSON(path) {
+  const res = await fetch(path);
+  return res.json();
+}
+
+function currentSeed() {
+  return parseInt(document.getElementById('seed').value, 10) || 42;
+}
+
+function currentReveal() {
+  return Array.from(revealed).join(',');
+}
+
+function renderBoard(words) {
+  lastWords = words;
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  for (const w of words) {
+    const el = document.createElement('div');
+    el.className = 'card ' + roleClass(w.role) + (w.revealed ? ' revealed' : '');
+    el.textContent = w.word;
+    if (w.mean_sim !== undefined && w.mean_sim !== null) {
+      const meanEl = document.createElement('div');
+      meanEl.className = 'mean';
+      meanEl.textContent = w.mean_sim.toFixed(3);
+      el.appendChild(meanEl);
+    }
+    el.addEventListener('click', () => {
+      if (revealed.has(w.word)) revealed.delete(w.word);
+      else revealed.add(w.word);
+      refresh();
+    });
+    board.appendChild(el);
+  }
+}
+
+function setMessage(text, kind) {
+  const el = document.getElementById('message');
+  if (!text) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="message ${kind}">${text}</div>`;
+}
+
+function renderGuessers(guessers) {
+  const el = document.getElementById('guessers');
+  if (!guessers) { el.innerHTML = 'Type a clue to see guesser predictions.'; return; }
+  el.innerHTML = '';
+  for (const g of guessers) {
+    const row = document.createElement('div');
+    row.className = 'guesser-row';
+    const name = document.createElement('div');
+    name.className = 'guesser-name';
+    name.innerHTML = `${g.name}<span class="tag ${g.held_out ? 'held-out' : 'training'}">${g.held_out ? 'held-out' : 'training'}</span>`;
+    row.appendChild(name);
+    const picks = document.createElement('div');
+    picks.className = 'picks';
+    if (!g.picks.length) {
+      picks.textContent = '(would guess nothing -- stopped immediately)';
+    } else {
+      for (const p of g.picks) {
+        const chip = document.createElement('span');
+        chip.className = 'chip ' + roleClass(p.role);
+        chip.textContent = p.word;
+        picks.appendChild(chip);
+      }
+    }
+    row.appendChild(picks);
+    el.appendChild(row);
+  }
+}
+
+function renderSpaces(topPerSpace) {
+  const el = document.getElementById('spaces');
+  el.innerHTML = '';
+  if (!topPerSpace) return;
+  for (const [space, rows] of Object.entries(topPerSpace)) {
+    const col = document.createElement('div');
+    col.className = 'space-col';
+    const h3 = document.createElement('h3');
+    h3.textContent = space;
+    col.appendChild(h3);
+    const ol = document.createElement('ol');
+    for (const r of rows) {
+      const li = document.createElement('li');
+      li.innerHTML = `${r.word} <span class="role-tag">${r.role} ${r.value.toFixed(3)}</span>`;
+      ol.appendChild(li);
+    }
+    col.appendChild(ol);
+    el.appendChild(col);
+  }
+}
+
+function renderBaseline(baseline) {
+  const el = document.getElementById('baseline');
+  if (!baseline) { el.innerHTML = 'Type a clue to see the baseline score.'; return; }
+  let html = '<table class="baseline">';
+  for (const role of Object.keys(baseline.role_means)) {
+    const mean = baseline.role_means[role];
+    const weight = baseline.weights[role];
+    html += `<tr><td>${role}</td><td class="num">${mean.toFixed(3)}</td><td class="num">&times; ${weight.toFixed(1)}</td></tr>`;
+  }
+  html += `<tr class="total-row"><td colspan="2">score</td><td class="num">${baseline.total.toFixed(3)}</td></tr>`;
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+async function loadState() {
+  const seed = currentSeed();
+  const data = await fetchJSON(`/api/state?seed=${seed}&reveal=${encodeURIComponent(currentReveal())}`);
+  renderBoard(data.words);
+  setMessage('', '');
+  renderGuessers(null);
+  renderSpaces(null);
+  renderBaseline(null);
+}
+
+async function queryClue() {
+  const seed = currentSeed();
+  const clue = document.getElementById('clue').value.trim();
+  if (!clue) { await loadState(); return; }
+  const data = await fetchJSON(`/api/query?seed=${seed}&clue=${encodeURIComponent(clue)}&reveal=${encodeURIComponent(currentReveal())}`);
+  renderBoard(data.words);
+
+  if (!data.legal) {
+    setMessage(`Illegal clue: "${data.clue}" contains or is contained by a board word.`, 'warn');
+  } else if (!data.in_vocab) {
+    setMessage(`"${data.clue}" is not in the clue vocabulary -- no similarity data available.`, 'warn');
+  } else {
+    setMessage(`Legal clue, in vocabulary.`, 'ok');
+  }
+
+  renderGuessers(data.guessers || null);
+  renderSpaces(data.top_per_space || null);
+  renderBaseline(data.baseline || null);
+}
+
+function refresh() {
+  if (document.getElementById('clue').value.trim()) queryClue();
+  else loadState();
+}
+
+document.getElementById('newBoard').addEventListener('click', () => { revealed.clear(); refresh(); });
+document.getElementById('randomSeed').addEventListener('click', () => {
+  document.getElementById('seed').value = Math.floor(Math.random() * 1000000);
+  revealed.clear();
+  refresh();
+});
+document.getElementById('ask').addEventListener('click', queryClue);
+document.getElementById('clue').addEventListener('keydown', (e) => { if (e.key === 'Enter') queryClue(); });
+
+loadState();
+</script>
+</body>
+</html>
