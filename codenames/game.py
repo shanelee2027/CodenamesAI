@@ -14,11 +14,19 @@ neutral, -1 and stop on opponent, -10 and stop on assassin.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from codenames.board import Board, Role
-from codenames.codemasters.base import Codemaster
 from codenames.guessers.base import Guesser
 from codenames.similarity import SimilarityTensor
+
+if TYPE_CHECKING:
+    # Deferred: codemasters/learned.py depends on scorer.py, which depends
+    # on this module (for ROLE_REWARD) -- importing Codemaster at runtime
+    # here would close that into a circular import. `from __future__ import
+    # annotations` (above) already makes every annotation in this file a
+    # lazy string, so this is only ever needed by type checkers.
+    from codenames.codemasters.base import Codemaster
 
 ROLE_REWARD: dict[Role, float] = {
     Role.OWN: 1.0,

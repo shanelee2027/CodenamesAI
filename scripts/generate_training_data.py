@@ -37,11 +37,14 @@ game.
 **Output** is sharded .npy files under `--output-dir` (default
 cache/training_data/, gitignored): `features_NNNNN.npy` (float32,
 shard_size x feature_dim), `k_NNNNN.npy` (int32), `reward_NNNNN.npy`
-(float32) -- each independently mmap-loadable. This is the concrete
-meaning of "appendable mmapped output" here: re-running this script adds
-new shards after whatever already exists in the output directory, rather
-than needing to know the eventual total size up front or resizing an
-existing file.
+(float32), `seed_NNNNN.npy` (int64, the sampled board's seed) -- each
+independently mmap-loadable. `seed` exists specifically so M8's training
+script can split by board seed rather than by row (SCOPE §4: "the same
+board appears in many training examples [if reused]; row-wise splits leak
+boards across train/val"). This is the concrete meaning of "appendable
+mmapped output" here: re-running this script adds new shards after
+whatever already exists in the output directory, rather than needing to
+know the eventual total size up front or resizing an existing file.
 
 Usage:
     python scripts/generate_training_data.py --n-examples 100000
@@ -56,9 +59,9 @@ from pathlib import Path
 
 import numpy as np
 
+from codenames.board import MAX_CLUE_NUMBER as MAX_K
 from codenames.board import Board, Role, is_legal_clue
 from codenames.clue_search import mean_from_columns, top_k_legal_clues
-from codenames.codemasters.base import MAX_CLUE_NUMBER as MAX_K
 from codenames.features import build_features, feature_dim
 from codenames.game import ROLE_REWARD
 from codenames.guessers.base import Guesser
@@ -197,6 +200,7 @@ def generate(
         features = np.empty((this_shard_size, dim), dtype=np.float32)
         ks = np.empty(this_shard_size, dtype=np.int32)
         rewards = np.empty(this_shard_size, dtype=np.float32)
+        seeds = np.empty(this_shard_size, dtype=np.int64)
 
         filled = 0
         while filled < this_shard_size:
@@ -208,12 +212,14 @@ def generate(
             guesser = guessers[rng.choice(guesser_names)]
             features[filled] = build_features(board, clue, sims, turn_index)
             ks[filled], rewards[filled] = simulate_natural_stop(board, clue, guesser, sims)
+            seeds[filled] = board.seed
             filled += 1
             produced += 1
 
         np.save(output_dir / f"features_{shard_index:05d}.npy", features)
         np.save(output_dir / f"k_{shard_index:05d}.npy", ks)
         np.save(output_dir / f"reward_{shard_index:05d}.npy", rewards)
+        np.save(output_dir / f"seed_{shard_index:05d}.npy", seeds)
 
         elapsed = time.time() - start_time
         rate = produced / elapsed if elapsed > 0 else 0.0

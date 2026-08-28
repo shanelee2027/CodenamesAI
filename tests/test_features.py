@@ -11,6 +11,7 @@ from codenames.features import (
     SENTINEL,
     FeatureLayout,
     build_features,
+    build_features_batch,
     feature_dim,
 )
 from codenames.similarity import SimilarityTensor
@@ -123,6 +124,34 @@ class TestMasking:
         for space in SPACES:
             values = vec[layout.space_slice(space)]
             assert values[assassin_start:assassin_end][0] == SENTINEL
+
+
+class TestBuildFeaturesBatch:
+    def test_matches_per_clue_build_features_for_every_clue(self, tmp_path):
+        tensor = base_tensor()
+        rng = np.random.default_rng(1)
+        tensor[:] = rng.random(tensor.shape)
+        # Sprinkle in some missing vectors so the NaN-handling path is exercised too.
+        tensor[0, 3, 0] = np.nan
+        tensor[1, 24, 1] = np.nan
+        sims = make_sims(tmp_path, tensor)
+
+        board = make_board(revealed=["Board0", "Board9", "Board24"])
+        batch = build_features_batch(board, sims, turn_index=3)
+        assert batch.shape == (len(CLUE_WORDS), feature_dim(len(SPACES)))
+
+        for i, clue in enumerate(CLUE_WORDS):
+            expected = build_features(board, clue, sims, turn_index=3)
+            np.testing.assert_allclose(batch[i], expected)
+
+    def test_batch_shape_with_no_words_left_in_a_role(self, tmp_path):
+        sims = make_sims(tmp_path, base_tensor())
+        # Reveal the only assassin word -- exercises the "no words in this
+        # role" branch of the batch builder.
+        board = make_board(revealed=["Board24"])
+        batch = build_features_batch(board, sims, turn_index=1)
+        assert not np.isnan(batch).any()
+        assert batch.shape == (len(CLUE_WORDS), feature_dim(len(SPACES)))
 
 
 class TestMissingVectorHandling:

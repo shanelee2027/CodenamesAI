@@ -147,3 +147,68 @@ def build_features(board: Board, clue: str, sims: SimilarityTensor, turn_index: 
     scalars = np.array([own_remaining, float(turn_index), score_differential], dtype=np.float32)
 
     return np.concatenate([*space_blocks, mask, scalars])
+
+
+def _sorted_padded_values_batch(sims: SimilarityTensor, words: list[str], space: str, pad_to: int) -> np.ndarray:
+    """Vectorized form of _sorted_padded_values: every clue in the
+    vocabulary at once. Shape (n_clues, pad_to)."""
+    n_clues = len(sims.clue_words)
+    if not words:
+        return np.full((n_clues, pad_to), SENTINEL, dtype=np.float32)
+
+    idxs = [sims.board_index[w.lower()] for w in words]
+    si = sims.spaces.index(space)
+    raw = np.asarray(sims.tensor[:, idxs, si], dtype=np.float32)  # (n_clues, len(words))
+
+    # NaN sorts as "biggest" in numpy, which would push missing values to
+    # the *front* of a descending sort -- exactly backwards from where the
+    # sentinel padding belongs. Swap to -inf first so a descending sort
+    # naturally leaves real values first and missing ones trailing, then
+    # replace those trailing -inf slots with the actual sentinel.
+    raw = np.where(np.isnan(raw), -np.inf, raw)
+    sorted_desc = np.sort(raw, axis=1)[:, ::-1]
+    sorted_desc = np.where(np.isneginf(sorted_desc), SENTINEL, sorted_desc)
+
+    if sorted_desc.shape[1] < pad_to:
+        pad_width = pad_to - sorted_desc.shape[1]
+        padding = np.full((n_clues, pad_width), SENTINEL, dtype=np.float32)
+        sorted_desc = np.concatenate([sorted_desc, padding], axis=1)
+    return sorted_desc
+
+
+def build_features_batch(board: Board, sims: SimilarityTensor, turn_index: int) -> np.ndarray:
+    """Feature vectors for *every* clue in the vocabulary at once, against
+    one board state -- shape (n_clues, feature_dim). This is what play-time
+    scoring needs: SCOPE §2 requires scoring all ~250k+ candidates via "one
+    gather plus one small forward pass," which rules out calling
+    build_features() once per clue in a Python loop. The mask and scalar
+    blocks don't depend on the clue at all, so they're computed once and
+    broadcast across every row; only the per-space value blocks vary per
+    clue, and that variation comes entirely from the underlying tensor
+    (already indexed by clue), not from any extra Python-level looping.
+    """
+    n_clues = len(sims.clue_words)
+    role_words = {role: board.words_by_role(role, unrevealed_only=True) for role in ROLE_ORDER}
+
+    space_blocks = []
+    for space in sims.spaces:
+        block = np.concatenate(
+            [
+                _sorted_padded_values_batch(sims, role_words[role], space, ROLE_COUNTS[role])
+                for role in ROLE_ORDER
+            ],
+            axis=1,
+        )
+        space_blocks.append(block)
+
+    mask = np.concatenate([_role_mask(len(role_words[role]), ROLE_COUNTS[role]) for role in ROLE_ORDER])
+    mask_block = np.broadcast_to(mask, (n_clues, BOARD_SIZE))
+
+    own_remaining = float(board.remaining(Role.OWN))
+    own_revealed = ROLE_COUNTS[Role.OWN] - board.remaining(Role.OWN)
+    opponent_revealed = ROLE_COUNTS[Role.OPPONENT] - board.remaining(Role.OPPONENT)
+    score_differential = float(own_revealed - opponent_revealed)
+    scalar_row = np.array([own_remaining, float(turn_index), score_differential], dtype=np.float32)
+    scalars_block = np.broadcast_to(scalar_row, (n_clues, N_SCALARS))
+
+    return np.concatenate([*space_blocks, mask_block, scalars_block], axis=1).astype(np.float32)

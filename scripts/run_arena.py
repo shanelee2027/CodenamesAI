@@ -14,10 +14,10 @@ import time
 from pathlib import Path
 
 from codenames.arena import run_arena
-from codenames.codemasters import CentroidCodemaster, LinearScorerCodemaster, RandomCodemaster
+from codenames.codemasters import CentroidCodemaster, LearnedCodemaster, LinearScorerCodemaster, RandomCodemaster
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 
-CODEMASTER_SPECS = {
+BASE_CODEMASTER_SPECS = {
     "random": (RandomCodemaster, {"seed": 0}),
     "centroid": (CentroidCodemaster, {"seed": 0}),
     "linear_scorer": (LinearScorerCodemaster, {}),
@@ -31,10 +31,21 @@ def main() -> None:
     parser.add_argument("--db", type=Path, default=Path("cache/arena.db"))
     parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS")
     parser.add_argument("--max-workers", type=int, default=None, help="default: os.cpu_count()")
+    parser.add_argument(
+        "--checkpoint", type=Path, default=None, help="scorer checkpoint from scripts/train_scorer.py -- adds a 'learned' codemaster if given"
+    )
+    parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for the learned codemaster (default: -10.0, see codenames.scorer)")
     args = parser.parse_args()
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
     seeds = list(range(args.n_boards))
+
+    codemaster_specs = dict(BASE_CODEMASTER_SPECS)
+    if args.checkpoint is not None:
+        learned_kwargs = {"checkpoint_path": args.checkpoint}
+        if args.risk_aversion is not None:
+            learned_kwargs["miss_penalty"] = args.risk_aversion
+        codemaster_specs["learned"] = (LearnedCodemaster, learned_kwargs)
 
     kwargs = {}
     if args.max_turns is not None:
@@ -42,7 +53,7 @@ def main() -> None:
 
     start = time.time()
     results, worker_rss = run_arena(
-        codemaster_specs=CODEMASTER_SPECS,
+        codemaster_specs=codemaster_specs,
         guesser_pool_config=args.guesser_pool_config,
         seeds=seeds,
         db_path=args.db,

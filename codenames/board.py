@@ -48,6 +48,16 @@ ROLE_COUNTS: dict[Role, int] = {
 }
 BOARD_SIZE = sum(ROLE_COUNTS.values())
 
+# The learned scorer (M8) outputs a distribution over k in 0..4 -- "the
+# number of own-words the guesser will reveal before stopping" (SCOPE §2).
+# Baseline codemasters (M6) cap their chosen number at the same bound so
+# every codemaster's outputs stay comparable in the arena. Lives here (not
+# in codemasters/base.py, where it conceptually belongs) so both
+# codemasters/ and scorer.py can import it without a circular dependency --
+# codemasters/learned.py already depends on scorer.py, so scorer.py can't
+# depend back on anything under codemasters/.
+MAX_CLUE_NUMBER = 4
+
 
 @dataclass(frozen=True)
 class Card:

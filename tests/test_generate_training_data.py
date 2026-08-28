@@ -157,12 +157,14 @@ class TestGenerate:
             idx = path.stem.split("_")[1]
             ks = np.load(output_dir / f"k_{idx}.npy")
             rewards = np.load(output_dir / f"reward_{idx}.npy")
+            seeds = np.load(output_dir / f"seed_{idx}.npy")
 
             assert features.dtype == np.float32
             assert features.shape[1] == dim
             assert ks.dtype == np.int32
             assert rewards.dtype == np.float32
-            assert len(ks) == len(features) == len(rewards)
+            assert seeds.dtype == np.int64
+            assert len(ks) == len(features) == len(rewards) == len(seeds)
             assert np.all((ks >= 0) & (ks <= MAX_K))
             total += len(features)
         assert total == 25

@@ -432,7 +432,7 @@ docs/
 - [x] M5 — Guesser pool
 - [x] M6 — Arena
 - [x] M7 — Features and data generation
-- [ ] M8 — Scorer
+- [x] M8 — Scorer
 - [ ] M9 — Evaluation and ablations
 - [ ] M10 — Human evaluation
 

@@ -704,6 +704,101 @@ and a real throughput bottleneck found and partially fixed. Notes:
 
 ## M8 — Scorer
 
+**Expected:** MLP per §2 (input -> 256,256,128 -> 5 logits). Training
+script with board-seed splitting, early stopping, checkpointing, training
+curves, validation reliability diagrams. `codemasters/learned.py`
+implementing play-time scoring with a runtime risk-aversion parameter.
+Register with the arena.
+
+**Actual:** matched expectations, after resolving one real gap in §2's own
+formula (flagged to the user before building, per CLAUDE.md) and fixing
+two circular-import bugs the new dependency direction exposed. Notes:
+
+- **§2's play-time formula has a genuine hole**: the model only outputs
+  P(k|clue) -- how many own-words get revealed before stopping -- with no
+  information about *why* it stopped (neutral/opponent/assassin all
+  collapse into "not own"). But `reward(k,n)` needs a penalty value, and
+  the per-category table (0/-1/-10) can't be recovered from k alone.
+  Raised this to the user directly (two options: a single
+  runtime-adjustable "miss penalty" standing in for any stop, vs.
+  expanding the model to also predict stop-category). Went with the
+  former, which is also what SCOPE's own sentence -- "the assassin
+  penalty is the risk-aversion parameter" -- literally says: one constant
+  (default -10) charged on *any* stop, adjustable at play time with zero
+  retraining, since P(k|clue) was never trained against a specific
+  penalty value to begin with. Documented in full in `scorer.py`'s module
+  docstring, including the resulting bias (a neutral miss gets charged as
+  if it might have been the assassin) and a second smaller approximation
+  (k=4 is a right-censored ">=4 or more" bucket in the training labels;
+  treated as exactly 4 when computing reward(4, n), which only actually
+  matters at n=4).
+- **Two circular imports surfaced by the new dependency direction**
+  (`codemasters/learned.py` -> `scorer.py`, the first time anything under
+  `codemasters/` needed something outside it going the *other* way).
+  Both fixed by relocating rather than restructuring: `MAX_CLUE_NUMBER`
+  moved from `codemasters/base.py` to `board.py` (its natural home is
+  arguably neither, but board.py has zero internal dependencies, so
+  nothing importing it can ever cycle); `game.py`'s import of
+  `Codemaster` moved behind `TYPE_CHECKING` (it was only ever used as a
+  type hint, and `from __future__ import annotations` already makes every
+  annotation in that file a lazy string at runtime). Both bugs were
+  invisible to `pytest` -- test files happened to import submodules in an
+  order that never triggered the cycle -- and only surfaced running
+  `scripts/train_scorer.py` directly. Worth remembering: a clean test run
+  is not proof an import graph is acyclic.
+- **Full-vocabulary scoring needed a vectorized feature builder.** §2
+  requires scoring all ~250k+ candidates via "one gather plus one small
+  forward pass" -- calling `build_features()` in a Python loop over ~530k
+  clues would dominate every turn's cost. Added
+  `features.build_features_batch(board, sims, turn_index)`: the mask and
+  scalar blocks don't depend on the clue at all, so they're computed once
+  and broadcast; the per-space value blocks are built with one vectorized
+  sort per (role, space) across the *entire* clue axis at once (NaN
+  swapped to -inf before a descending sort so missing entries reliably
+  land in the padding region, then swapped to the real -1 sentinel).
+  Tested for exact numeric agreement against `build_features()` called
+  once per clue, on a fixture with real missing-vector entries -- the two
+  code paths computing bit-identical results is the actual correctness
+  guarantee here, not just "it runs."
+- `codemasters/learned.py`'s `give_clue()` needs `turn_index`, which isn't
+  part of the `Codemaster` interface (no turn counter is threaded through
+  `game.py`/`arena.py`). Uses the same proxy M7's data generation used to
+  *label* training examples (count of currently-revealed words) --
+  deliberately, since using a different proxy at play time than at
+  training time would be a silent train/serve skew nobody would notice
+  until the model behaved worse in the arena than in validation.
+- `scripts/train_scorer.py`'s board-seed split is a deterministic hash
+  (`seed % 1000 < val_fraction * 1000`), not a loaded-then-shuffled split
+  -- every example from a given board lands in the same partition
+  regardless of shard file, and the split is stable across re-runs or
+  newly-added shards without needing the whole dataset in memory first.
+  `ShardedTrainingData` keeps feature shards memory-mapped and only loads
+  the small `k`/`seed` arrays fully, since filtering has to inspect every
+  row's seed anyway.
+- Added `matplotlib` as a new dependency (training curves + per-class
+  reliability diagrams -- SCOPE explicitly asks for both, and nothing
+  already in `pyproject.toml` plots).
+- Real-data smoke test (3,000 examples generated, 8 epochs trained, then
+  `run_arena.py --checkpoint ...` with `learned` added to the codemaster
+  set): trained-and-scored end to end, including through the arena's
+  multiprocessing path. Not a real result -- 3,000 examples and 8 epochs
+  is nowhere near the 5-20M target M7 flagged as a multi-day job at
+  current throughput -- purely a plumbing check. Worker RSS with the
+  learned codemaster included rose to ~2.9GB (vs. ~1.5GB for M6's
+  baselines-only run), from the model + the batched full-vocabulary
+  feature matrix; still comfortably within SCOPE §7's budget at any
+  reasonable worker count, so left as-is rather than optimized preemptively.
+- 24 new tests: `tests/test_scorer.py` (reward-matrix cells checked
+  against hand-derived values, including the k=4/n=4 censoring case;
+  batched expected-reward math; risk-aversion actually changing the
+  chosen number), `tests/test_train_scorer.py` (seed-based split
+  correctness, sharded dataset filtering, and a full train() smoke run
+  asserting the checkpoint and both diagnostic images exist),
+  `tests/test_learned_codemaster.py` (legal-clue output, the full 0..4
+  number range being reachable, the turn_index proxy, risk-aversion
+  plumbing), plus 2 more in `tests/test_features.py` for
+  `build_features_batch`. 134 tests total, all passing.
+
 ## M9 — Evaluation and ablations
 
 ## M10 — Human evaluation

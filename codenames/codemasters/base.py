@@ -9,14 +9,10 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from codenames.board import Board
+from codenames.board import MAX_CLUE_NUMBER, Board
 from codenames.similarity import SimilarityTensor
 
-# The eventual learned scorer (M8) outputs a distribution over k in 0..4 --
-# "the number of own-words the guesser will reveal before stopping" (SCOPE
-# §2). Baseline codemasters cap their chosen number at the same bound so
-# every codemaster's outputs stay comparable in the arena.
-MAX_CLUE_NUMBER = 4
+__all__ = ["Codemaster", "MAX_CLUE_NUMBER"]
 
 
 class Codemaster(ABC):
