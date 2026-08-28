@@ -145,22 +145,26 @@ knob — can be changed at play time with no retraining.
 
 **How it actually plays.** Full games (not just single-turn scoring),
 `noise_std=0.08` codemaster against that same noise level's guessers, 900
-games (`codenames/arena.py`):
+games (`codenames/arena.py`). Win rate isn't reported on its own here —
+every game ends in either a win or an assassin hit, so it's always just
+`1 - assassin-hit rate`, and it can't tell "plays it safe" apart from
+"actually finds its own words efficiently." The per-guess breakdown and
+the turns split are more informative:
 
-| win rate | assassin-hit rate | mean game length |
+| assassin-hit rate | mean game length (all games) | mean game length (wins only) |
 |---|---|---|
-| 97.1% | 2.9% | 6.43 turns |
+| 3.2% | 6.46 turns | 6.58 turns |
 
 Per-guess role breakdown — of every individual word actually guessed
 across all 900 games:
 
 | own | opponent | neutral | assassin |
 |---|---|---|---|
-| 85.2% | 5.9% | 8.7% | 0.3% |
+| 84.2% | 6.7% | 8.7% | 0.3% |
 
-For context against the baselines above under the same setup: `centroid`
-87.0% win / 13.0% assassin-hit, `linear_scorer` 71.4% / 28.6%, `random`
-11.1% / 88.9%.
+For context against the baselines above under the same setup, by
+assassin-hit rate: `centroid` 12.0%, `linear_scorer` 27.2%, `random`
+88.5%.
 
 Full detail (attempts rule, all six trained noise-level checkpoints and
 their results, what the web UI exposes on top of this, open questions for
