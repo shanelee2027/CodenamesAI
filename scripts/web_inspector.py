@@ -20,9 +20,10 @@ codenames/scorer.py's module docstring), and which noise-level guesser
 pool a turn gets simulated against (one of NOISE_LEVELS, independent of
 which noise level the codemaster itself was *trained* under). A third
 knob, `max_rarity`, screens candidate clues by CLUE_RARITY_PERCENTILE --
-derived once at startup from GloVe's own frequency-ordered file, no new
-dependency -- so an obscure pick like "confectionery" can be filtered out
-without retraining anything either.
+derived once at startup from wordfreq's conversational/subtitle-weighted
+word frequencies (not raw web-corpus rank, which badly overrates place
+names -- see docs/log.md) -- so an obscure pick like "confectionery" can
+be filtered out without retraining anything either.
 
 Usage:
     python scripts/web_inspector.py [--port 8000]
@@ -40,7 +41,7 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from _embedding_lib import SPACE_CONFIGS, ranked_alphabetic_words
+from wordfreq import zipf_frequency
 from codenames.board import Board, Role, is_legal_clue
 from codenames.codemasters import CentroidCodemaster, OracleCodemaster, RandomCodemaster
 from codenames.game import ROLE_REWARD
@@ -84,36 +85,29 @@ def _build_clue_rarity_percentile(clue_words: list[str]) -> dict[str, float]:
     """0.0 = the most common word in the clue vocabulary, ~100.0 = the
     rarest -- lets the UI filter out obscure clues like "confectionery".
 
-    GloVe's raw file is frequency-descending ordered (verified empirically
-    in scripts/_embedding_lib.py, reused here via ranked_alphabetic_words'
-    token-only scan -- no float parsing, ~0.4s for the full 400k-line
-    file) and every word in `clue_words` is guaranteed to appear in it:
-    build_similarity_tensor.py only ever admits a word into the clue
-    vocabulary if it's among GloVe's own top-N (by default 250k)
-    alphabetic words. So GloVe's file position already IS a frequency
-    rank for every clue word, with no new dependency or cache artifact
-    needed -- just re-derive it once at server startup.
+    Originally derived from GloVe's own frequency-ordered file position,
+    but that was a bad proxy for "a person would recognize this word" --
+    proper nouns (city names especially) get mentioned constantly in the
+    news/web/Wikipedia text GloVe was trained on regardless of whether an
+    average speaker actually knows them, so e.g. "Stuttgart" and
+    "Helsinki" both landed in the top 10% by that measure (confirmed
+    empirically, not assumed -- see docs/log.md). `wordfreq.zipf_frequency`
+    blends subtitle/conversational-text frequency in alongside web text
+    specifically to correct for that skew (subtitle frequency is the
+    standard psycholinguistic fix for "recognizable word" vs. "frequently
+    printed word"), fully offline after install (bundled data, no network
+    calls at runtime).
 
-    Percentile is computed within the clue vocabulary itself (not all
-    400k GloVe words), since that's the pool an actual filter choice is
-    made over -- clue_words already skews toward moderately-common words
-    by construction (SPACE_CONFIGS' top-N + intersection filtering), so a
-    percentile against the full English vocabulary would make even a
-    fairly obscure Codenames clue look deceptively "common."
+    Percentile is computed within the clue vocabulary itself (not all of
+    wordfreq's English vocabulary), since that's the pool an actual filter
+    choice is made over -- clue_words already skews toward moderately-
+    common words by construction (build_similarity_tensor.py's top-N +
+    intersection filtering), so a percentile against the full English
+    lexicon would make even a fairly obscure Codenames clue look
+    deceptively "common."
     """
-    glove_config = SPACE_CONFIGS["glove"]
-    ranked = ranked_alphabetic_words(
-        glove_config["default_source"], glove_config["opener"], glove_config["skip_prefixes"], glove_config["has_header"], limit=None
-    )
-    glove_rank = {w: i for i, w in enumerate(ranked)}
-
-    # Words never seen in GloVe's alphabetic scan shouldn't be possible
-    # given the invariant above, but fall back to "rarest" rather than
-    # crashing if the assumption is ever violated (e.g. a differently
-    # built cache).
-    fallback_rank = len(ranked)
-    ranks = np.array([glove_rank.get(w, fallback_rank) for w in clue_words])
-    order = np.argsort(ranks)
+    scores = np.array([zipf_frequency(w, "en") for w in clue_words])
+    order = np.argsort(-scores)  # descending: highest zipf (most common) first
     percentile = np.empty(len(clue_words), dtype=np.float64)
     percentile[order] = np.arange(len(clue_words)) / len(clue_words) * 100.0
     return dict(zip(clue_words, percentile))

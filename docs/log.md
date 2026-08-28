@@ -1624,4 +1624,52 @@ automatically inside `run_arena_gpu` if no CUDA device is present, just
 without the speedup, so this default doesn't break anything on a
 GPU-less machine.
 
+## Clue-rarity filter was using the wrong notion of "rare"
+
+The user hit this directly in the UI: `max_rarity=10%` still returned
+"Frankfurt, Helsinki, Budapest, Zurich, Paris, Stuttgart, Munich, Vienna,
+Warsaw, Istanbul" for a geography-themed board. Checked whether this was a
+bug before assuming a fix was needed: it wasn't -- every one of those
+words genuinely sat under the 10th percentile of `CLUE_RARITY_PERCENTILE`
+as originally built (e.g. "stuttgart" at 7.8%, "helsinki" at 8.2%).
+
+The real problem was the underlying frequency source. `CLUE_RARITY_PERCENTILE`
+was derived from GloVe's own file order (frequency-descending in its raw
+training corpus). That's a bad proxy for "would a person recognize this
+word" specifically for proper nouns -- city names get mentioned constantly
+in the news/web/Wikipedia text GloVe was trained on (finance, travel,
+sports datelines) regardless of whether an average speaker actually knows
+them, so major European capitals ranked as more "common" than plenty of
+genuinely everyday words.
+
+Discussed three ways to fix it (a curated common-word list, psycholinguistic
+familiarity/AoA norms, or a differently-sourced frequency measure) and
+picked the `wordfreq` package: it blends movie/TV subtitle and
+conversational-text frequency in alongside web text specifically to
+correct for this exact skew -- subtitle frequency is the standard
+psycholinguistic fix for "recognizable word" vs. "frequently printed
+word" (a screenplay says "Vienna" only when the story is actually set
+there; a news wire says it constantly regardless). Offline after install,
+same "no network calls at runtime" property the old GloVe-based approach
+had.
+
+Swapped `_build_clue_rarity_percentile` (scripts/web_inspector.py) to use
+`wordfreq.zipf_frequency(word, "en")` instead of GloVe file position --
+same percentile-within-the-clue-vocabulary logic, just a better-sourced
+input. Unknown-to-wordfreq words naturally sort as rarest (zipf_frequency
+returns 0.0 for them) without needing the old explicit fallback-rank
+logic. Verified concretely: "stuttgart" moved from 7.8% to 19.7%,
+"helsinki" from 8.2% to 16.0%, "budapest" from 8.3% to 12.3% -- all now
+correctly excluded by a 10% filter, while genuinely common words stayed
+low ("the" 0.0%, "dog" 0.7%, "castle" 2.9%, "paris" 1.4% -- Paris really
+is used constantly in ordinary conversation, unlike the others). Removed
+the now-unused `_embedding_lib` GloVe-file-scanning import from
+web_inspector.py; that machinery is still used by
+build_similarity_tensor.py/extend_similarity_tensor.py, just no longer by
+the rarity filter. Added `wordfreq` to pyproject.toml.
+
+All 190 tests pass (no test coverage changes needed -- this swaps an
+internal data source behind an already-untested-directly helper function;
+verified manually against the exact words the user reported instead).
+
 ## Human evaluation (not started)

@@ -9,6 +9,7 @@ dependencies = [
     "gensim",
     "wikiextractor",
     "matplotlib",
+    "wordfreq",
 ]
 
 [project.optional-dependencies]
