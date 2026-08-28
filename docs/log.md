@@ -1345,4 +1345,33 @@ undertaking than what was actually asked for. Flagged as a real but
 optional follow-up if the user wants that broader cleanup too, rather than
 either silently doing it or silently leaving it unmentioned.
 
+## Post-M9: dropped the old model's docs entirely, renamed the current one to v1
+
+Immediate follow-up to the versions-instead-of-milestones restructure
+above. The user wanted the README to be stricter than "historical vs.
+current": no reference anywhere to the old k-alone model at all (not even
+as a labeled-superseded entry), and a real name for the model that's
+actually live -- picking from "v1," "benchmark 1," or a descriptive name.
+
+Deleted `docs/versions/v1.md` and `v1_ablation_report.md` outright (not
+just unlinked from the README -- confirmed with the user first, since
+that's a step further than what "in the readme" literally said). Renamed
+what was `v2.md` to `v1.md` -- reusing "v1" for the (k, cause) scorer now
+that there's nothing else it could be confused with -- and gave it an
+actual name throughout ("the (k, cause) scorer") rather than leaving it
+identified only by a version number. `linear_scorer` dropped from the
+README's baseline list too (it's not registered in the web UI's dropdown
+either, hasn't been for a while -- this just makes the README match what's
+actually live rather than listing something dormant as if it were active).
+
+Also restructured where the model-architecture explanation lives: it used
+to be an early, unnamed "How the model works" section before any model had
+been introduced. Moved the feature-vector/MLP-architecture/output-meaning
+content into a section literally titled "Model 1: the (k, cause) scorer,"
+positioned after the baselines list -- simple reference points first, then
+the actual named model, matching how the project's own iteration story
+("simplest first, improve from here") already reads.
+
+No code changed, docs only. All 184 tests still pass.
+
 ## Human evaluation (not started)
