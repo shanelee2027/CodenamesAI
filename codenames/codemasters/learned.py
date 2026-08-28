@@ -24,7 +24,7 @@ from pathlib import Path
 import torch
 
 from codenames.board import Board
-from codenames.clue_search import top_legal_clue
+from codenames.clue_search import top_k_legal_clues, top_legal_clue
 from codenames.features import build_features_batch
 from codenames.scorer import DEFAULT_MISS_PENALTY, Scorer, expected_reward_and_best_n
 from codenames.similarity import SimilarityTensor
@@ -41,7 +41,10 @@ class LearnedCodemaster(Codemaster):
         self.model.load_state_dict(checkpoint["model_state"])
         self.model.eval()
 
-    def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
+    def _score_all_clues(self, board: Board, sims: SimilarityTensor) -> tuple:
+        """(best_n, score) per clue in sims.clue_words -- shared by
+        give_clue() and top_k_clues() so both use the exact same forward
+        pass and the exact same current miss_penalty."""
         turn_index = len(board.revealed)
         features = build_features_batch(board, sims, turn_index)
 
@@ -49,8 +52,18 @@ class LearnedCodemaster(Codemaster):
             x = torch.from_numpy(features).to(self.device)
             probs = self.model.predict_proba(x).cpu().numpy()
 
-        best_n, scores = expected_reward_and_best_n(probs, self.miss_penalty)
+        return expected_reward_and_best_n(probs, self.miss_penalty)
 
+    def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
+        best_n, scores = self._score_all_clues(board, sims)
         clue = top_legal_clue(sims, board, scores)
         clue_idx = sims.clue_index[clue.lower()]
         return clue, int(best_n[clue_idx])
+
+    def top_k_clues(self, board: Board, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
+        """Up to k best legal (clue, number, score) triples, best first --
+        for inspecting what the model likes rather than just its single
+        pick (scripts/web_inspector.py)."""
+        best_n, scores = self._score_all_clues(board, sims)
+        clues = top_k_legal_clues(sims, board, scores, k)
+        return [(clue, int(best_n[sims.clue_index[clue.lower()]]), float(scores[sims.clue_index[clue.lower()]])) for clue in clues]

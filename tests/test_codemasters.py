@@ -117,6 +117,26 @@ class TestLinearScorerCodemaster:
         assert clue == "ownfavored"
         assert 1 <= number <= MAX_CLUE_NUMBER
 
+    def test_top_k_clues_ranked_best_first_and_agrees_with_give_clue(self, tmp_path):
+        tensor = base_tensor()
+        own_idxs = [BOARD_WORDS.index(f"Board{i}") for i in range(9)]
+        assassin_idx = BOARD_WORDS.index("Board24")
+        tensor[CLUE_WORDS.index("ownfavored"), own_idxs, :] = 0.9
+        tensor[CLUE_WORDS.index("mixedclue"), own_idxs, :] = 0.5
+        tensor[CLUE_WORDS.index("assassinfavored"), assassin_idx, :] = 0.9
+        sims = make_sims(tmp_path, tensor)
+
+        board = make_board()
+        cm = LinearScorerCodemaster()
+        top3 = cm.top_k_clues(board, sims, k=3)
+        assert len(top3) == 3
+        assert [c for c, _, _ in top3] == ["ownfavored", "mixedclue", "neutralfavored"]
+        # scores strictly decreasing
+        assert top3[0][2] > top3[1][2] > top3[2][2]
+
+        clue, number = cm.give_clue(board, sims)
+        assert (clue, number) == top3[0][:2]
+
     def test_default_weights_match_scope_baseline_3(self):
         assert DEFAULT_WEIGHTS[Role.OWN] == 1.0
         assert DEFAULT_WEIGHTS[Role.OPPONENT] == -1.0

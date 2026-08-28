@@ -27,7 +27,7 @@ from __future__ import annotations
 import numpy as np
 
 from codenames.board import Board, Role
-from codenames.clue_search import top_legal_clue
+from codenames.clue_search import top_k_legal_clues, top_legal_clue
 from codenames.similarity import SimilarityTensor
 
 from ._util import natural_number
@@ -45,7 +45,7 @@ class LinearScorerCodemaster(Codemaster):
     def __init__(self, weights: dict[Role, float] | None = None):
         self.weights = dict(weights) if weights is not None else dict(DEFAULT_WEIGHTS)
 
-    def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
+    def _score_all_clues(self, board: Board, sims: SimilarityTensor) -> np.ndarray:
         total = np.zeros(len(sims.clue_words), dtype=np.float32)
         for role, weight in self.weights.items():
             words = board.words_by_role(role, unrevealed_only=True)
@@ -56,7 +56,15 @@ class LinearScorerCodemaster(Codemaster):
             with np.errstate(invalid="ignore"):
                 role_mean = np.nanmean(columns, axis=(1, 2))
             total += weight * np.nan_to_num(role_mean, nan=0.0)
+        return total
 
+    def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
+        total = self._score_all_clues(board, sims)
         clue = top_legal_clue(sims, board, total)
         number = natural_number(sims, board, clue, MAX_CLUE_NUMBER)
         return clue, number
+
+    def top_k_clues(self, board: Board, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
+        total = self._score_all_clues(board, sims)
+        clues = top_k_legal_clues(sims, board, total, k)
+        return [(clue, natural_number(sims, board, clue, MAX_CLUE_NUMBER), float(total[sims.clue_index[clue.lower()]])) for clue in clues]

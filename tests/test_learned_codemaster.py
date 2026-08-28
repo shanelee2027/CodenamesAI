@@ -62,6 +62,19 @@ class TestLearnedCodemaster:
         _, number = cm.give_clue(board, sims)
         assert 0 <= number <= 4  # unlike the baselines, 0 is a legitimate output here
 
+    def test_top_k_clues_ranked_best_first_and_agrees_with_give_clue(self, sims, checkpoint_path):
+        cm = LearnedCodemaster(checkpoint_path)
+        board = make_board()
+        top2 = cm.top_k_clues(board, sims, k=2)
+        assert len(top2) == 2
+        for clue, number, _ in top2:
+            assert clue in sims.clue_words
+            assert 0 <= number <= 4
+        assert top2[0][2] >= top2[1][2]  # scores non-increasing
+
+        clue, number = cm.give_clue(board, sims)
+        assert (clue, number) == top2[0][:2]
+
     def test_turn_index_proxy_is_revealed_count(self, sims, checkpoint_path, monkeypatch):
         cm = LearnedCodemaster(checkpoint_path)
         board = make_board(revealed=["Board9", "Board10"])

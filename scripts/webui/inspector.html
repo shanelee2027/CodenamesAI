@@ -147,6 +147,22 @@
   .sim-chips { display: flex; gap: 6px; flex-wrap: wrap; }
   .sim-chip { padding: 2px 8px; border-radius: 10px; font-size: 12px; position: relative; }
   .sim-chip .order { font-size: 9px; opacity: 0.75; margin-right: 4px; }
+
+  .candidate-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .candidate-row:hover { background: #2a2f3a; }
+  .candidate-row.active { background: #2a3f5a; }
+  .candidate-rank { color: var(--dim); font-size: 11px; width: 18px; text-align: right; }
+  .candidate-clue { font-weight: 600; flex: 1; }
+  .candidate-number { color: var(--dim); font-size: 12px; }
+  .candidate-score { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; min-width: 60px; text-align: right; }
 </style>
 </head>
 <body>
@@ -167,9 +183,11 @@
   <div class="controls">
     <label>codemaster</label>
     <select id="codemaster"></select>
+    <label>top</label>
+    <input id="topK" type="number" min="1" max="50" value="10" style="width:60px;" title="How many candidate clues to show, best first.">
     <label>risk aversion</label>
     <input id="riskAversion" type="number" step="0.5" placeholder="-10 (default)" style="width:110px;" title="Only affects 'learned:*' codemasters -- the miss penalty used when scoring candidate clues. Blank = model's default (-10).">
-    <button id="getAiClue" class="primary">Get AI clue</button>
+    <button id="getAiClue" class="primary">Get AI clues</button>
     <span id="aiClueReadout" class="sub" style="margin:0 0 0 4px;"></span>
   </div>
 
@@ -187,6 +205,10 @@
       <div id="board" class="board"></div>
     </div>
     <div>
+      <div class="panel">
+        <h2>Candidate clues from the AI codemaster</h2>
+        <div id="aiCandidates">Pick a codemaster and click "Get AI clues".</div>
+      </div>
       <div class="panel">
         <h2>What each guesser would pick</h2>
         <div id="guessers">Type a clue to see guesser predictions.</div>
@@ -381,8 +403,7 @@ async function queryClue() {
 }
 
 function refresh() {
-  renderSimulation(null);
-  document.getElementById('aiClueReadout').textContent = '';
+  clearAiState();
   if (document.getElementById('clue').value.trim()) queryClue();
   else loadState();
 }
@@ -399,24 +420,55 @@ async function loadCodemasters() {
   }
 }
 
+let lastCandidates = [];
+
+function renderAiCandidates(codemaster, candidates) {
+  const el = document.getElementById('aiCandidates');
+  lastCandidates = candidates;
+  if (!candidates.length) { el.innerHTML = 'Pick a codemaster and click "Get AI clues".'; return; }
+  el.innerHTML = '';
+  candidates.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'candidate-row';
+    row.dataset.index = i;
+    const scoreText = c.score === null || c.score === undefined ? '' : c.score.toFixed(3);
+    row.innerHTML = `<span class="candidate-rank">${i + 1}</span>` +
+      `<span class="candidate-clue">${c.clue}</span>` +
+      `<span class="candidate-number">number ${c.number}</span>` +
+      `<span class="candidate-score">${scoreText}</span>`;
+    row.addEventListener('click', () => selectCandidate(codemaster, i));
+    el.appendChild(row);
+  });
+}
+
+async function selectCandidate(codemaster, index) {
+  const c = lastCandidates[index];
+  document.querySelectorAll('.candidate-row').forEach((row) => row.classList.toggle('active', Number(row.dataset.index) === index));
+
+  document.getElementById('clue').value = c.clue;
+  document.getElementById('aiClueReadout').textContent = `${codemaster} candidate #${index + 1}: "${c.clue}" (number ${c.number})`;
+  await queryClue();
+
+  const seed = currentSeed();
+  const simData = await fetchJSON(`/api/simulate?seed=${seed}&clue=${encodeURIComponent(c.clue)}&number=${c.number}&reveal=${encodeURIComponent(currentReveal())}`);
+  renderSimulation(simData);
+}
+
 async function getAiClue() {
   const seed = currentSeed();
   const codemaster = document.getElementById('codemaster').value;
+  const topK = document.getElementById('topK').value || 1;
   const riskAversion = document.getElementById('riskAversion').value.trim();
   const riskParam = riskAversion ? `&risk_aversion=${encodeURIComponent(riskAversion)}` : '';
-  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&reveal=${encodeURIComponent(currentReveal())}${riskParam}`);
+  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&top_k=${topK}&reveal=${encodeURIComponent(currentReveal())}${riskParam}`);
   if (data.error) {
     document.getElementById('aiClueReadout').textContent = data.error;
     return;
   }
 
-  document.getElementById('clue').value = data.clue;
-  document.getElementById('aiClueReadout').textContent = `${codemaster} chose "${data.clue}" (number ${data.number})`;
-  await queryClue();
-
-  const seed2 = currentSeed();
-  const simData = await fetchJSON(`/api/simulate?seed=${seed2}&clue=${encodeURIComponent(data.clue)}&number=${data.number}&reveal=${encodeURIComponent(currentReveal())}`);
-  renderSimulation(simData);
+  document.getElementById('aiClueReadout').textContent = `${data.clues.length} candidate(s) from ${codemaster}`;
+  renderAiCandidates(codemaster, data.clues);
+  await selectCandidate(codemaster, 0);
 }
 
 document.getElementById('newBoard').addEventListener('click', () => { revealed.clear(); refresh(); });
@@ -425,8 +477,13 @@ document.getElementById('randomSeed').addEventListener('click', () => {
   revealed.clear();
   refresh();
 });
-document.getElementById('ask').addEventListener('click', () => { renderSimulation(null); document.getElementById('aiClueReadout').textContent = ''; queryClue(); });
-document.getElementById('clue').addEventListener('keydown', (e) => { if (e.key === 'Enter') { renderSimulation(null); document.getElementById('aiClueReadout').textContent = ''; queryClue(); } });
+function clearAiState() {
+  renderSimulation(null);
+  renderAiCandidates('', []);
+  document.getElementById('aiClueReadout').textContent = '';
+}
+document.getElementById('ask').addEventListener('click', () => { clearAiState(); queryClue(); });
+document.getElementById('clue').addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearAiState(); queryClue(); } });
 document.getElementById('getAiClue').addEventListener('click', getAiClue);
 
 loadCodemasters();

@@ -162,7 +162,7 @@ def _parse_reveal(query: dict) -> list[str]:
     return raw.split(",") if raw else []
 
 
-def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str, risk_aversion: str = "") -> dict:
+def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str, risk_aversion: str = "", top_k: int = 1) -> dict:
     if codemaster_name not in CODEMASTERS:
         return {"error": f"unknown codemaster {codemaster_name!r}, choices: {list(CODEMASTERS)}"}
     codemaster = CODEMASTERS[codemaster_name]
@@ -172,8 +172,14 @@ def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str,
         # -- fine for a single-user local dev tool.
         codemaster.miss_penalty = float(risk_aversion)
     board = _make_board(seed, reveal)
-    clue, number = codemaster.give_clue(board, SIMS)
-    return {"codemaster": codemaster_name, "clue": clue, "number": number}
+
+    if top_k > 1 and hasattr(codemaster, "top_k_clues"):
+        clues = [{"clue": c, "number": n, "score": s} for c, n, s in codemaster.top_k_clues(board, SIMS, top_k)]
+    else:
+        clue, number = codemaster.give_clue(board, SIMS)
+        clues = [{"clue": clue, "number": number, "score": None}]
+
+    return {"codemaster": codemaster_name, "clues": clues}
 
 
 def _simulate_turn(board: Board, clue: str, number: int, guesser, sims: SimilarityTensor) -> dict:
@@ -261,7 +267,8 @@ class Handler(BaseHTTPRequestHandler):
             seed = int(query.get("seed", ["42"])[0])
             codemaster_name = query.get("codemaster", [""])[0]
             risk_aversion = query.get("risk_aversion", [""])[0]
-            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, risk_aversion)
+            top_k = int(query.get("top_k", ["1"])[0])
+            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, risk_aversion, top_k)
             self._send_json(response, status=400 if "error" in response else 200)
             return
 
