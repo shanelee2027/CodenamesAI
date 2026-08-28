@@ -490,6 +490,95 @@ in a config file.
 
 ## M6 — Arena
 
+**Expected:** cross-play matrix, every codemaster x every guesser, over
+fixed seeded boards. SQLite logging, one row per turn. Multiprocessing
+across cores sharing the mmapped tensor, reporting per-worker RSS.
+Metrics: win rate, mean turns, assassin rate, mean own-words per clue.
+
+**Actual:** matched expectations, plus a mid-build correction on the
+memory-sharing requirement. Notes:
+
+- Built out of order relative to guessers-before-codemasters intuition:
+  M8's learned scorer doesn't exist yet, so the arena needed *something*
+  to pair against the pool. Built the three codemaster baselines SCOPE
+  §6 lists that don't require the feature vector or a trained model:
+  random legal clue, centroid, and the 8-constant linear scorer (§6
+  items 1-3; items 4-5 need M7/M8). `codenames/codemasters/` mirrors
+  `guessers/`'s shape: a `Codemaster` ABC with one abstract method,
+  `give_clue(board, sims) -> (clue, number)`.
+- **Centroid baseline without raw vectors.** SCOPE §6 says "clue nearest
+  the mean of a random own-word subset," but build-time explicitly
+  throws away the embedding models after the similarity tensor is built
+  (§2) -- there's no vector to average. Standard proxy used instead: a
+  candidate clue's mean cosine similarity to a set of points approximates
+  its similarity to their mean, so "nearest the centroid" = highest mean
+  similarity to the subset, flat across both the subset words and the
+  available spaces (not nested mean-of-means, which would under-weight a
+  word missing from one space relative to a word present everywhere).
+- **"Number" isn't specified by SCOPE for the baselines**, since only the
+  learned scorer's k-distribution (§2) is designed in detail. Random
+  picks a random count. Centroid and the linear scorer use a shared
+  `natural_number()` helper: rank unrevealed words by similarity to the
+  clue, count how many own-words rank above the first non-own word. All
+  three cap at `MAX_CLUE_NUMBER = 4`, matching the learned scorer's
+  eventual k in 0..4 (§2), so every codemaster's outputs stay comparable
+  once M8 exists.
+- **Memory bug found via the arena's own RSS reporting.** First version
+  of `LinearScorerCodemaster` cached `nanmean(tensor, axis=2)` once per
+  instance (~850MB as float32) to avoid rescanning the full tensor every
+  turn. Looked fine in isolated tests. Running the real arena with 2
+  workers showed **9.4GB RSS per worker** -- SCOPE §7's memory design
+  note is specifically about *not* duplicating large state across
+  workers, and a per-instance derived-array cache is exactly that: the
+  mmapped tensor's pages are shared by the OS across processes, but a
+  materialized copy of it is not. Fixed by dropping the cache entirely
+  and reading only the board-word columns actually needed (at most 24)
+  directly off the memmap per call. Same tests, same arena output;
+  worker RSS on the same real-data smoke run dropped to ~1.5GB, at the
+  cost of a slower per-turn call (rescans the needed columns instead of
+  reusing a cached array) -- correct tradeoff given SCOPE's explicit
+  memory constraint. Documented in `linear_scorer.py`'s own docstring so
+  the mistake and the reasoning aren't silently lost if someone is
+  tempted to "optimize" it back to a cache later.
+- **Off-diagonal by design, not as an afterthought.** The arena always
+  plays the *full* guesser pool, held-out members included -- `held_out`
+  is carried through into results and the SQLite rows purely as a label.
+  It doesn't gate anything yet (none of the 3 baseline codemasters are
+  data-driven, so "held out from training" has no referent for them),
+  but it will matter the moment M8's learned codemaster exists, and
+  getting the label plumbed through now means M8 doesn't need to touch
+  the arena or DB schema to use it.
+- Multiprocessing via `concurrent.futures.ProcessPoolExecutor` with a
+  per-worker `initializer` that loads its own `SimilarityTensor` (own
+  mmap handle onto the same file -- OS page cache shares the physical
+  pages), the guesser pool, and the codemaster instances once, reused
+  across every task that lands on that worker.
+- SQLite schema is one row per turn (`codenames/arena.py::_init_db`):
+  codemaster, guesser, guesser_held_out, board_seed, turn_index, clue,
+  number, guesses (JSON), reward, ended_reason, game_outcome. Denormalized
+  on purpose (game_outcome repeated on every turn row of a game) so a
+  query never needs a join to filter by outcome.
+- Real-data smoke run (`scripts/run_arena.py --n-boards 3`) surfaced a
+  concrete, useful finding rather than just exercising the plumbing:
+  `cautious_glove` (the confidence-threshold guesser, threshold 0.2)
+  times out on every single game against every codemaster -- 0.0%
+  win/assassin rate, 40 turns (the timeout cap), 0.000 own-words/clue.
+  Its threshold is high enough that essentially no real clue clears it,
+  so it always declines every guess. Not a bug -- SCOPE's guesser pool
+  is deliberately supposed to include failure modes -- but worth flagging
+  in case the threshold (chosen arbitrarily in M5) needs revisiting once
+  M9's pool-sensitivity sweep happens.
+- 19 new tests (`tests/test_codemasters.py`, `tests/test_game.py`,
+  `tests/test_arena.py`), all using synthetic fixtures, no dependency on
+  the real cache -- consistent with `test_guessers.py`/`test_similarity.py`.
+  89 tests total, all passing. Arena tests use a tiny synthetic tensor but
+  the *real* 400-word board vocabulary (`load_wordlist()`), since
+  `Board.generate()` needs to actually find its sampled words in the
+  fixture's board vocabulary.
+- `scripts/run_arena.py`: CLI wrapper, `--n-boards` (seeds 0..n-1),
+  `--max-workers`, `--max-turns` override, prints the win/assassin/turns/
+  own-per-clue matrix plus per-worker peak RSS.
+
 ## M7 — Features and data generation
 
 ## M8 — Scorer

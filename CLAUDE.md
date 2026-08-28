@@ -19,7 +19,7 @@ say so explicitly and ask before diverging.
 - [x] M3 — Inspector
 - [ ] M4 — Remaining embedding spaces + fastText training
 - [x] M5 — Guesser pool
-- [ ] M6 — Arena
+- [x] M6 — Arena
 - [ ] M7 — Features and data generation
 - [ ] M8 — Scorer
 - [ ] M9 — Evaluation and ablations
