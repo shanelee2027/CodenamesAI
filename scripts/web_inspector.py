@@ -22,6 +22,8 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 
 from codenames.board import Board, Role, is_legal_clue
+from codenames.codemasters import CentroidCodemaster, LinearScorerCodemaster, RandomCodemaster
+from codenames.game import ROLE_REWARD
 from codenames.guessers import load_pool
 from codenames.similarity import SimilarityTensor
 from inspector import BASELINE_ROLE_WEIGHTS, ROLE_LABELS, baseline_score
@@ -30,6 +32,15 @@ HTML_PATH = Path(__file__).parent / "webui" / "inspector.html"
 
 SIMS = SimilarityTensor.load()
 POOL = load_pool()
+
+# Populated in main() once --checkpoint (if given) is known -- request
+# handling just reads whatever's here, so this must be set before the
+# server starts serving.
+CODEMASTERS: dict = {
+    "random": RandomCodemaster(seed=0),
+    "centroid": CentroidCodemaster(seed=0),
+    "linear_scorer": LinearScorerCodemaster(),
+}
 
 
 def _nan_to_none(value: float) -> float | None:
@@ -116,6 +127,50 @@ def _parse_reveal(query: dict) -> list[str]:
     return raw.split(",") if raw else []
 
 
+def build_give_clue_response(seed: int, reveal: list[str], codemaster_name: str) -> dict:
+    if codemaster_name not in CODEMASTERS:
+        return {"error": f"unknown codemaster {codemaster_name!r}, choices: {list(CODEMASTERS)}"}
+    board = _make_board(seed, reveal)
+    clue, number = CODEMASTERS[codemaster_name].give_clue(board, SIMS)
+    return {"codemaster": codemaster_name, "clue": clue, "number": number}
+
+
+def _simulate_turn(board: Board, clue: str, number: int, guesser, sims: SimilarityTensor) -> dict:
+    """What actually happens if (clue, number) is played against one
+    guesser, from the current board state -- same stop-on-first-miss /
+    number+1-attempts logic as codenames.game.play_turn, but read-only
+    (peeks at role_of, never reveals) since the same board is reused
+    across every guesser in one request."""
+    candidates = [w for w in board.words if not board.is_revealed(w)]
+    ranked = guesser.rank_candidates(clue, candidates, sims)
+    attempts = ranked[: number + 1]
+
+    guesses = []
+    reward = 0.0
+    ended_reason = "no_guesses"
+    for word in attempts:
+        role = board.role_of(word)
+        guesses.append({"word": word, "role": ROLE_LABELS[role]})
+        reward += ROLE_REWARD[role]
+        if role != Role.OWN:
+            ended_reason = role.value
+            break
+    else:
+        if attempts:
+            ended_reason = "exhausted_guesses"
+
+    return {"guesses": guesses, "reward": reward, "ended_reason": ended_reason}
+
+
+def build_simulate_response(seed: int, reveal: list[str], clue: str, number: int) -> dict:
+    board = _make_board(seed, reveal)
+    results = [
+        {"name": name, **_simulate_turn(board, clue, number, entry.guesser, SIMS)}
+        for name, entry in POOL.items()
+    ]
+    return {"clue": clue, "number": number, "results": results}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args) -> None:  # keep stdout quiet
         pass
@@ -157,6 +212,27 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(build_query_response(seed, clue, _parse_reveal(query), top, guesser_top))
             return
 
+        if parsed.path == "/api/codemasters":
+            self._send_json({"codemasters": list(CODEMASTERS)})
+            return
+
+        if parsed.path == "/api/give_clue":
+            seed = int(query.get("seed", ["42"])[0])
+            codemaster_name = query.get("codemaster", [""])[0]
+            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name)
+            self._send_json(response, status=400 if "error" in response else 200)
+            return
+
+        if parsed.path == "/api/simulate":
+            seed = int(query.get("seed", ["42"])[0])
+            clue = query.get("clue", [""])[0].strip()
+            number = int(query.get("number", ["1"])[0])
+            if not clue:
+                self._send_json({"error": "clue is required"}, status=400)
+                return
+            self._send_json(build_simulate_response(seed, _parse_reveal(query), clue, number))
+            return
+
         self.send_response(404)
         self.end_headers()
 
@@ -164,7 +240,18 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--checkpoint", type=Path, default=None, help="scorer checkpoint from scripts/train_scorer.py -- adds a 'learned' codemaster if given"
+    )
+    parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for the learned codemaster (default: -10.0, see codenames.scorer)")
     args = parser.parse_args()
+
+    if args.checkpoint is not None:
+        from codenames.codemasters import LearnedCodemaster
+
+        learned_kwargs = {} if args.risk_aversion is None else {"miss_penalty": args.risk_aversion}
+        CODEMASTERS["learned"] = LearnedCodemaster(args.checkpoint, **learned_kwargs)
+        print(f"loaded learned codemaster from {args.checkpoint}")
 
     server = ThreadingHTTPServer(("localhost", args.port), Handler)
     print(f"Inspector web UI running at http://localhost:{args.port}  (Ctrl+C to stop)")

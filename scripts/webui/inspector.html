@@ -137,6 +137,16 @@
   table.baseline td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
   table.baseline td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .total-row td { font-weight: 700; border-bottom: none; padding-top: 8px; }
+
+  .sim-row { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  .sim-row:last-child { border-bottom: none; }
+  .sim-header { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+  .sim-name { min-width: 140px; font-weight: 600; }
+  .sim-reward { font-variant-numeric: tabular-nums; color: var(--dim); }
+  .sim-reason { font-size: 10px; padding: 2px 6px; border-radius: 10px; background: #2a2f3a; color: var(--dim); }
+  .sim-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sim-chip { padding: 2px 8px; border-radius: 10px; font-size: 12px; position: relative; }
+  .sim-chip .order { font-size: 9px; opacity: 0.75; margin-right: 4px; }
 </style>
 </head>
 <body>
@@ -152,6 +162,13 @@
     <label>clue</label>
     <input id="clue" type="text" placeholder="e.g. king" autocomplete="off">
     <button id="ask" class="primary">Ask</button>
+  </div>
+
+  <div class="controls">
+    <label>codemaster</label>
+    <select id="codemaster"></select>
+    <button id="getAiClue" class="primary">Get AI clue</button>
+    <span id="aiClueReadout" class="sub" style="margin:0 0 0 4px;"></span>
   </div>
 
   <div id="message"></div>
@@ -171,6 +188,10 @@
       <div class="panel">
         <h2>What each guesser would pick</h2>
         <div id="guessers">Type a clue to see guesser predictions.</div>
+      </div>
+      <div class="panel">
+        <h2>If this clue+number were actually played</h2>
+        <div id="simulation">Click "Get AI clue" to see a simulated turn per guesser (attempts capped at number+1, stops on the first non-own reveal).</div>
       </div>
       <div class="panel">
         <h2>Per-space top rankings</h2>
@@ -280,6 +301,38 @@ function renderSpaces(topPerSpace) {
   }
 }
 
+function renderSimulation(sim) {
+  const el = document.getElementById('simulation');
+  if (!sim) { el.innerHTML = 'Click "Get AI clue" to see a simulated turn per guesser (attempts capped at number+1, stops on the first non-own reveal).'; return; }
+  el.innerHTML = '';
+  for (const r of sim.results) {
+    const row = document.createElement('div');
+    row.className = 'sim-row';
+
+    const header = document.createElement('div');
+    header.className = 'sim-header';
+    header.innerHTML = `<span class="sim-name">${r.name}</span>` +
+      `<span class="sim-reward">reward ${r.reward.toFixed(1)}</span>` +
+      `<span class="sim-reason">${r.ended_reason}</span>`;
+    row.appendChild(header);
+
+    const chips = document.createElement('div');
+    chips.className = 'sim-chips';
+    if (!r.guesses.length) {
+      chips.textContent = '(no guesses)';
+    } else {
+      r.guesses.forEach((g, i) => {
+        const chip = document.createElement('span');
+        chip.className = 'sim-chip chip ' + roleClass(g.role);
+        chip.innerHTML = `<span class="order">${i + 1}</span>${g.word}`;
+        chips.appendChild(chip);
+      });
+    }
+    row.appendChild(chips);
+    el.appendChild(row);
+  }
+}
+
 function renderBaseline(baseline) {
   const el = document.getElementById('baseline');
   if (!baseline) { el.innerHTML = 'Type a clue to see the baseline score.'; return; }
@@ -302,6 +355,7 @@ async function loadState() {
   renderGuessers(null);
   renderSpaces(null);
   renderBaseline(null);
+  renderSimulation(null);
 }
 
 async function queryClue() {
@@ -325,8 +379,40 @@ async function queryClue() {
 }
 
 function refresh() {
+  renderSimulation(null);
+  document.getElementById('aiClueReadout').textContent = '';
   if (document.getElementById('clue').value.trim()) queryClue();
   else loadState();
+}
+
+async function loadCodemasters() {
+  const data = await fetchJSON('/api/codemasters');
+  const select = document.getElementById('codemaster');
+  select.innerHTML = '';
+  for (const name of data.codemasters) {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  }
+}
+
+async function getAiClue() {
+  const seed = currentSeed();
+  const codemaster = document.getElementById('codemaster').value;
+  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&reveal=${encodeURIComponent(currentReveal())}`);
+  if (data.error) {
+    document.getElementById('aiClueReadout').textContent = data.error;
+    return;
+  }
+
+  document.getElementById('clue').value = data.clue;
+  document.getElementById('aiClueReadout').textContent = `${codemaster} chose "${data.clue}" (number ${data.number})`;
+  await queryClue();
+
+  const seed2 = currentSeed();
+  const simData = await fetchJSON(`/api/simulate?seed=${seed2}&clue=${encodeURIComponent(data.clue)}&number=${data.number}&reveal=${encodeURIComponent(currentReveal())}`);
+  renderSimulation(simData);
 }
 
 document.getElementById('newBoard').addEventListener('click', () => { revealed.clear(); refresh(); });
@@ -335,9 +421,11 @@ document.getElementById('randomSeed').addEventListener('click', () => {
   revealed.clear();
   refresh();
 });
-document.getElementById('ask').addEventListener('click', queryClue);
-document.getElementById('clue').addEventListener('keydown', (e) => { if (e.key === 'Enter') queryClue(); });
+document.getElementById('ask').addEventListener('click', () => { renderSimulation(null); document.getElementById('aiClueReadout').textContent = ''; queryClue(); });
+document.getElementById('clue').addEventListener('keydown', (e) => { if (e.key === 'Enter') { renderSimulation(null); document.getElementById('aiClueReadout').textContent = ''; queryClue(); } });
+document.getElementById('getAiClue').addEventListener('click', getAiClue);
 
+loadCodemasters();
 loadState();
 </script>
 </body>
