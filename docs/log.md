@@ -1763,4 +1763,23 @@ outcome int32 in `[0, 12]`, seeds present) -- all valid. 194 tests pass
 against the numpy reference plus a chunking-doesn't-change-the-result
 check).
 
+## Web UI: the blend guesser is now a selectable option
+
+Trained `learned:blend` last session but only wired it up as a
+codemaster choice -- the guesser side (the "what each guesser would
+pick" list, and the pool a simulated turn plays against) still only
+built from `configs/guesser_pool.json`'s standard 3-guesser pool, so
+`blend` never showed up there. Requested: add it as a choice in the UI.
+
+`scripts/web_inspector.py::_pool_config_at_noise` now appends the
+`blend` entry (loaded once from `configs/guesser_pool_blend.json`) to
+every noise-level pool it builds, *after* the loop that overrides
+`noise_std` on the standard `noisy_*` entries -- so `blend` keeps its
+own fixed `noise_std=0.08` (the level it was designed and trained
+against) regardless of which noise level the play-time selector is set
+to, rather than being silently reinterpreted at whatever noise the user
+picks. Verified `POOLS_BY_NOISE` now contains `blend` alongside the 3
+standard guessers at all 6 noise levels. 194 tests still pass (no test
+constrained the web UI's pool composition, so nothing needed updating).
+
 ## Human evaluation (not started)

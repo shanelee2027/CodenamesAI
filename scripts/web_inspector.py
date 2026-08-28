@@ -64,12 +64,21 @@ NOISE_LEVELS = [0.0, 0.03, 0.06, 0.08, 0.1, 0.15]
 DEFAULT_NOISE = 0.03
 _BASE_POOL_CONFIG = json.loads(DEFAULT_POOL_CONFIG.read_text())
 
+# The single weighted-blend guesser (configs/guesser_pool_blend.json) --
+# offered alongside the standard 3-guesser pool at every noise level,
+# with its own fixed noise_std (0.08, the level it was designed and
+# trained a codemaster against), NOT overridden by the play-time noise
+# dial the way the 3 standard noisy_* guessers are.
+_BLEND_POOL_CONFIG = json.loads(Path("configs/guesser_pool_blend.json").read_text())
+_BLEND_ENTRY = _BLEND_POOL_CONFIG["guessers"][0]
+
 
 def _pool_config_at_noise(noise_std: float) -> dict:
     config = copy.deepcopy(_BASE_POOL_CONFIG)
     for entry in config["guessers"]:
         if entry.get("type") == "noisy":
             entry["params"]["noise_std"] = noise_std
+    config["guessers"].append(copy.deepcopy(_BLEND_ENTRY))
     return config
 
 
