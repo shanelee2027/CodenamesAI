@@ -62,16 +62,16 @@ class OracleCodemaster(Codemaster):
         return run_length, combined
 
     def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
+        # number = the intended word count directly (matches
+        # codemasters/_util.py::natural_number's convention) -- the
+        # standard Codenames "one bonus guess beyond what you announced"
+        # rule is still applied by codenames.game.play_turn, unchanged.
         run_length, combined = self._score_all_clues(board, sims)
         clue = top_legal_clue(sims, board, combined)
         clue_idx = sims.clue_index[clue.lower()]
-        return clue, int(max(0, run_length[clue_idx] - 1))
+        return clue, int(run_length[clue_idx])
 
     def top_k_clues(self, board: Board, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
         run_length, combined = self._score_all_clues(board, sims)
         clues = top_k_legal_clues(sims, board, combined, k)
-        results = []
-        for clue in clues:
-            idx = sims.clue_index[clue.lower()]
-            results.append((clue, int(max(0, run_length[idx] - 1)), float(run_length[idx])))
-        return results
+        return [(clue, int(run_length[sims.clue_index[clue.lower()]]), float(run_length[sims.clue_index[clue.lower()]])) for clue in clues]

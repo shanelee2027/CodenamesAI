@@ -183,7 +183,7 @@ class TestOracleCodemaster:
         cm = OracleCodemaster(space="a")
         clue, number = cm.give_clue(board, sims)
         assert clue == "ownfavored"
-        assert number == 4  # run of 5 own words -> number = 5 - 1
+        assert number == 5  # number = the intended word count directly
 
     def test_top_k_reports_run_length_as_score_and_agrees_with_give_clue(self, tmp_path):
         tensor = base_tensor()
@@ -201,16 +201,16 @@ class TestOracleCodemaster:
         cm = OracleCodemaster(space="a")
         top2 = cm.top_k_clues(board, sims, k=2)
         assert [c for c, _, _ in top2] == ["ownfavored", "mixedclue"]
-        assert top2[0][1:] == (2, 3.0)  # number=run-1=2, score=run=3.0
-        assert top2[1][1:] == (0, 1.0)
+        assert top2[0][1:] == (3, 3.0)  # number=run=3, score=run=3.0
+        assert top2[1][1:] == (1, 1.0)
 
         clue, number = cm.give_clue(board, sims)
         assert (clue, number) == top2[0][:2]
 
-    def test_zero_run_length_clamps_number_to_zero(self, tmp_path):
+    def test_zero_run_length_reports_number_zero(self, tmp_path):
         # Every clue's single highest-similarity word is an opponent word
-        # -- the best achievable run length is 0 for all of them. Number
-        # must clamp to 0, not go negative.
+        # -- the best achievable run length is 0 for all of them, so
+        # number (== run length) is legitimately 0, not an error case.
         tensor = base_tensor()
         for clue in CLUE_WORDS:
             tensor[CLUE_WORDS.index(clue), BOARD_WORDS.index("Board9"), :] = 0.99
