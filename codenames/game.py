@@ -60,8 +60,21 @@ class GameResult:
     total_reward: float = 0.0
 
 
-def play_turn(board: Board, codemaster: Codemaster, guesser: Guesser, sims: SimilarityTensor) -> TurnResult:
-    clue, number = codemaster.give_clue(board, sims)
+def play_turn(
+    board: Board,
+    codemaster: Codemaster,
+    guesser: Guesser,
+    sims: SimilarityTensor,
+    clue_and_number: tuple[str, int] | None = None,
+) -> TurnResult:
+    """`clue_and_number`, if given, skips calling `codemaster.give_clue()`
+    and uses that pair directly -- lets a caller compute the clue for many
+    boards at once (batched, off the hot path of this function) and still
+    reuse this exact tested attempt/reveal/stop logic per board. See
+    codenames/gpu_arena.py, which batches LearnedCodemaster's give_clue()
+    across many simultaneous games on GPU for a real throughput win, then
+    drives each board's turn through this same function unchanged."""
+    clue, number = clue_and_number if clue_and_number is not None else codemaster.give_clue(board, sims)
     candidates = [w for w in board.words if not board.is_revealed(w)]
     ranked = guesser.rank_candidates(clue, candidates, sims)
     attempts = ranked[:number]

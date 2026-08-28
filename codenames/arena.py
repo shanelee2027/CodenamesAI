@@ -17,11 +17,25 @@ worker. Codemasters/guessers must not defeat this by materializing their own
 private copy of the full tensor as an instance cache -- see
 codenames/codemasters/linear_scorer.py's docstring for a case where an
 earlier version did exactly that and pushed worker RSS past 9GB.
+
+**Worker start method is "spawn," not the Linux default "fork."** Forking
+after CUDA has been initialized in the parent process hangs or crashes the
+child, even if the child never touches the GPU itself -- the forked
+process inherits a broken copy of the CUDA context. This matters
+concretely now that scripts/run_arena.py can combine this module's
+baselines with codenames/gpu_arena.py's GPU-batched LearnedCodemaster path
+in one invocation: whichever runs first would poison the other under
+"fork," and getting the call order right forever is a landmine, not a fix.
+"spawn" starts each worker as a genuinely fresh interpreter, sidestepping
+the hazard regardless of call order, at the cost of somewhat slower
+worker startup (each one re-imports everything) -- a one-time-per-worker
+cost, not per-task, so it doesn't change per-game throughput.
 """
 
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 import resource
 import sqlite3
@@ -48,6 +62,14 @@ class CrossPlayResult:
     win_rate: float
     assassin_rate: float
     mean_turns: float
+    # mean_turns above blends two different situations: a game that ends
+    # early by hitting the assassin (possibly on turn 1) and a game that
+    # runs its natural course to a win. Blended together, "mean game
+    # length" doesn't answer either "how long does a successful game take"
+    # or "how early do doomed games end" -- split out here so both
+    # questions have a real answer. `mean_turns_on_win` is None if there
+    # were no wins to average (e.g. n_games==0 or every game was a loss).
+    mean_turns_on_win: float | None
     mean_own_words_per_clue: float
     # Per-guess role breakdown, not per-game: of every individual word
     # actually guessed across every turn of every game, what fraction was
@@ -61,6 +83,51 @@ class CrossPlayResult:
     guess_opponent_rate: float
     guess_neutral_rate: float
     guess_assassin_rate: float
+
+
+def new_stats_accumulator() -> dict[str, float]:
+    """One (codemaster, guesser) pair's running totals -- shared between
+    run_arena's per-process games and codenames/gpu_arena.py's batched
+    games, so both runners compute CrossPlayResult identically instead of
+    maintaining two copies of this bookkeeping that could quietly drift
+    apart."""
+    return {
+        "games": 0, "wins": 0, "losses": 0, "turns": 0, "turns_on_win": 0, "turn_count": 0, "own_words": 0,
+        "guesses": 0, "guess_own": 0, "guess_opponent": 0, "guess_neutral": 0, "guess_assassin": 0,
+    }
+
+
+def update_stats(s: dict[str, float], result: GameResult) -> None:
+    s["games"] += 1
+    s["wins"] += result.outcome == "win"
+    s["losses"] += result.outcome == "loss"
+    s["turns"] += len(result.turns)
+    if result.outcome == "win":
+        s["turns_on_win"] += len(result.turns)
+    for turn in result.turns:
+        s["turn_count"] += 1
+        s["own_words"] += sum(1 for _, role in turn.guesses if role == Role.OWN)
+        for _, role in turn.guesses:
+            s["guesses"] += 1
+            s[f"guess_{role.value}"] += 1
+
+
+def finalize_result(codemaster: str, guesser: str, held_out: bool, s: dict[str, float]) -> CrossPlayResult:
+    return CrossPlayResult(
+        codemaster=codemaster,
+        guesser=guesser,
+        held_out=held_out,
+        n_games=int(s["games"]),
+        win_rate=s["wins"] / s["games"],
+        assassin_rate=s["losses"] / s["games"],
+        mean_turns=s["turns"] / s["games"],
+        mean_turns_on_win=(s["turns_on_win"] / s["wins"]) if s["wins"] else None,
+        mean_own_words_per_clue=(s["own_words"] / s["turn_count"]) if s["turn_count"] else 0.0,
+        guess_own_rate=(s["guess_own"] / s["guesses"]) if s["guesses"] else 0.0,
+        guess_opponent_rate=(s["guess_opponent"] / s["guesses"]) if s["guesses"] else 0.0,
+        guess_neutral_rate=(s["guess_neutral"] / s["guesses"]) if s["guesses"] else 0.0,
+        guess_assassin_rate=(s["guess_assassin"] / s["guesses"]) if s["guesses"] else 0.0,
+    )
 
 
 def _init_db(db_path: Path) -> sqlite3.Connection:
@@ -153,55 +220,25 @@ def run_arena(
     ]
 
     conn = _init_db(db_path)
-    stats: dict[tuple[str, str], dict[str, float]] = defaultdict(
-        lambda: {
-            "games": 0, "wins": 0, "losses": 0, "turns": 0, "turn_count": 0, "own_words": 0,
-            "guesses": 0, "guess_own": 0, "guess_opponent": 0, "guess_neutral": 0, "guess_assassin": 0,
-        }
-    )
+    stats: dict[tuple[str, str], dict[str, float]] = defaultdict(new_stats_accumulator)
     worker_rss: dict[int, int] = {}
 
     with ProcessPoolExecutor(
         max_workers=max_workers,
+        mp_context=multiprocessing.get_context("spawn"),
         initializer=_worker_init,
         initargs=(sims_cache_dir, codemaster_specs, guesser_pool_config, max_turns),
     ) as pool:
         for cm_name, g_name, pid, result, rss_kb in pool.map(_play_task, tasks):
             held_out = guesser_held_out[g_name]
             _log_game(conn, cm_name, g_name, held_out, result)
-
-            s = stats[(cm_name, g_name)]
-            s["games"] += 1
-            s["wins"] += result.outcome == "win"
-            s["losses"] += result.outcome == "loss"
-            s["turns"] += len(result.turns)
-            for turn in result.turns:
-                s["turn_count"] += 1
-                s["own_words"] += sum(1 for _, role in turn.guesses if role == Role.OWN)
-                for _, role in turn.guesses:
-                    s["guesses"] += 1
-                    s[f"guess_{role.value}"] += 1
-
+            update_stats(stats[(cm_name, g_name)], result)
             worker_rss[pid] = max(worker_rss.get(pid, 0), rss_kb)
 
     conn.commit()
     conn.close()
 
     results = {
-        (cm_name, g_name): CrossPlayResult(
-            codemaster=cm_name,
-            guesser=g_name,
-            held_out=guesser_held_out[g_name],
-            n_games=int(s["games"]),
-            win_rate=s["wins"] / s["games"],
-            assassin_rate=s["losses"] / s["games"],
-            mean_turns=s["turns"] / s["games"],
-            mean_own_words_per_clue=(s["own_words"] / s["turn_count"]) if s["turn_count"] else 0.0,
-            guess_own_rate=(s["guess_own"] / s["guesses"]) if s["guesses"] else 0.0,
-            guess_opponent_rate=(s["guess_opponent"] / s["guesses"]) if s["guesses"] else 0.0,
-            guess_neutral_rate=(s["guess_neutral"] / s["guesses"]) if s["guesses"] else 0.0,
-            guess_assassin_rate=(s["guess_assassin"] / s["guesses"]) if s["guesses"] else 0.0,
-        )
-        for (cm_name, g_name), s in stats.items()
+        (cm_name, g_name): finalize_result(cm_name, g_name, guesser_held_out[g_name], s) for (cm_name, g_name), s in stats.items()
     }
     return results, worker_rss

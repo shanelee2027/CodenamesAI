@@ -68,6 +68,8 @@ class TestRunArena:
             assert 0.0 <= r.win_rate <= 1.0
             assert 0.0 <= r.assassin_rate <= 1.0
             assert r.mean_turns > 0
+            if r.mean_turns_on_win is not None:
+                assert 0 < r.mean_turns_on_win <= r.mean_turns * r.n_games  # sane upper bound, not tight
             rates = (r.guess_own_rate, r.guess_opponent_rate, r.guess_neutral_rate, r.guess_assassin_rate)
             assert all(0.0 <= rate <= 1.0 for rate in rates)
             assert sum(rates) == pytest.approx(1.0)  # every guess lands on exactly one role
@@ -75,6 +77,26 @@ class TestRunArena:
         assert results[("random", "space_a_holdout")].held_out is True
         assert results[("random", "space_a")].held_out is False
         assert len(worker_rss) >= 1
+
+    def test_mean_turns_on_win_is_none_when_nothing_won(self, sims_cache_dir, guesser_pool_config, tmp_path):
+        # max_turns=0 forces every game to time out (play_game's loop body
+        # never runs) -- zero wins, so there's nothing to average.
+        codemaster_specs = {"random": (RandomCodemaster, {"seed": 0})}
+        db_path = tmp_path / "arena.db"
+
+        results, _ = run_arena(
+            codemaster_specs=codemaster_specs,
+            guesser_pool_config=guesser_pool_config,
+            seeds=[1, 2],
+            db_path=db_path,
+            sims_cache_dir=sims_cache_dir,
+            max_turns=0,
+            max_workers=1,
+        )
+
+        for r in results.values():
+            assert r.win_rate == 0.0
+            assert r.mean_turns_on_win is None
 
     def test_logs_one_row_per_turn_to_sqlite(self, sims_cache_dir, guesser_pool_config, tmp_path):
         codemaster_specs = {"random": (RandomCodemaster, {"seed": 0})}

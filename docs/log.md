@@ -1427,4 +1427,201 @@ combined with tied similarity scores makes the exact guess sequence
 untestable without over-specifying guesser tie-breaking behavior. All 184
 tests pass.
 
+## GPU-for-arena benchmark, a game-setup invariant check, and splitting mean game length
+
+Three follow-ups from discussing the self-play results above.
+
+**GPU preliminary benchmark, not a change.** The user asked whether the
+CPU-forward-pass observation from earlier ("could be a big optimization")
+was actually worth pursuing, before committing to any rewrite. Benchmarked
+directly rather than guessing: `codenames/scorer.py::Scorer`'s forward
+pass over the full ~111k-clue vocabulary (one board) takes ~106ms on CPU
+vs. ~1.85ms on GPU once batched (measured at 1x/4x/8x/16x/32x board
+multiples stacked into one call -- GPU per-board marginal cost stayed
+flat across all of them, meaning it's nowhere near saturated even at 32
+boards batched together). That's a genuine 57x per-call speedup. But
+`build_features_batch` (the numpy gather/sort producing that forward
+pass's input) costs a separately-measured ~80ms/board, entirely CPU-bound
+and untouched by moving just the model to GPU. So naively flipping
+`LearnedCodemaster`'s device to "cuda" would cut per-turn cost from
+~186ms to ~82ms -- a real but much smaller ~2.3x win, not 57x -- and that
+estimate doesn't even account for whether 8 concurrent CPU worker
+processes all sharing one GPU device would contend with each other
+(not tested). The full order-of-magnitude win needs feature construction
+batched *across multiple games* in one process too, replacing the arena's
+current one-board-per-OS-process model -- a real rewrite. Conclusion:
+confirmed real and quantifiable, not acted on -- worth it if/when bulk
+simulation throughput actually becomes a bottleneck (it hasn't yet; the
+300-board self-play run finished in an acceptable ~14 minutes).
+
+**Verified the 9-card-team invariant.** The user wanted confirmation that
+the team going first (per real Codenames rules, the team with 9 cards)
+is the one actually being simulated. `codenames/board.py::ROLE_COUNTS`
+hardcodes `Role.OWN: 9` -- not randomized, not a parameter -- and since
+this project only ever simulates the "own" team's perspective (no second
+team's turns exist at all, per `game.py`'s long-standing single-team
+simplification), "own" is unconditionally the 9-card role by construction.
+Verified empirically too, not just by reading the code: generated 2000
+boards across seeds 0-1999 and confirmed the role counts are exactly
+9/8/7/1 every single time, zero mismatches. Worth being precise about what
+this does and doesn't confirm: there's no actual turn alternation between
+two teams in this codebase to "go first" in, so the real content of the
+check is "the simulated team's role always matches the standard starting
+team's card count," which it does, unconditionally.
+
+**Split mean game length into all-games vs. wins-only.** The user's point:
+blending a game that ends abruptly on turn 1 via the assassin together
+with a game that runs its natural course to a win answers neither "how
+long do successful games take" nor "how early do doomed games end."
+`codenames/arena.py::CrossPlayResult` gains `mean_turns_on_win` (`None`
+when there were no wins to average, e.g. an all-loss or zero-game result)
+alongside the existing `mean_turns` (now explicitly "all games, blended").
+`scripts/run_arena.py`'s table now has both columns. New test
+(`test_mean_turns_on_win_is_none_when_nothing_won`) uses `max_turns=0` to
+force every game to time out with zero wins, checking the None path
+directly rather than only the happy path. Reran the noise_0.08 self-play
+evaluation with the same seeds (0..299, deterministic) to get the split --
+win/assassin/per-guess numbers reproduced exactly, confirming determinism,
+with the new turns-on-win figure added. All 185 tests pass.
+
+Also, per the user's framing: win rate is being de-emphasized as the
+headline metric going forward -- it's dominated by "how often the
+assassin gets hit," which the per-guess assassin rate already answers
+more directly, and win rate alone can't distinguish a model that plays it
+extremely safe from one that's actually finding own words efficiently.
+The per-guess role breakdown and the turns-on-win figure are the more
+informative numbers; both READMEs/version doc updated to lead with those.
+
+## Built the GPU-batched arena for real: 13x measured speedup, plus a real multiprocessing/CUDA bug found along the way
+
+Follow-up to the GPU preliminary benchmark above. The user wanted to
+actually pursue this, but asked for more testing on feasibility first
+given it was flagged as a real rewrite, not a config flag -- prototyped
+before committing to anything in the codebase.
+
+**Prototype 1 (looped, one GPU call per board):** ported
+`build_features_batch`'s gather/sort logic to torch, verified exact
+numerical match against the numpy reference, timed it. Only ~25-33ms/board
+-- barely better than numpy's ~80ms/board, because each board still costs
+12 small GPU kernel launches (4 roles x 3 spaces) whose overhead dominates
+actual compute.
+
+**Prototype 2 (genuinely batched across boards):** padded every board's
+per-role unrevealed-word index list to a common width with a validity
+mask, so the gather+sort happens as one tensor op across *all* boards in
+a batch, not one Python-loop iteration per board. Correctness verified
+exactly again. Real payoff: ~42.8ms/board at batch=1 down to ~5.8ms/board
+at batch=32, still improving, not yet flattened. Combined with the
+forward pass's own ~1.85ms/board (from the earlier benchmark), that's
+~7.7ms/board-turn end-to-end at batch=32 vs. ~186ms on CPU -- a ~24x raw
+per-turn compute speedup. Told the user honestly that the *realistic
+arena* speedup would be smaller than 24x, since run_arena already gets
+real parallelism from 8 CPU worker processes -- the fair comparison is
+"1 GPU process" against "8 CPU processes," which the numbers suggested
+would land around 3x. Asked "how much faster" -- answered with that
+distinction rather than just repeating the flashier 24x number.
+
+**Built for real**, given the prototype validated cleanly:
+- `codenames/gpu_features.py` (new): `build_features_batch_multi`, the
+  production version of prototype 2, plus a GPU-tensor cache keyed by
+  `id(sims)` (documented as relying on SimilarityTensor living for a
+  whole process's lifetime in this usage, not a general-purpose cache).
+  Kept out of `codenames/features.py` deliberately -- that module stays
+  pure-numpy, no torch, since scripts/generate_training_data.py and
+  others import it with no reason to pull torch in.
+- `codenames/game.py::play_turn` gained an optional `clue_and_number`
+  param -- skips calling `codemaster.give_clue()` when given, so the new
+  batched runner can compute clues for many boards at once (off this
+  function's hot path) and still reuse this exact, already-tested
+  attempt/reveal/stop logic per board unchanged. Zero behavior change for
+  every existing caller (default `None` preserves the old path).
+- `codenames/arena.py` refactored to export `new_stats_accumulator`/
+  `update_stats`/`finalize_result` -- the stats bookkeeping `run_arena`
+  already did, extracted so the new GPU runner computes `CrossPlayResult`
+  identically instead of maintaining a second copy that could quietly
+  drift from the first.
+- `codenames/gpu_arena.py` (new): `run_arena_gpu`, driving N games in
+  lockstep per "round" (fixed batch groups, not a streaming refill queue
+  -- simpler to get right, and games are short enough that the wasted
+  compute on already-finished boards near a group's end is minor).
+  Batches only the codemaster's clue *selection*; guessers and the
+  turn-resolution logic are untouched, reused directly via `play_turn`.
+  Only accelerates `LearnedCodemaster` -- every other codemaster already
+  scores a handful of candidates, not the full vocabulary, so there's
+  nothing for them to gain here.
+- `scripts/run_arena.py` gained `--gpu-batch-size`: baselines still run
+  through the normal `run_arena`, the learned codemaster routes through
+  `run_arena_gpu` instead when this is set, results merged into one
+  report.
+
+**A real bug found while cross-validating, not by inspection.** Testing
+"GPU codemaster first, then the CPU multiprocess path" to compare results
+hung indefinitely -- traced to a genuine hazard: `ProcessPoolExecutor`
+defaults to `fork` on Linux, and forking a worker process *after* CUDA has
+been initialized in the parent hands the child a broken, unusable CUDA
+context even though the child never touches the GPU itself. This was
+latent in `codenames/arena.py` before today -- it just never mattered
+until a single script could plausibly touch CUDA (via the new GPU path)
+and then spin up `run_arena`'s worker pool in the same process, which
+`scripts/run_arena.py --gpu-batch-size` now does routinely. Fixed by
+switching `run_arena`'s `ProcessPoolExecutor` to `mp_context=
+multiprocessing.get_context("spawn")` -- verified the exact
+previously-hanging order (GPU then CPU) now completes cleanly. Also
+surfaced (and fixed in the throwaway benchmark script, not the codebase)
+the standard companion gotcha: a `spawn`-based script needs its
+top-level code guarded by `if __name__ == "__main__":`, or workers
+re-execute the whole module; `scripts/run_arena.py` already had this
+guard, only the ad hoc comparison script didn't.
+
+**Correctness, not just speed.** Built `tests/test_gpu_features.py` (exact
+match against `build_features_batch`, including a real NaN/missing-vector
+case and boards with different numbers of unrevealed words per role) and
+`tests/test_gpu_arena.py` (exact match against `run_arena`'s CPU path
+end-to-end, using a deterministic non-noisy guesser specifically so the
+comparison isn't contaminated by `NoisyGuesser`'s stateful RNG depending
+on task-to-worker scheduling -- see below; plus a test that batch size
+itself doesn't change the result). Both skip automatically without CUDA.
+All pass. Manually reran the exact-match comparison after the `spawn` fix
+too, both call orders: `n_games`, `win_rate`, `assassin_rate`,
+`mean_turns`, `mean_turns_on_win`, and all four `guess_*_rate` fields
+matched exactly, not just approximately.
+
+**Real end-to-end benchmark**, matching the earlier self-play evaluation's
+exact setup (noise_0.08 codemaster, that noise level's 3 guessers, 300
+boards each, 900 games): CPU path (8 workers) took 716.4s; GPU path
+(batch_size=32) took 54.9s. **13.05x measured speedup** -- notably better
+than the ~3x estimated beforehand, because the estimate assumed each CPU
+worker keeps hitting its solo ~186ms/turn baseline under 8-way concurrency,
+but 8 processes each internally using multi-threaded BLAS/numpy contend
+for the same 16 cores in practice (observed >100% CPU per worker even
+before this session's changes), degrading real per-worker throughput well
+below the naive "just divide by 8" assumption. Win rates were close but
+not identical between the two runs (e.g. 99.0% vs. 97.0% for one guesser)
+-- expected, not a correctness concern: `NoisyGuesser`'s RNG is stateful
+and shared across every task a given worker process happens to handle, so
+its exact draw sequence depends on real-time task-to-worker scheduling,
+which isn't guaranteed identical run to run even with fixed seeds (this
+was already true before today, just not previously measured this
+directly). The deterministic-guesser test above is what actually proves
+correctness; this benchmark's job was throughput, not bit-for-bit
+reproduction.
+
+Also discovered along the way, worth its own note: **`docs/versions/v1.md`'s
+earlier "run to run" comparison** (the mean_turns_on_win rerun a few
+entries up) showed small differences from the original self-play numbers
+for exactly this same stateful-RNG-plus-scheduling reason, not a bug in
+that feature.
+
+190 tests pass (185 + 5 new: 3 `test_gpu_features.py`, 2
+`test_gpu_arena.py`).
+
+**Made the GPU path the default, not opt-in**, per explicit user request
+mid-session ("let's not run the cpu one anymore, just the gpu one, I
+don't want to have to wait"): `scripts/run_arena.py --gpu-batch-size`
+now defaults to `32` (was `None`/off); added `--no-gpu-batch` for the
+rare case the old per-process path is wanted instead. Falls back to CPU
+automatically inside `run_arena_gpu` if no CUDA device is present, just
+without the speedup, so this default doesn't break anything on a
+GPU-less machine.
+
 ## Human evaluation (not started)
