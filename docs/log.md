@@ -1300,4 +1300,49 @@ unit test, same as the rest of run_ablation_study.py -- it's the
 integration test, verified by actually running it, per its own module
 docstring).
 
-## M10 — Human evaluation
+## Post-M9: project restructure -- versions instead of milestones
+
+The initial build (what used to be tracked as M1-M9 in `docs/SCOPE.md` and
+`CLAUDE.md`'s checklist) is done; the project is now in an iteration phase,
+trying ideas to improve the model rather than building out a fixed spec.
+The user asked to reflect that directly in the project structure rather
+than keep the milestone framing: `docs/SCOPE.md` is retired (deleted, not
+kept as a stale "source of truth" pointer), and the project is now
+organized around **model versions** instead.
+
+New layout:
+- `README.md` rewritten as the actual entry point -- what the project is,
+  how the three-stage pipeline works, how to train/test/inspect a model,
+  the baseline ladder, directory layout, current status.
+- `docs/design-decisions.md` (new) -- standing design rationale that isn't
+  tied to any one model version (feature vector sorting/concatenation,
+  guesser-pool diversity philosophy, the pool-as-unvalidatable-assumption
+  mitigations, the first-pass simplifications, method decisions,
+  environment notes, references). Salvaged from SCOPE.md's §1/§3/§4/§7/§10
+  rather than deleted outright -- still load-bearing reasoning, just no
+  longer framed as "the spec."
+- `docs/versions/` (new) -- one doc per model version. `v1.md`: the
+  original k-alone scorer (now historical/superseded, its ablation report
+  moved here as `v1_ablation_report.md`). `v2.md`: the current (k, cause)
+  scorer -- output shape, the four reward parameters, the six trained
+  noise-level checkpoints' results table, what's built on top of it in the
+  web UI, and an "open questions for a future version" section capturing
+  the two brainstormed directions from this session (cross-turn clue
+  memory, win-probability/score-aware risk) as the natural place a v3 would
+  start from.
+- `CLAUDE.md` rewritten: no more milestone checklist, no more "SCOPE.md is
+  the source of truth" -- points to README.md + design-decisions.md +
+  versions/ instead, conventions section made self-contained.
+
+Deliberately did NOT do: a mechanical sweep of the ~33 files whose
+docstrings cite "SCOPE.md §N" internally (board.py, features.py,
+scorer.py, every guesser/codemaster, most scripts). Those citations are
+inert historical breadcrumbs explaining *why* code is the way it is, not
+functional file-path reads (confirmed via grep -- nothing actually opens
+docs/SCOPE.md at runtime), and rewriting dozens of docstrings purely to
+update a citation target is a much bigger, mostly-cosmetic, error-prone
+undertaking than what was actually asked for. Flagged as a real but
+optional follow-up if the user wants that broader cleanup too, rather than
+either silently doing it or silently leaving it unmentioned.
+
+## Human evaluation (not started)
