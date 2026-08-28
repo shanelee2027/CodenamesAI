@@ -1850,4 +1850,49 @@ updated to -0.2 (tests that pass `neutral_reward` explicitly as a
 parameter, e.g. `test_neutral_reward_only_affects_neutral_causes`, were
 unaffected). 194 tests pass.
 
+## Rerunning v1/v1.1 self-play under the new neutral reward
+
+Requested after the neutral-reward change above: rerun the self-play
+evals so the README/docs numbers reflect current default behavior
+instead of the stale `neutral_reward=0.0` ones.
+
+**Caught and fixed a real bug mid-run.** First v1 rerun used
+`configs/guesser_pool_blend.json`... no -- used
+`codenames/guessers/registry.py::DEFAULT_POOL_CONFIG`
+(`configs/guesser_pool.json`) directly, which defaults to
+`noise_std=0.03` (lowered post-M9, see this file's noise-reduction
+entry) -- NOT the `noise_std=0.08` pool v1's checkpoint was actually
+trained and evaluated against (`cache/m9/pool_configs/noise_0_08.json`,
+a separate noise-specific copy `scripts/run_ablation_study.py` writes
+per level). Every codemaster's assassin-hit rate dropped far more than a
+reward-table tweak could plausibly explain (centroid 12.0%->6.4%,
+linear_scorer 27.2%->11.7%) -- the tell that this was a guesser-pool
+mismatch, not the intended change, since a lower-noise pool makes
+guessing more accurate for every codemaster uniformly, reward table
+irrelevant. Reran with the correct
+`cache/m9/pool_configs/noise_0_08.json`; results now move by a
+plausible, smaller amount.
+
+Also hit a smaller self-inflicted issue: reused the same `--db` path
+across two `run_arena.py` invocations, which appends rather than
+replaces -- a query aggregating "all guessers combined" directly against
+that db double-counted games sharing the same `(guesser, board_seed)`
+key, corrupting turn/outcome grouping (guess-role ratios were still
+right, since duplication scales all categories proportionally, but
+`turns`/`win`/`loss` counts weren't). Fixed by deleting the db and
+rerunning once per fresh path before querying.
+
+Final numbers (`cache/arena_v1_rerun.db`, `cache/arena_blend_rerun.db`,
+both gitignored): v1 assassin-hit rate 3.2% -> 4.0%, v1.1 3.7% -> 4.0% --
+both moved by a similar small amount, in line with expectations (a
+neutral guess is no longer free, so the model gives up a little pure
+assassin-avoidance for it). Baselines that don't read the reward table
+(`centroid`, `random`) only moved by ordinary `NoisyGuesser`-RNG
+run-to-run noise; `linear_scorer` uses its own separate hardcoded -0.3
+constant, also unaffected by this change. Updated README (Model 1 and
+Model 1.1 sections) and `docs/versions/v1.md`/`v1.1.md` (including the
+per-guesser breakdown table) with the new numbers, both explicit that
+they supersede the pre-rerun figures rather than being a second data
+point. 194 tests still pass (no test asserted these values).
+
 ## Human evaluation (not started)
