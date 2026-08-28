@@ -1,0 +1,19 @@
+{
+  "_comment": "Single-guesser exploratory pool, not the standard 3-guesser one in guesser_pool.json. One weighted-average blend across all three embedding spaces (glove 0.3, numberbatch 0.5, wikipedia2vec 0.2 -- codenames/guessers/blend.py::BlendGuesser), wrapped in Gaussian noise (codenames/guessers/noisy.py::NoisyGuesser, noise_std=0.08, matching the noise level already established as a reasonable middle ground -- see docs/log.md's noise-sweep entries). Deliberately a single guesser, which departs from docs/design-decisions.md's 'diversity must be in knowledge, not noise' principle -- there is no second, differently-knowledgeable listener to check robustness against here. Requested and built as an explicit one-off exploratory variant, not a replacement for the standard pool.",
+  "guessers": [
+    {
+      "name": "blend",
+      "type": "noisy",
+      "params": {
+        "base": {
+          "type": "blend",
+          "params": {
+            "weights": { "glove": 0.3, "numberbatch": 0.5, "wikipedia2vec": 0.2 }
+          }
+        },
+        "noise_std": 0.08,
+        "seed": 1
+      }
+    }
+  ]
+}

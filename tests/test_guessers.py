@@ -196,6 +196,21 @@ class TestRegistry:
             assert isinstance(guesser.base, SingleSpaceGuesser)
             assert guesser.base.space == space
 
+    def test_blend_pool_config_loads(self):
+        # configs/guesser_pool_blend.json: a single guesser, a noisy
+        # weighted blend across all three spaces (glove/numberbatch/
+        # wikipedia2vec) -- exploratory, not the standard training pool.
+        from pathlib import Path
+
+        path = Path(__file__).parent.parent / "configs" / "guesser_pool_blend.json"
+        entries = load_pool(path)
+        assert list(entries) == ["blend"]
+        guesser = entries["blend"].guesser
+        assert isinstance(guesser, NoisyGuesser)
+        assert guesser.noise_std == 0.08
+        assert isinstance(guesser.base, BlendGuesser)
+        assert guesser.base.weights == {"glove": 0.3, "numberbatch": 0.5, "wikipedia2vec": 0.2}
+
     def test_accepts_an_already_parsed_config_dict_not_just_a_path(self):
         # scripts/web_inspector.py builds one in-memory pool per noise
         # level by copying and editing the default config dict, so

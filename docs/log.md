@@ -1672,4 +1672,95 @@ All 190 tests pass (no test coverage changes needed -- this swaps an
 internal data source behind an already-untested-directly helper function;
 verified manually against the exact words the user reported instead).
 
+## New guesser: a single weighted blend across all three spaces, and a model trained on it
+
+The user asked for a new guesser -- weighted average of the three
+spaces' cosine similarities (glove 0.3, numberbatch 0.5, wikipedia2vec
+0.2), plus 0.08 Gaussian noise -- and a model trained against it. No new
+guesser *code* was needed: `codenames/guessers/blend.py::BlendGuesser`
+(weighted average across spaces) and `codenames/guessers/noisy.py::NoisyGuesser`
+(adds noise to any base guesser) already existed and compose directly.
+The "new guesser" is `configs/guesser_pool_blend.json`: a single pool
+entry, `NoisyGuesser(base=BlendGuesser(weights=...), noise_std=0.08)`,
+using the registry's inline-anonymous-base support.
+
+Flagged before building it: this is a single-guesser pool, which departs
+from docs/design-decisions.md's "diversity must be in knowledge, not
+noise" principle -- there's no second, differently-knowledgeable listener
+to check robustness against. Fine as a deliberate one-off exploratory
+variant, not a replacement for the standard 3-guesser pool.
+
+Generated 200k examples (`cache/blend_pool/data/`) and trained
+(`cache/blend_pool/checkpoints/`, same (k, cause) architecture as every
+other model): val_loss=1.1869, val_acc=0.5680 after 20 epochs.
+`scripts/web_inspector.py::_discover_checkpoints` extended with an
+explicit (not wildcard-matched, same reasoning as the noise_* rule)
+check for `cache/blend_pool/checkpoints/scorer_best.pt`, registered as
+`learned:blend`. New test asserts `guesser_pool_blend.json` loads to the
+expected `NoisyGuesser(BlendGuesser(...))` structure with the exact
+requested weights. 191 tests pass at this point.
+
+## GPU-batched training-data generation: real, but a smaller win than the arena's
+
+Follow-up to the profiling from the self-play/GPU-arena discussion:
+`scripts/generate_training_data.py`'s dominant per-example cost (measured
+~3ms of ~3.2ms total, ~96%) is `_cached_mean_similarity_to_words`'s
+full-vocabulary (~111k-row) numpy mean, recomputed fresh per example
+since each one samples a different random word subset. Asked to actually
+test batching this on GPU before building it, given the earlier
+GPU-arena work.
+
+**Prototype first.** A naive "gather everything, batch=2000" version
+actually got *worse* than the CPU baseline (8.46ms/sample) and threw a
+CUDA OOM warning -- a `(batch, 111440, max_words, spaces)` tensor plus
+several same-shaped derived tensors (NaN mask, validity mask, zeroed
+values) blow past 16GB VRAM well before batch=2000. The real sweet spot
+was much smaller: ~0.15ms/sample at batch=32-128, a genuine ~30x on this
+one operation, chunked to stay in a safe memory range rather than left
+for every caller to discover the hard way.
+
+**Built for real**, given the prototype validated (exact match against
+`mean_from_columns`, not just close):
+- `codenames/gpu_clue_search.py` (new): `batched_mean_similarity`,
+  chunking internally at `DEFAULT_CHUNK_SIZE=64` regardless of how large
+  a batch a caller passes in.
+- `scripts/generate_training_data.py::sample_clue` split into
+  `_plan_clue` (the RNG-consuming board/subset selection, cheap) and
+  `_resolve_scored_clue` (turns a precomputed score array into a legal
+  clue) -- `sample_clue` itself is now a thin wrapper composing both
+  unchanged, so its existing tests and its role as the CPU-fallback
+  entrypoint both still hold. `generate()` gained `use_gpu_batch=True`
+  (auto-off without CUDA): the new default path samples `PLAN_BATCH_SIZE`
+  (4096) examples' board/clue-plans ahead of time, batch-scores all of
+  them in one `batched_mean_similarity` call, then resolves and emits
+  each one exactly as before. CLI gained `--no-gpu-batch`.
+- Documented explicitly in `generate()`'s docstring: this reorders the
+  RNG draw sequence relative to the old one-example-at-a-time loop, so a
+  given seed's exact shard contents differ from what an older version of
+  this function produced. Still fully deterministic for a *given*
+  version, which is what `scripts/run_ablation_study.py`'s same-seed
+  reuse across `feature_builder`/`guesser_weights` variants actually
+  needs -- not byte-for-byte stability across code changes, which nothing
+  ever promised.
+
+**Real measured result: 3.06x, not 30x** -- 865 examples/sec vs. 283/sec
+at real vocabulary scale (111,440 clues), generating 20k real examples
+both ways. Honest reason for the gap: the isolated microbenchmark only
+measured the scoring step in isolation. In the full pipeline,
+`top_k_legal_clues` (turning a score array into an actual legal-clue
+candidate list, ~0.49ms/call measured separately) was never optimized and
+is now the new dominant cost, proportionally much more visible now that
+scoring itself dropped by ~30x -- Amdahl's law: fixing the biggest
+bottleneck reveals the next one, not a free 30x end to end. Not pursued
+further this session (`top_k_legal_clues` is per-example legality string-
+checking, not an obviously GPU-friendly operation the way full-vocabulary
+scoring was).
+
+Verified real output too, not just throughput: generated 20k real
+examples, checked shapes/dtypes/value ranges (features float32 zero NaNs,
+outcome int32 in `[0, 12]`, seeds present) -- all valid. 194 tests pass
+(191 + 3 new `tests/test_gpu_clue_search.py`, exact-match correctness
+against the numpy reference plus a chunking-doesn't-change-the-result
+check).
+
 ## Human evaluation (not started)

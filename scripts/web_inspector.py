@@ -121,16 +121,24 @@ def _discover_checkpoints() -> dict[str, Path]:
     trained models, so the web UI can offer "learned" codemasters without
     needing a --checkpoint flag for the common case. Restricted to
     noise_*/ specifically (not every subdirectory under
-    cache/m9/checkpoints/) so the dropdown stays limited to the 5
-    permanent noise-level variants even if a full ablation study run
-    (drop-space, pool-sensitivity, etc. -- not kept as UI options) leaves
-    its other checkpoints on disk too."""
+    cache/m9/checkpoints/) so the dropdown stays limited to the permanent
+    noise-level variants even if a full ablation study run (drop-space,
+    pool-sensitivity, etc. -- not kept as UI options) leaves its other
+    checkpoints on disk too. `cache/blend_pool/checkpoints/` is a second,
+    explicitly-named exception: the single-guesser weighted-blend pool
+    variant (configs/guesser_pool_blend.json), intentionally listed here
+    rather than matched by a wildcard, same reasoning as the noise_*
+    restriction -- only checkpoints meant to be permanent UI options
+    should show up automatically."""
     found: dict[str, Path] = {}
     default = Path("cache/checkpoints/scorer_best.pt")
     if default.exists():
         found["checkpoints"] = default
     for path in sorted(Path("cache/m9/checkpoints").glob("noise_*/scorer_best.pt")):
         found[path.parent.name] = path
+    blend_path = Path("cache/blend_pool/checkpoints/scorer_best.pt")
+    if blend_path.exists():
+        found["blend"] = blend_path
     return found
 
 

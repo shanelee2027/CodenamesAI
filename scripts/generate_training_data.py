@@ -74,16 +74,27 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
+import torch
 
 from codenames.board import MAX_CLUE_NUMBER as MAX_K
 from codenames.board import Board, Role, is_legal_clue, load_training_wordlist
 from codenames.clue_search import mean_from_columns, top_k_legal_clues
 from codenames.features import build_features, feature_dim
 from codenames.game import ROLE_REWARD
+from codenames.gpu_clue_search import batched_mean_similarity
 from codenames.guessers.base import Guesser
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG, training_pool
 from codenames.scorer import outcome_class
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
+
+# How many examples' worth of (board, clue-plan) to accumulate before one
+# batched_mean_similarity call, when GPU batching is active. Independent
+# of that function's own internal chunk_size (which bounds GPU memory per
+# call) -- this just bounds how much board/plan state is held in Python
+# lists at once between GPU calls. Large enough to amortize per-call
+# overhead across many chunks, small enough to stay a trivial amount of
+# host memory (a few thousand Board objects + word lists).
+PLAN_BATCH_SIZE = 4096
 
 CLUE_MIX = {"subset_topk": 0.6, "any_word_topk": 0.3, "random": 0.1}
 TOPK_POOL = 20  # sample among the top-K neighbors, not always the single best
@@ -92,14 +103,17 @@ _RANDOM_CLUE_ATTEMPTS = 1000
 # The board vocabulary is fixed at ~400 words, so across millions of sampled
 # examples the *same* board word gets drawn over and over. Reading a word's
 # full (n_clues, n_spaces) column back off the mmapped tensor is the
-# dominant per-example cost (measured ~40ms/example, >95% of it here) --
-# caching it per word turns that into a one-time cost per distinct word
-# actually sampled (at most ~400 columns, a few hundred MB), not per
-# example. Kept local to this script rather than in clue_search.py: the
-# arena runs many worker processes and already had one cache-related RSS
-# blowup fixed (see codemasters/linear_scorer.py) -- a shared cache there
-# would reintroduce the same risk for CentroidCodemaster. This script is a
-# single process, so no such multiplication applies.
+# dominant per-example cost on the CPU path -- caching it per word turns
+# that into a one-time cost per distinct word actually sampled (at most
+# ~400 columns, a few hundred MB), not per example. Kept local to this
+# script rather than in clue_search.py: the arena runs many worker
+# processes and already had one cache-related RSS blowup fixed (see
+# codemasters/linear_scorer.py) -- a shared cache there would reintroduce
+# the same risk for CentroidCodemaster. This script is a single process,
+# so no such multiplication applies. Only used by the CPU fallback path
+# now (sample_clue) -- the default GPU-batched path
+# (codenames.gpu_clue_search) doesn't need per-word caching at all, since
+# it reads straight off the GPU-resident tensor for a whole batch at once.
 _column_cache: dict[str, np.ndarray] = {}
 
 
@@ -136,10 +150,16 @@ def sample_partial_board(rng: random.Random, vocabulary: list[str]) -> tuple[Boa
     return board, revealed_count
 
 
-def sample_clue(rng: random.Random, sims: SimilarityTensor, board: Board) -> str | None:
-    """A legal clue drawn per CLUE_MIX. Returns None on the rare occasions
-    no legal candidate could be found (e.g. no unrevealed words left in
-    the sampled bucket) -- callers should just resample."""
+def _plan_clue(rng: random.Random, sims: SimilarityTensor, board: Board) -> tuple[str, list[str] | str] | None:
+    """The RNG-consuming part of clue sampling, split out from actually
+    scoring/picking a clue so a caller can batch the (expensive, full-
+    vocabulary) scoring step across many boards at once -- see
+    generate()'s GPU-batched path below. Returns `("scored", query_words)`
+    for the two CLUE_MIX branches that need a mean-similarity score,
+    `("resolved", clue)` for the "random legal clue" branch (already fully
+    decided, nothing to score), or `None` on the rare occasions no
+    candidate could even be planned (e.g. no unrevealed words left in the
+    sampled bucket) -- callers should resample a fresh board."""
     roll = rng.random()
 
     if roll < CLUE_MIX["subset_topk"]:
@@ -147,22 +167,40 @@ def sample_clue(rng: random.Random, sims: SimilarityTensor, board: Board) -> str
         if not own_unrevealed:
             return None
         subset_size = rng.randint(1, min(MAX_K, len(own_unrevealed)))
-        subset = rng.sample(own_unrevealed, k=subset_size)
-        scores = _cached_mean_similarity_to_words(sims, subset)
+        return "scored", rng.sample(own_unrevealed, k=subset_size)
     elif roll < CLUE_MIX["subset_topk"] + CLUE_MIX["any_word_topk"]:
         unrevealed = [w for w in board.words if not board.is_revealed(w)]
         if not unrevealed:
             return None
-        scores = _cached_mean_similarity_to_words(sims, [rng.choice(unrevealed)])
+        return "scored", [rng.choice(unrevealed)]
     else:
         for _ in range(_RANDOM_CLUE_ATTEMPTS):
             clue = rng.choice(sims.clue_words)
             if is_legal_clue(clue, board.words):
-                return clue
+                return "resolved", clue
         return None
 
+
+def _resolve_scored_clue(rng: random.Random, sims: SimilarityTensor, board: Board, scores: np.ndarray) -> str | None:
     candidates = top_k_legal_clues(sims, board, scores, k=TOPK_POOL)
     return rng.choice(candidates) if candidates else None
+
+
+def sample_clue(rng: random.Random, sims: SimilarityTensor, board: Board) -> str | None:
+    """A legal clue drawn per CLUE_MIX. Returns None on the rare occasions
+    no legal candidate could be found -- callers should just resample.
+    Scores one board at a time on CPU; generate()'s GPU-batched path
+    doesn't call this directly (it batches _plan_clue/_resolve_scored_clue
+    across many boards instead), but this stays as the single-example
+    entrypoint other callers (and its own tests) use."""
+    plan = _plan_clue(rng, sims, board)
+    if plan is None:
+        return None
+    mode, payload = plan
+    if mode == "resolved":
+        return payload
+    scores = _cached_mean_similarity_to_words(sims, payload)
+    return _resolve_scored_clue(rng, sims, board, scores)
 
 
 def simulate_natural_stop(
@@ -205,6 +243,33 @@ def _existing_shard_count(output_dir: Path) -> int:
     return len(list(output_dir.glob("features_*.npy")))
 
 
+def _plan_batch(
+    rng: random.Random, sims: SimilarityTensor, board_vocabulary: list[str], target: int
+) -> tuple[list[tuple[Board, int, str]], list[Board], list[int], list[list[str]]]:
+    """Sample boards and plan clues (RNG-consuming, cheap) until `target`
+    plans are collected. Returns (already-resolved (board, turn_index,
+    clue) triples from the "random legal clue" branch, plus the three
+    parallel lists -- boards/turn_indices/query_words -- for the branches
+    that still need a mean-similarity score computed)."""
+    resolved: list[tuple[Board, int, str]] = []
+    pending_boards: list[Board] = []
+    pending_turn_indices: list[int] = []
+    pending_queries: list[list[str]] = []
+    while len(resolved) + len(pending_boards) < target:
+        board, turn_index = sample_partial_board(rng, board_vocabulary)
+        plan = _plan_clue(rng, sims, board)
+        if plan is None:
+            continue
+        mode, payload = plan
+        if mode == "resolved":
+            resolved.append((board, turn_index, payload))
+        else:
+            pending_boards.append(board)
+            pending_turn_indices.append(turn_index)
+            pending_queries.append(payload)
+    return resolved, pending_boards, pending_turn_indices, pending_queries
+
+
 def generate(
     n_examples: int,
     shard_size: int,
@@ -215,13 +280,28 @@ def generate(
     board_vocabulary: list[str] | None = None,
     feature_builder: Callable[[Board, str, SimilarityTensor, int], np.ndarray] = build_features,
     guesser_weights: dict[str, float] | None = None,
+    use_gpu_batch: bool = True,
 ) -> int:
     """`feature_builder` and `guesser_weights` exist for SCOPE §9's
     ablations (scripts/run_ablation_study.py), not as CLI flags: swapping
     in `build_features_unsorted` reproduces the exact same sampled
     boards/clues/guessers for a given `seed` (feature computation never
     consumes randomness), and `guesser_weights` skews which guesser labels
-    each example without changing anything else about the sampling."""
+    each example without changing anything else about the sampling.
+
+    `use_gpu_batch` (on by default, falls back to CPU automatically
+    without CUDA): clue *scoring* -- the dominant per-example cost,
+    measured ~96% of it, see docs/log.md's GPU-data-generation entries --
+    runs batched across PLAN_BATCH_SIZE examples at once via
+    codenames.gpu_clue_search instead of one board at a time. This
+    reorders the RNG draw sequence relative to the old one-example-at-a-
+    time loop (planning for many boards happens before any of their clues
+    get resolved or their guesser gets picked), so a given seed's exact
+    shard contents differ from what an older version of this function
+    produced -- still fully deterministic for a *given* version of this
+    function, which is what scripts/run_ablation_study.py's same-seed
+    reuse across feature_builder/guesser_weights variants actually
+    depends on, not byte-for-byte stability across code changes."""
     # Hardcoded default, not a CLI flag: training data must never include a
     # held-out board word by construction, the same way held-out guessers
     # used to be enforced by training_pool() rather than by convention.
@@ -235,6 +315,8 @@ def generate(
         raise ValueError(f"training_pool({guesser_pool_config}) is empty -- nothing to sample from")
     guesser_choice_weights = [guesser_weights[name] for name in guesser_names] if guesser_weights is not None else None
 
+    device = torch.device("cuda") if (use_gpu_batch and torch.cuda.is_available()) else None
+
     rng = random.Random(seed)
     output_dir.mkdir(parents=True, exist_ok=True)
     shard_index = _existing_shard_count(output_dir)
@@ -242,6 +324,18 @@ def generate(
     dim = feature_dim(len(sims.spaces))
     produced = 0
     start_time = time.time()
+
+    def emit(features, outcomes, rewards, seeds, filled: int, board: Board, turn_index: int, clue: str) -> int:
+        if guesser_choice_weights is not None:
+            guesser_name = rng.choices(guesser_names, weights=guesser_choice_weights, k=1)[0]
+        else:
+            guesser_name = rng.choice(guesser_names)
+        guesser = guessers[guesser_name]
+        features[filled] = feature_builder(board, clue, sims, turn_index)
+        k, cause, rewards[filled] = simulate_natural_stop(board, clue, guesser, sims)
+        outcomes[filled] = outcome_class(k, cause)
+        seeds[filled] = board.seed
+        return filled + 1
 
     while produced < n_examples:
         this_shard_size = min(shard_size, n_examples - produced)
@@ -252,22 +346,29 @@ def generate(
 
         filled = 0
         while filled < this_shard_size:
-            board, turn_index = sample_partial_board(rng, board_vocabulary)
-            clue = sample_clue(rng, sims, board)
-            if clue is None:
+            if device is None:
+                board, turn_index = sample_partial_board(rng, board_vocabulary)
+                clue = sample_clue(rng, sims, board)
+                if clue is None:
+                    continue
+                filled = emit(features, outcomes, rewards, seeds, filled, board, turn_index, clue)
+                produced += 1
                 continue
 
-            if guesser_choice_weights is not None:
-                guesser_name = rng.choices(guesser_names, weights=guesser_choice_weights, k=1)[0]
-            else:
-                guesser_name = rng.choice(guesser_names)
-            guesser = guessers[guesser_name]
-            features[filled] = feature_builder(board, clue, sims, turn_index)
-            k, cause, rewards[filled] = simulate_natural_stop(board, clue, guesser, sims)
-            outcomes[filled] = outcome_class(k, cause)
-            seeds[filled] = board.seed
-            filled += 1
-            produced += 1
+            target = min(PLAN_BATCH_SIZE, this_shard_size - filled)
+            resolved, pending_boards, pending_turn_indices, pending_queries = _plan_batch(rng, sims, board_vocabulary, target)
+            if pending_queries:
+                scores_batch = batched_mean_similarity(sims, pending_queries, device)
+                for board, turn_index, scores in zip(pending_boards, pending_turn_indices, scores_batch):
+                    clue = _resolve_scored_clue(rng, sims, board, scores)
+                    if clue is not None:
+                        resolved.append((board, turn_index, clue))
+
+            for board, turn_index, clue in resolved:
+                if filled >= this_shard_size:
+                    break
+                filled = emit(features, outcomes, rewards, seeds, filled, board, turn_index, clue)
+                produced += 1
 
         np.save(output_dir / f"features_{shard_index:05d}.npy", features)
         np.save(output_dir / f"outcome_{shard_index:05d}.npy", outcomes)
@@ -289,6 +390,9 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("cache/training_data"))
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG)
+    parser.add_argument(
+        "--no-gpu-batch", action="store_true", help="score clues one board at a time on CPU instead of batched on GPU (default: batched GPU, ~30x faster on the dominant cost, see docs/log.md)"
+    )
     args = parser.parse_args()
 
     produced = generate(
@@ -297,6 +401,7 @@ def main() -> None:
         output_dir=args.output_dir,
         seed=args.seed,
         guesser_pool_config=args.guesser_pool_config,
+        use_gpu_batch=not args.no_gpu_batch,
     )
     print(f"done: {produced} examples written to {args.output_dir}")
 
