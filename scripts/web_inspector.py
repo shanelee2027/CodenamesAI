@@ -25,9 +25,10 @@ word frequencies (not raw web-corpus rank, which badly overrates place
 names -- see docs/log.md) -- so an obscure pick like "confectionery" can
 be filtered out without retraining anything either.
 
-A second tab, "Full Game," picks one codemaster and one guesser and plays
-a real game to completion via codenames/game.py::play_game (both sides,
-one board, straight through to win/loss/timeout) -- unlike the main tab's
+A second tab, "Full Game," picks a codemaster+guesser pair for each of
+two teams and plays a real two-team game to completion via
+codenames/game.py::play_two_team_game (one shared board, alternating
+turns, straight through to win/loss/timeout) -- unlike the main tab's
 single-turn, read-only peeks, this actually reveals words and shows the
 whole turn-by-turn history. See build_play_game_response.
 
@@ -50,7 +51,7 @@ import numpy as np
 from wordfreq import zipf_frequency
 from codenames.board import Board, Role, is_legal_clue
 from codenames.codemasters import CentroidCodemaster, OracleCodemaster, RandomCodemaster
-from codenames.game import DEFAULT_MAX_TURNS, ROLE_REWARD, play_game
+from codenames.game import DEFAULT_MAX_TURNS, ROLE_REWARD, play_two_team_game
 from codenames.guessers import load_pool
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.scorer import DEFAULT_MISS_PENALTY, OWN_REWARD
@@ -404,54 +405,85 @@ def build_simulate_response(
     return {"clue": clue, "number": number, "noise": noise, "results": results}
 
 
+def _resolve_codemaster(name: str, reward_overrides: dict[str, str] | None):
+    if name not in CODEMASTERS:
+        return None, f"unknown codemaster {name!r}, choices: {list(CODEMASTERS)}"
+    codemaster = CODEMASTERS[name]
+    _apply_reward_overrides(codemaster, reward_overrides or {})
+    return codemaster, None
+
+
+def _resolve_guesser(name: str):
+    if name not in GAME_GUESSERS:
+        return None, f"unknown guesser {name!r}, choices: {list(GAME_GUESSERS)}"
+    return GAME_GUESSERS[name], None
+
+
+def _turn_payload(t) -> dict:
+    return {
+        "clue": t.clue,
+        "number": t.number,
+        "guesses": [{"word": w, "role": ROLE_LABELS[r]} for w, r in t.guesses],
+        "reward": t.reward,
+        "ended_reason": t.ended_reason,
+        # Real Codenames' n+1 bonus, only claimed if the guesser has an
+        # earned reason to (see codenames/guessers/base.py) -- surfaced
+        # so the turn log can call it out rather than leaving "why are
+        # there more guesses than the number" a silent mystery.
+        "bonus_used": len(t.guesses) == t.number + 1,
+    }
+
+
 def build_play_game_response(
     seed: int,
-    codemaster_name: str,
-    guesser_name: str,
-    reward_overrides: dict[str, str] | None = None,
+    codemaster_a_name: str,
+    guesser_a_name: str,
+    codemaster_b_name: str,
+    guesser_b_name: str,
+    reward_overrides_a: dict[str, str] | None = None,
+    reward_overrides_b: dict[str, str] | None = None,
     max_turns: int = DEFAULT_MAX_TURNS,
 ) -> dict:
-    """Runs codenames.game.play_game to completion (one codemaster
-    against one guesser, both chosen from the UI, playing both sides of
-    the same board) -- unlike build_simulate_response's single-turn,
-    read-only peek, this actually reveals words on a fresh Board via the
-    real game loop, same as codenames/arena.py's evaluation runs use, just
-    one game instead of hundreds."""
-    if codemaster_name not in CODEMASTERS:
-        return {"error": f"unknown codemaster {codemaster_name!r}, choices: {list(CODEMASTERS)}"}
-    if guesser_name not in GAME_GUESSERS:
-        return {"error": f"unknown guesser {guesser_name!r}, choices: {list(GAME_GUESSERS)}"}
+    """Runs codenames.game.play_two_team_game to completion -- two
+    codemaster/guesser pairs, both chosen from the UI, alternating turns
+    on one shared board (team A's 9 words vs. team B's 8, per
+    OpponentBoardView in codenames/board.py) -- unlike
+    build_simulate_response's single-turn, read-only peek, this actually
+    reveals words via the real game loop, same machinery
+    codenames/arena.py's evaluation runs use, just one game instead of
+    hundreds.
 
-    codemaster = CODEMASTERS[codemaster_name]
-    _apply_reward_overrides(codemaster, reward_overrides or {})
-    guesser = GAME_GUESSERS[guesser_name]
+    `CODEMASTERS` holds one shared instance per name (fine for a
+    single-user local dev tool, same as elsewhere in this file) -- if
+    both sides pick the *same* learned codemaster, its reward overrides
+    can't actually differ between A and B, since they're the same
+    Python object; B's overrides are applied last and win for both."""
+    codemaster_a, error = _resolve_codemaster(codemaster_a_name, reward_overrides_a)
+    if error:
+        return {"error": error}
+    codemaster_b, error = _resolve_codemaster(codemaster_b_name, reward_overrides_b)
+    if error:
+        return {"error": error}
+    guesser_a, error = _resolve_guesser(guesser_a_name)
+    if error:
+        return {"error": error}
+    guesser_b, error = _resolve_guesser(guesser_b_name)
+    if error:
+        return {"error": error}
 
     board = Board.generate(seed=seed)
-    result = play_game(board, codemaster, guesser, SIMS, max_turns=max_turns)
+    result = play_two_team_game(board, (codemaster_a, guesser_a), (codemaster_b, guesser_b), SIMS, max_turns=max_turns)
 
-    turns = [
-        {
-            "clue": t.clue,
-            "number": t.number,
-            "guesses": [{"word": w, "role": ROLE_LABELS[r]} for w, r in t.guesses],
-            "reward": t.reward,
-            "ended_reason": t.ended_reason,
-            # Real Codenames' n+1 bonus, only claimed if the guesser has
-            # an earned reason to (see codenames/guessers/base.py) --
-            # surfaced so the turn log can call it out rather than
-            # leaving "why are there more guesses than the number" a
-            # silent mystery.
-            "bonus_used": len(t.guesses) == t.number + 1,
-        }
-        for t in result.turns
-    ]
     return {
         "seed": seed,
-        "codemaster": codemaster_name,
-        "guesser": guesser_name,
+        "codemaster_a": codemaster_a_name,
+        "guesser_a": guesser_a_name,
+        "codemaster_b": codemaster_b_name,
+        "guesser_b": guesser_b_name,
         "outcome": result.outcome,
+        "winner": result.winner,
         "total_reward": result.total_reward,
-        "turns": turns,
+        "turns": [{"team": t.team, **_turn_payload(t.turn)} for t in result.turns],
         "board": _board_words_payload(board),
     }
 
@@ -507,10 +539,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/play_game":
             seed = int(query.get("seed", ["42"])[0])
-            codemaster_name = query.get("codemaster", [""])[0]
-            guesser_name = query.get("guesser", [""])[0]
-            reward_overrides = {param: query.get(param, [""])[0] for param in _REWARD_PARAMS}
-            response = build_play_game_response(seed, codemaster_name, guesser_name, reward_overrides)
+            response = build_play_game_response(
+                seed,
+                query.get("codemaster_a", [""])[0],
+                query.get("guesser_a", [""])[0],
+                query.get("codemaster_b", [""])[0],
+                query.get("guesser_b", [""])[0],
+                reward_overrides_a={param: query.get(f"{param}_a", [""])[0] for param in _REWARD_PARAMS},
+                reward_overrides_b={param: query.get(f"{param}_b", [""])[0] for param in _REWARD_PARAMS},
+            )
             self._send_json(response, status=400 if "error" in response else 200)
             return
 

@@ -1,11 +1,14 @@
-"""Single-team game loop (SCOPE.md §M6, §8 directory layout).
+"""Game loop (SCOPE.md §M6, §8 directory layout).
 
-This project only ever builds the codemaster for one team (see board.py's
-module docstring), so there is no opposing team taking its own turns.
-"Opponent" and "neutral" words are pure distractors sitting on the same
-board; the game is won by revealing every own word before the assassin, and
-a turn ends the moment a non-own word is revealed or the codemaster's
-attempts run out.
+`play_game` is single-team: "opponent" and "neutral" words just sit on
+the board as pure distractors, nobody actively pursuing them -- most of
+the codebase (arena evaluations, training data generation) only ever
+uses this, since every codemaster/guesser is written against "own" as a
+fixed perspective (see board.py's module docstring). `play_two_team_game`
+is real two-team play, added later without changing any codemaster,
+guesser, or the scorer -- see its own docstring and `OpponentBoardView`
+in board.py for how. In both, a turn ends the moment a non-own word is
+revealed or the codemaster's attempts run out.
 
 Reward per SCOPE §2 (play-time scoring): +1 per own word, -0.2 and stop
 on neutral, -1 and stop on opponent, -10 and stop on assassin. Neutral
@@ -30,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from codenames.board import Board, Role
+from codenames.board import Board, OpponentBoardView, Role
 from codenames.guessers.base import Guesser
 from codenames.similarity import SimilarityTensor
 
@@ -158,4 +161,91 @@ def play_game(
     else:
         result.outcome = "timeout"
 
+    return result
+
+
+@dataclass
+class TwoTeamTurnResult:
+    team: str  # "A" | "B"
+    turn: TurnResult
+
+
+@dataclass
+class TwoTeamGameResult:
+    seed: int
+    turns: list[TwoTeamTurnResult] = field(default_factory=list)
+    outcome: str = ""  # "win" | "loss" | "timeout" -- "loss" specifically means the assassin ended it
+    winner: str | None = None  # "A" | "B", or None on a timeout
+    total_reward: dict[str, float] = field(default_factory=lambda: {"A": 0.0, "B": 0.0})
+
+
+def play_two_team_game(
+    board: Board,
+    team_a: tuple[Codemaster, Guesser],
+    team_b: tuple[Codemaster, Guesser],
+    sims: SimilarityTensor,
+    max_turns: int = DEFAULT_MAX_TURNS,
+) -> TwoTeamGameResult:
+    """Two teams alternate turns on one shared board (see board.py's
+    module docstring for why no other code needs to change for this):
+    team A sees `board` directly (their 9 words are Role.OWN, per
+    however its Cards were generated); team B sees the exact same
+    physical board through `OpponentBoardView` (their 8 words are
+    Role.OWN from that view instead). Neither codemaster nor guesser is
+    aware two teams exist -- both just play `play_turn` against whichever
+    view they're handed, identically to single-team play, each with
+    their own independent backlog `history` (see
+    codenames/guessers/base.py) so a HistoryAwareGuesser on one side
+    can't see or be confused by the other side's misses.
+
+    Per real Codenames rules: the 9-card team (A) always moves first
+    (verified true of Board.generate -- see docs/log.md's game-setup-
+    invariant entry); the game ends the instant either team's own words
+    are all revealed -- a win for that team, even if the *other* team's
+    guess was what revealed the last one, exactly like an opposing team's
+    accidental reveal helps you in the real game -- or either team's
+    guess hits the assassin (immediate loss for whoever revealed it, a
+    win for the other team). `max_turns` caps each team's own turn count
+    (so up to `2 * max_turns` total half-turns) before a timeout,
+    mirroring play_game's guesser-that-never-guesses safety valve."""
+    view_b = OpponentBoardView(board)
+    sides: dict[str, dict] = {
+        "A": {"view": board, "codemaster": team_a[0], "guesser": team_a[1], "history": []},
+        "B": {"view": view_b, "codemaster": team_b[0], "guesser": team_b[1], "history": []},
+    }
+
+    def _winner_if_any() -> str | None:
+        if sides["A"]["view"].remaining(Role.OWN) == 0:
+            return "A"
+        if sides["B"]["view"].remaining(Role.OWN) == 0:
+            return "B"
+        return None
+
+    result = TwoTeamGameResult(seed=board.seed)
+    turn_order = ["A", "B"]
+    for half_turn in range(max_turns * 2):
+        team = turn_order[half_turn % 2]
+        side = sides[team]
+        view = side["view"]
+
+        candidates_before_turn = [w for w in view.words if not view.is_revealed(w)]
+        turn = play_turn(view, side["codemaster"], side["guesser"], sims, history=side["history"])
+        result.turns.append(TwoTeamTurnResult(team=team, turn=turn))
+        result.total_reward[team] += turn.reward
+        side["history"] = side["guesser"].update_history(
+            side["history"], turn.clue, turn.number, turn, candidates_before_turn, sims
+        )
+
+        if turn.ended_reason == "assassin":
+            result.outcome = "loss"
+            result.winner = "B" if team == "A" else "A"
+            return result
+
+        winner = _winner_if_any()
+        if winner is not None:
+            result.outcome = "win"
+            result.winner = winner
+            return result
+
+    result.outcome = "timeout"
     return result

@@ -2028,4 +2028,63 @@ peeks.
   `play_game`/`load_pool`, matching how `build_simulate_response` and the
   rest of this file were handled).
 
+## Real two-team play, without touching any codemaster, guesser, or the scorer
+
+Requested: the "Full Game" tab should have the opponent actually play
+with their own (red) cards, not sit as a pure distractor -- i.e. real
+two-team Codenames.
+
+**Corrected my own initial overstatement.** First response called this a
+large scope expansion needing a `Role`/reward-semantics redesign,
+matching the "genuine second team" framing already flagged as out-of-
+scope in `docs/versions/v1.md`'s open questions. The user pushed back,
+correctly: every codemaster, guesser, and the scorer only ever touch a
+board through `role_of`/`words_by_role`/`remaining`/`is_revealed`/
+`reveal`/`words` -- never `Card.role` directly (confirmed by grep, no
+exceptions in `codenames/features.py` or any codemaster). So a thin
+read-only *view* that swaps OWN/OPPONENT while sharing the same
+underlying revealed-state is sufficient, and none of that code needs to
+change at all.
+
+**Built:**
+- `codenames/board.py::OpponentBoardView` -- wraps a `Board`, swaps
+  OWN/OPPONENT in `role_of`/`words_by_role`/`remaining`, delegates
+  `words`/`is_revealed`/`reveal`/`seed`/`revealed` straight through to
+  the same physical `Board` (one shared, mutable revealed-set, not a
+  copy). Hit one real gap while wiring it up: `codenames/codemasters/
+  _util.py::state_rng` and `LearnedCodemaster` both read `board.revealed`
+  as a raw attribute rather than through a method -- added a `revealed`
+  property to the view too (a straightforward miss from just grepping
+  the public *method* surface, not every raw attribute access).
+- `codenames/game.py::play_two_team_game` -- alternates `play_turn`
+  calls between team A (the real `Board`, whichever side has 9 cards)
+  and team B (the `OpponentBoardView`), each with its own independent
+  `history` (a HistoryAwareGuesser on one side can't see the other's
+  backlog). Team A always moves first (matches the already-verified
+  real rule). Win the instant either side's own words hit zero --
+  including via the *other* team's mistake, exactly like an opposing
+  team's accidental reveal helps you in the real game, which falls out
+  for free from checking both sides' remaining-OWN after every
+  half-turn rather than just the mover's. Assassin ends the game
+  immediately, other team wins.
+- Web UI: `/api/play_game` now takes a codemaster+guesser pair *per
+  team* (`_a`/`_b` suffixed params, including separate reward overrides
+  per side -- noted that two sides picking the *same* learned codemaster
+  share one instance, so their overrides can't actually differ). Turn
+  log is team-labeled (left border colored by team, own team-relative
+  turn counter) instead of one flat list.
+- Tests: `OpponentBoardView`'s role-swap/shared-state/reveal-passthrough
+  (7 tests, `tests/test_board.py`), `play_two_team_game`'s turn order,
+  win-by-own-mistake, opponent's-mistake-wins, assassin ending, timeout,
+  and per-team history independence (6 tests, `tests/test_game.py`). 221
+  total, all passing. Verified live against a running server too: normal
+  play, an error case, and same-codemaster-both-sides reward overrides.
+
+Next natural step, not done yet: the arena/self-play evaluation
+machinery (`codenames/arena.py`, `codenames/gpu_arena.py`) is still
+single-team-only -- extending it to bulk-simulate real two-team games
+(and deciding what the interesting aggregate stats even are, e.g. a real
+win/loss rate instead of the current `1 - assassin-rate` proxy) is a
+separate, larger piece of work than the game engine + UI built here.
+
 ## Human evaluation (not started)

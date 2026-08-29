@@ -4,8 +4,14 @@ Design notes for the two non-obvious calls made here:
 
 Role partition is fixed at own=9, opponent=8, neutral=7, assassin=1 (25
 total) -- the standard Codenames starting-team split, matching the feature
-vector layout in SCOPE.md §2. This project only ever builds the codemaster
-for one team, so "own" is always the perspective, not a parameter.
+vector layout in SCOPE.md §2. Every `Card`'s role is fixed at board
+generation from one team's perspective -- codemasters, guessers, and the
+scorer are all written against that single perspective, never a
+parameter. Real two-team play (codenames/game.py::play_two_team_game) is
+still possible without changing any of them: `OpponentBoardView` below
+just swaps OWN/OPPONENT while sharing the same underlying revealed-state,
+so handing the second team's codemaster/guesser that view instead of the
+real `Board` is enough.
 
 Legality's "morphological variants" rule is deliberately narrow. Regular
 English suffixation (plural -s/-es, -ing, -ed) is *already* a substring
@@ -126,6 +132,63 @@ class Board:
 
     def remaining(self, role: Role) -> int:
         return len(self.words_by_role(role, unrevealed_only=True))
+
+
+def _swap_own_opponent(role: Role) -> Role:
+    return {Role.OWN: Role.OPPONENT, Role.OPPONENT: Role.OWN}.get(role, role)
+
+
+class OpponentBoardView:
+    """The same physical Board, seen from the other team's perspective:
+    OWN and OPPONENT swap (their 8 or 9 words are what the board's own
+    Cards call OPPONENT, and vice versa) -- NEUTRAL and ASSASSIN are
+    shared, same as in real Codenames. `words`/`is_revealed`/`reveal`
+    delegate straight through to the *same* underlying Board (one
+    physical revealed-state, not a copy), so a word either team reveals
+    is immediately gone for both -- only the role labels differ.
+
+    This is what makes two-team play (codenames/game.py::play_two_team_game)
+    possible without touching Board, Codemaster, Guesser, or the scorer at
+    all: every one of them only ever queries a board through role_of/
+    words_by_role/remaining/is_revealed/reveal/words, so handing the
+    second team's codemaster and guesser this view instead of the real
+    Board is enough for them to correctly see "their own" 8 or 9 words as
+    Role.OWN, with no code anywhere needing to know two teams exist."""
+
+    def __init__(self, board: Board):
+        self._board = board
+
+    @property
+    def words(self) -> tuple[str, ...]:
+        return self._board.words
+
+    @property
+    def seed(self) -> int:
+        return self._board.seed
+
+    @property
+    def revealed(self) -> set[str]:
+        # Which words are revealed doesn't depend on perspective, only
+        # what role they turn out to be -- some codemaster code reads
+        # this set directly (codenames/codemasters/_util.py::state_rng,
+        # LearnedCodemaster's turn-index calc) rather than going through
+        # is_revealed()/reveal(), so it needs to exist here too.
+        return self._board.revealed
+
+    def role_of(self, word: str) -> Role:
+        return _swap_own_opponent(self._board.role_of(word))
+
+    def is_revealed(self, word: str) -> bool:
+        return self._board.is_revealed(word)
+
+    def reveal(self, word: str) -> Role:
+        return _swap_own_opponent(self._board.reveal(word))
+
+    def words_by_role(self, role: Role, *, unrevealed_only: bool = False) -> list[str]:
+        return self._board.words_by_role(_swap_own_opponent(role), unrevealed_only=unrevealed_only)
+
+    def remaining(self, role: Role) -> int:
+        return self._board.remaining(_swap_own_opponent(role))
 
 
 def load_wordlist(path: Path = ASSET_WORDLIST_PATH) -> list[str]:

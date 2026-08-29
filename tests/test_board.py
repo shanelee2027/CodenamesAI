@@ -6,6 +6,7 @@ from codenames.board import (
     BOARD_SIZE,
     ROLE_COUNTS,
     Board,
+    OpponentBoardView,
     Role,
     is_legal_clue,
     load_holdout_wordlist,
@@ -175,3 +176,70 @@ class TestWordlistAsset:
     def test_shipped_wordlist_has_400_unique_words(self):
         assert len(VOCAB) == 400
         assert len(set(VOCAB)) == 400
+
+
+class TestOpponentBoardView:
+    def test_own_and_opponent_swap(self):
+        board = Board.generate(seed=1)
+        view = OpponentBoardView(board)
+        for word in board.words:
+            expected = {Role.OWN: Role.OPPONENT, Role.OPPONENT: Role.OWN}.get(
+                board.role_of(word), board.role_of(word)
+            )
+            assert view.role_of(word) == expected
+
+    def test_neutral_and_assassin_unchanged(self):
+        board = Board.generate(seed=1)
+        view = OpponentBoardView(board)
+        for word in board.words_by_role(Role.NEUTRAL) + board.words_by_role(Role.ASSASSIN):
+            assert view.role_of(word) == board.role_of(word)
+
+    def test_remaining_counts_are_swapped(self):
+        board = Board.generate(seed=1)
+        view = OpponentBoardView(board)
+        assert view.remaining(Role.OWN) == board.remaining(Role.OPPONENT) == ROLE_COUNTS[Role.OPPONENT]
+        assert view.remaining(Role.OPPONENT) == board.remaining(Role.OWN) == ROLE_COUNTS[Role.OWN]
+
+    def test_words_by_role_is_swapped(self):
+        board = Board.generate(seed=1)
+        view = OpponentBoardView(board)
+        assert set(view.words_by_role(Role.OWN)) == set(board.words_by_role(Role.OPPONENT))
+
+    def test_reveal_is_shared_with_the_underlying_board(self):
+        # The whole point of a *view*, not a copy: revealing through one
+        # side is immediately visible through the other, same physical
+        # revealed-state.
+        board = Board.generate(seed=1)
+        view = OpponentBoardView(board)
+        word = board.words[0]
+        assert not board.is_revealed(word)
+        assert not view.is_revealed(word)
+
+        view.reveal(word)
+        assert board.is_revealed(word)
+        assert view.is_revealed(word)
+
+    def test_reveal_returns_the_swapped_role(self):
+        board = Board.generate(seed=1)
+        view = OpponentBoardView(board)
+        own_word = board.words_by_role(Role.OWN)[0]
+        assert view.reveal(own_word) == Role.OPPONENT
+        assert board.role_of(own_word) == Role.OWN  # the underlying Card is never mutated
+
+    def test_words_and_seed_pass_through_unchanged(self):
+        board = Board.generate(seed=7)
+        view = OpponentBoardView(board)
+        assert view.words == board.words
+        assert view.seed == board.seed
+
+    def test_revealed_set_is_shared_not_copied(self):
+        # Some codemaster code reads board.revealed directly (e.g.
+        # codenames/codemasters/_util.py::state_rng, LearnedCodemaster's
+        # turn-index calc) rather than going through is_revealed() --
+        # needs to see the same set, live, from either perspective.
+        board = Board.generate(seed=7)
+        view = OpponentBoardView(board)
+        word = board.words[0]
+        board.reveal(word)
+        assert word in view.revealed
+        assert view.revealed is board.revealed

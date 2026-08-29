@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from codenames.board import Board, Card, Role
 from codenames.codemasters.base import Codemaster
-from codenames.game import ROLE_REWARD, play_game, play_turn
+from codenames.game import ROLE_REWARD, play_game, play_turn, play_two_team_game
 from codenames.guessers.base import Guesser
 
 BOARD_WORDS = [f"Board{i}" for i in range(25)]
@@ -178,3 +178,82 @@ class TestBonusGuessThreading:
         assert result.turns[0].ended_reason == "exhausted_guesses"
         turn2 = result.turns[1]
         assert [w for w, _ in turn2.guesses] == ["Board2"]
+
+
+class TestPlayTwoTeamGame:
+    """Board0-8 = team A's own (9), Board9-16 = team B's own (8),
+    Board17-23 = neutral, Board24 = assassin (see make_board)."""
+
+    def test_team_a_moves_first(self):
+        board = make_board()
+        team_a = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=1)
+        assert result.turns[0].team == "A"
+        assert result.turns[1].team == "B"
+
+    def test_team_wins_by_clearing_their_own_words_on_their_own_turn(self):
+        board = make_board()
+        team_a = (FixedCodemaster("c", 9), ScriptedGuesser(BOARD_WORDS[:9]))  # all 9 of A's own words
+        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=5)
+        assert result.outcome == "win"
+        assert result.winner == "A"
+        assert len(result.turns) == 1  # game ends right after A's first turn, B never moves
+
+    def test_the_other_teams_mistake_can_win_the_game(self):
+        # Team A repeatedly (mis)guesses team B's own words (opponent
+        # from A's view) one at a time -- each ends A's turn immediately,
+        # but after enough of A's turns, B's own words run out and B
+        # wins without ever making a guess themselves, exactly like an
+        # opposing team's accidental reveal helps you in the real game.
+        board = make_board()
+        b_own_words = BOARD_WORDS[9:17]  # Board9..Board16, team B's 8 own words
+        team_a = (FixedCodemaster("c", 1), ScriptedGuesser(b_own_words))
+        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))  # never guesses
+        result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=20)
+        assert result.outcome == "win"
+        assert result.winner == "B"
+        assert sum(1 for t in result.turns if t.team == "A") == 8
+        assert all(t.turn.ended_reason == "opponent" for t in result.turns if t.team == "A")
+
+    def test_assassin_ends_the_game_immediately_and_the_other_team_wins(self):
+        board = make_board()
+        team_a = (FixedCodemaster("c", 1), ScriptedGuesser(["Board24"]))  # the assassin
+        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=5)
+        assert result.outcome == "loss"
+        assert result.winner == "B"
+        assert len(result.turns) == 1
+
+    def test_times_out_when_neither_team_ever_guesses(self):
+        board = make_board()
+        team_a = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=3)
+        assert result.outcome == "timeout"
+        assert result.winner is None
+        assert len(result.turns) == 6  # 3 turns each
+
+    def test_each_teams_backlog_history_is_independent(self):
+        # Team A's clue misses (number=2, only 1 correct) leaving backlog;
+        # team B's very next turn should NOT see it -- if history were
+        # accidentally shared, B's AlwaysBonusGuesser would claim a bonus
+        # it has no history of its own to justify.
+        board = make_board()
+        cm_a = SequencedCodemaster([("ca", 2)])
+        cm_b = SequencedCodemaster([("cb", 1)])
+        team_a = (cm_a, AlwaysBonusGuesser(["Board0", "Board9"]))  # Board9 is a miss (opponent, from A's view)
+        # Board10/11 (not Board9, which A's turn already revealed) --
+        # both B's own unrevealed words, so a wrongly-granted bonus would
+        # actually change the guess count here, not just be masked by
+        # having nothing left to guess.
+        team_b = (cm_b, AlwaysBonusGuesser(["Board10", "Board11"]))
+        result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=1)
+
+        turn_a, turn_b = result.turns[0].turn, result.turns[1].turn
+        assert [w for w, _ in turn_a.guesses] == ["Board0", "Board9"]  # A's own miss creates A's backlog
+        # B's turn should get exactly its announced number=1 guess, not a
+        # bonus-extended 2, since B's own history starts empty regardless
+        # of what happened on A's turn.
+        assert len(turn_b.guesses) == 1
