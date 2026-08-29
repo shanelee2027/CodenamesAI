@@ -2087,4 +2087,34 @@ single-team-only -- extending it to bulk-simulate real two-team games
 win/loss rate instead of the current `1 - assassin-rate` proxy) is a
 separate, larger piece of work than the game engine + UI built here.
 
+## Two-team self-play arena
+
+Follow-up to the two-team game engine: bulk-run it for real stats, not
+just the one-off games the web UI plays. Discussed the metric question
+first -- since self-play means the *same* codemaster+guesser pair on
+both sides, a symmetric win rate isn't informative (it's mostly just the
+9-vs-8 first-move edge, not a quality signal). Kept the same shape of
+metric the single-team arena already reports instead: assassin-hit rate
+and a turns split (all games vs. clean-finish games), now measured in a
+real two-team game where the board depletes from both sides' actual
+play, not the single-team framing's static distractors.
+
+`codenames/two_team_arena.py::run_two_team_self_play` -- mirrors
+`codenames/arena.py`'s process-parallel structure (same "spawn" worker
+fix, same construct-inside-the-worker pattern) but for one symmetric
+pair, not a codemaster x guesser cross-product. `scripts/
+run_two_team_arena.py` is the CLI wrapper. No GPU-batched path (unlike
+`scripts/run_arena.py`) -- `codenames/gpu_arena.py`'s batching drives
+many *independent single-team* boards through one shared forward pass
+per round, which doesn't carry over to a two-team game the same way
+(each game is already two calls per round, tied to one board's specific,
+shared state) -- not attempted, noted in the script's docstring in case
+that's revisited.
+
+4 new tests (`tests/test_two_team_arena.py`): stats bookkeeping (clean
+finish vs. assassin ending counted separately, pooled per-guess rates
+across both teams) plus a real small-scale end-to-end run. 225 tests
+total, all passing. Smoke-tested against the real similarity tensor with
+both a baseline (`centroid`) and a learned checkpoint.
+
 ## Human evaluation (not started)
