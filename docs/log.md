@@ -2117,4 +2117,53 @@ across both teams) plus a real small-scale end-to-end run. 225 tests
 total, all passing. Smoke-tested against the real similarity tensor with
 both a baseline (`centroid`) and a learned checkpoint.
 
+## A real bug found by two-team play: LearnedCodemaster can't play the 8-card side
+
+While actually running the two-team self-play comparison (same
+`learned:noise_0_08` on both sides, matching the earlier single-team
+methodology), hit a `RuntimeError: mat1 and mat2 shapes cannot be
+multiplied (111440x106 and 103x256)` -- a real bug, not a fluke,
+correcting the earlier claim that no codemaster/guesser/scorer code
+needed to change for two-team play to work.
+
+**Root cause**: `codenames/features.py`'s feature vector has a *fixed*
+per-role slot layout (`ROLE_SLOT_RANGES`, built from `ROLE_COUNTS`): 9
+slots for OWN, 8 for OPPONENT. That's true for any board queried from
+its own real perspective (`Board.generate` always produces exactly that
+split) -- but `OpponentBoardView`'s swapped perspective can violate it:
+team B's "own" (the physical board's 8-member OPPONENT group) fits fine
+in the 9-slot OWN allocation, but team B's "opponent" (the physical
+board's 9-member OWN group) can overflow the fixed 8-slot OPPONENT
+allocation whenever all 9 are still unrevealed. `_sorted_padded_values_batch`
+had no bounds check for that case at all -- it silently returned a
+9-wide block instead of the declared 8-wide one, so the bug never raised
+where it happened; it surfaced 100+ lines away as a mystery matmul shape
+mismatch (106 vs. 103 -- exactly 3 extra columns, one per embedding
+space, from that single extra word). This is exactly the failure mode
+this file's own module docstring warns about: "a bug here is silent and
+poisons everything built on top of it."
+
+This isn't fixable by retraining or a small tweak -- it's a genuine
+structural fact about the current model: `LearnedCodemaster`'s trained
+weights only ever saw "I am the 9-card team," never "I have 8 own words
+and 9 opponent words." Reusing it as the 8-card side would mean
+evaluating it well outside its trained distribution even if the input
+shape were patched to fit.
+
+**Fixed**: added `_check_capacity()` in `codenames/features.py`, called
+from every padding function (`_sorted_padded_values`,
+`_sorted_padded_values_batch`, `_unsorted_padded_values`, `_role_mask`)
+-- raises a clear, immediate `ValueError` naming exactly what happened
+and why, instead of a silent wrong-shaped array that only surfaces as a
+confusing crash several layers downstream. 5 new tests
+(`tests/test_features.py::TestRoleCapacityGuard`), 230 total passing.
+
+**Practical consequence**: a `LearnedCodemaster` can only play as team A
+(the 9-card side) in two-team mode; team B needs a baseline codemaster
+(random/centroid/oracle/linear_scorer -- none of which build a fixed-
+size feature vector, so none of them hit this). The two-team self-play
+comparison originally planned (same learned codemaster on both sides)
+isn't possible without retraining a symmetric-capacity model -- a real
+scope question for a future version, not attempted here.
+
 ## Human evaluation (not started)

@@ -128,7 +128,36 @@ class FeatureLayout:
         raise AssertionError(f"position {pos} not covered by any role range")
 
 
+def _check_capacity(n_words: int, pad_to: int) -> None:
+    """Every one of these padding functions assumes `n_words <= pad_to` --
+    true for any board queried from its own, single fixed perspective
+    (Board.generate always produces exactly ROLE_COUNTS[role] cards of
+    each role, by construction), but NOT guaranteed from
+    codenames.board.OpponentBoardView's swapped perspective: the "own"
+    group there is the physical board's 8-member OPPONENT group (fits
+    fine in a 9-slot OWN allocation), but the "opponent" group is the
+    physical board's 9-member OWN group, which overflows the fixed
+    8-slot OPPONENT allocation. Silently overflowing here does NOT raise
+    on its own (a numpy assignment past an array's own length simply
+    clips, or -- in the batched path -- there was no bounds check at all,
+    which is exactly how this went undetected until two-team play
+    actually exercised it: see docs/log.md) -- it just quietly returns a
+    wider-than-declared block, corrupting the feature vector's width with
+    no error until a completely unrelated matmul shape mismatch several
+    layers downstream. Raising immediately, with a clear message, is the
+    module docstring's own standard: "a bug here is silent and poisons
+    everything built on top of it."""
+    if n_words > pad_to:
+        raise ValueError(
+            f"{n_words} words for a role allocated only {pad_to} slots -- LearnedCodemaster's fixed feature "
+            "layout (own=9, opponent=8 slots, see ROLE_COUNTS) assumes the 9-card team's own perspective. "
+            "It hasn't been trained to play as the 8-card team (codenames/board.py::OpponentBoardView's "
+            "swapped view) -- use a baseline codemaster for that side in two-team play instead."
+        )
+
+
 def _sorted_padded_values(sims: SimilarityTensor, clue: str, words: list[str], space: str, pad_to: int) -> np.ndarray:
+    _check_capacity(len(words), pad_to)
     out = np.full(pad_to, SENTINEL, dtype=np.float32)
     if not words:
         return out
@@ -143,6 +172,7 @@ def _unsorted_padded_values(sims: SimilarityTensor, clue: str, words: list[str],
     """Like _sorted_padded_values, but keeps each word's value at its own
     natural (words_by_role order) position instead of sorting descending --
     used only by build_features_unsorted (SCOPE §9's sort ablation)."""
+    _check_capacity(len(words), pad_to)
     out = np.full(pad_to, SENTINEL, dtype=np.float32)
     if not words:
         return out
@@ -152,6 +182,7 @@ def _unsorted_padded_values(sims: SimilarityTensor, clue: str, words: list[str],
 
 
 def _role_mask(remaining: int, count: int) -> np.ndarray:
+    _check_capacity(remaining, count)
     out = np.zeros(count, dtype=np.float32)
     out[:remaining] = 1.0
     return out
@@ -215,6 +246,7 @@ def build_features_unsorted(board: Board, clue: str, sims: SimilarityTensor, tur
 def _sorted_padded_values_batch(sims: SimilarityTensor, words: list[str], space: str, pad_to: int) -> np.ndarray:
     """Vectorized form of _sorted_padded_values: every clue in the
     vocabulary at once. Shape (n_clues, pad_to)."""
+    _check_capacity(len(words), pad_to)
     n_clues = len(sims.clue_words)
     if not words:
         return np.full((n_clues, pad_to), SENTINEL, dtype=np.float32)

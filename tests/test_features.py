@@ -155,6 +155,54 @@ class TestBuildFeaturesBatch:
         assert batch.shape == (len(CLUE_WORDS), feature_dim(len(SPACES)))
 
 
+class TestRoleCapacityGuard:
+    """codenames/board.py::OpponentBoardView can hand a codemaster a role
+    group larger than ROLE_COUNTS allocates a slot for -- see docs/log.md's
+    two-team-play entry for how this went from a silent, wrongly-shaped
+    feature vector to a confusing matmul error several layers downstream,
+    before this guard existed."""
+
+    def test_check_capacity_raises_on_overflow(self):
+        from codenames.features import _check_capacity
+
+        with pytest.raises(ValueError, match="8 slots"):
+            _check_capacity(9, 8)
+
+    def test_check_capacity_allows_exact_and_under(self):
+        from codenames.features import _check_capacity
+
+        _check_capacity(8, 8)
+        _check_capacity(5, 8)
+
+    def test_sorted_padded_values_raises_on_overflow(self, tmp_path):
+        from codenames.features import _sorted_padded_values
+
+        sims = make_sims(tmp_path, base_tensor())
+        with pytest.raises(ValueError):
+            _sorted_padded_values(sims, "clueone", BOARD_WORDS[:9], "a", pad_to=8)
+
+    def test_sorted_padded_values_batch_raises_on_overflow(self, tmp_path):
+        from codenames.features import _sorted_padded_values_batch
+
+        sims = make_sims(tmp_path, base_tensor())
+        with pytest.raises(ValueError):
+            _sorted_padded_values_batch(sims, BOARD_WORDS[:9], "a", pad_to=8)
+
+    def test_build_features_batch_raises_via_opponent_board_view(self, tmp_path):
+        # A fresh board, viewed from OpponentBoardView: team B's "opponent"
+        # role is the physical board's 9-member OWN group, all still
+        # unrevealed -- exactly the scenario that crashes a LearnedCodemaster
+        # asked to play as the second (8-card) team before any of the first
+        # team's own words have been found yet.
+        from codenames.board import OpponentBoardView
+
+        sims = make_sims(tmp_path, base_tensor())
+        board = make_board()
+        view = OpponentBoardView(board)
+        with pytest.raises(ValueError, match="8 slots"):
+            build_features_batch(view, sims, turn_index=0)
+
+
 class TestMissingVectorHandling:
     def test_word_missing_a_vector_in_one_space_still_produces_a_full_vector(self, tmp_path):
         tensor = base_tensor()
