@@ -677,11 +677,16 @@ async function loadGameSelectors() {
 }
 
 function gameRewardParams(side) {
+  // Query-param suffix stays lowercase (matches the backend's `{param}_a`/
+  // `{param}_b` convention), but the DOM element IDs are built with an
+  // uppercase side (gameOwnRewardA, not gameOwnRewarda) -- these must not
+  // be the same string.
+  const sideUpper = side.toUpperCase();
   const fields = {
-    [`own_reward_${side}`]: `gameOwnReward${side}`,
-    [`neutral_reward_${side}`]: `gameNeutralReward${side}`,
-    [`opponent_reward_${side}`]: `gameOpponentReward${side}`,
-    [`risk_aversion_${side}`]: `gameAssassinReward${side}`,
+    [`own_reward_${side}`]: `gameOwnReward${sideUpper}`,
+    [`neutral_reward_${side}`]: `gameNeutralReward${sideUpper}`,
+    [`opponent_reward_${side}`]: `gameOpponentReward${sideUpper}`,
+    [`risk_aversion_${side}`]: `gameAssassinReward${sideUpper}`,
   };
   let params = '';
   for (const [param, elementId] of Object.entries(fields)) {
