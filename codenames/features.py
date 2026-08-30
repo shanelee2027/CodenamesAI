@@ -19,6 +19,22 @@ Total width = 25*n + 25 + 3. SCOPE's own worked example (~115) assumes all
 it's 25*3 + 25 + 3 = 103. Both are "~115" in the sense SCOPE meant --
 approximate, not a hard target to match exactly.
 
+A third thing made explicit here: **the feature vector's per-role slot
+widths are a separate concept from the real board's per-role card counts**
+(`codenames.board.ROLE_COUNTS`), even though they used to be numerically
+identical for every role. `FEATURE_SLOT_COUNTS` below is this file's own
+copy, with OPPONENT widened to 9 (matching OWN) rather than the real
+board's 8. Why: `codenames.board.OpponentBoardView` (two-team play) swaps
+OWN/OPPONENT for the second team, so that team's "opponent" role is the
+physical board's real 9-member OWN group -- one over the fixed 8-slot
+allocation this file used to derive straight from `ROLE_COUNTS`. Widening
+just this file's slot width to 9 fits that case with ordinary padding
+(exactly like any role that's lost a few words to reveals), with zero
+change to `Board.generate`'s real 9/8/7/1 card counts -- so no team's true
+win condition changes either. See docs/log.md for the two-team-play bug
+this replaced (a same-instance ROLE_COUNTS reuse that either crashed or,
+before that, silently overflowed).
+
 Two design decisions SCOPE leaves implicit, made explicit here because they
 affect the model's input shape and can't be casually changed later:
 
@@ -58,7 +74,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from codenames.board import BOARD_SIZE, ROLE_COUNTS, Board, Role
+from codenames.board import ROLE_COUNTS, Board, Role
 from codenames.similarity import SimilarityTensor
 
 ROLE_ORDER: list[Role] = [Role.OWN, Role.OPPONENT, Role.NEUTRAL, Role.ASSASSIN]
@@ -66,18 +82,30 @@ SENTINEL = -1.0
 N_SCALARS = 3
 SCALAR_NAMES = ["own_remaining", "turn_index", "score_differential"]
 
-# Fixed offset of each role's block within the 25-slot per-space/mask arrays.
+# Feature-vector slot widths -- deliberately a separate dict from
+# codenames.board.ROLE_COUNTS (the real board's card counts). See the
+# module docstring for why OPPONENT is 9 here, not 8.
+FEATURE_SLOT_COUNTS: dict[Role, int] = {
+    Role.OWN: 9,
+    Role.OPPONENT: 9,
+    Role.NEUTRAL: ROLE_COUNTS[Role.NEUTRAL],
+    Role.ASSASSIN: ROLE_COUNTS[Role.ASSASSIN],
+}
+FEATURE_BOARD_SIZE = sum(FEATURE_SLOT_COUNTS.values())
+
+# Fixed offset of each role's block within the FEATURE_BOARD_SIZE-slot
+# per-space/mask arrays.
 ROLE_SLOT_RANGES: dict[Role, tuple[int, int]] = {}
 _offset = 0
 for _role in ROLE_ORDER:
-    _count = ROLE_COUNTS[_role]
+    _count = FEATURE_SLOT_COUNTS[_role]
     ROLE_SLOT_RANGES[_role] = (_offset, _offset + _count)
     _offset += _count
-assert _offset == BOARD_SIZE
+assert _offset == FEATURE_BOARD_SIZE
 
 
 def feature_dim(n_spaces: int) -> int:
-    return BOARD_SIZE * n_spaces + BOARD_SIZE + N_SCALARS
+    return FEATURE_BOARD_SIZE * n_spaces + FEATURE_BOARD_SIZE + N_SCALARS
 
 
 @dataclass(frozen=True)
@@ -90,15 +118,15 @@ class FeatureLayout:
 
     def space_slice(self, space: str) -> slice:
         i = self.spaces.index(space)
-        return slice(i * BOARD_SIZE, (i + 1) * BOARD_SIZE)
+        return slice(i * FEATURE_BOARD_SIZE, (i + 1) * FEATURE_BOARD_SIZE)
 
     def mask_slice(self) -> slice:
         n = len(self.spaces)
-        return slice(n * BOARD_SIZE, n * BOARD_SIZE + BOARD_SIZE)
+        return slice(n * FEATURE_BOARD_SIZE, n * FEATURE_BOARD_SIZE + FEATURE_BOARD_SIZE)
 
     def scalar_slice(self) -> slice:
         n = len(self.spaces)
-        start = n * BOARD_SIZE + BOARD_SIZE
+        start = n * FEATURE_BOARD_SIZE + FEATURE_BOARD_SIZE
         return slice(start, start + N_SCALARS)
 
     @property
@@ -110,11 +138,11 @@ class FeatureLayout:
         baseline needs to report "which spaces and rank positions carry
         weight", not just raw indices)."""
         n = len(self.spaces)
-        mask_start = n * BOARD_SIZE
-        scalar_start = mask_start + BOARD_SIZE
+        mask_start = n * FEATURE_BOARD_SIZE
+        scalar_start = mask_start + FEATURE_BOARD_SIZE
 
         if index < mask_start:
-            space_i, pos = divmod(index, BOARD_SIZE)
+            space_i, pos = divmod(index, FEATURE_BOARD_SIZE)
             prefix = self.spaces[space_i]
         elif index < scalar_start:
             pos = index - mask_start
@@ -129,30 +157,28 @@ class FeatureLayout:
 
 
 def _check_capacity(n_words: int, pad_to: int) -> None:
-    """Every one of these padding functions assumes `n_words <= pad_to` --
-    true for any board queried from its own, single fixed perspective
-    (Board.generate always produces exactly ROLE_COUNTS[role] cards of
-    each role, by construction), but NOT guaranteed from
-    codenames.board.OpponentBoardView's swapped perspective: the "own"
-    group there is the physical board's 8-member OPPONENT group (fits
-    fine in a 9-slot OWN allocation), but the "opponent" group is the
-    physical board's 9-member OWN group, which overflows the fixed
-    8-slot OPPONENT allocation. Silently overflowing here does NOT raise
-    on its own (a numpy assignment past an array's own length simply
-    clips, or -- in the batched path -- there was no bounds check at all,
-    which is exactly how this went undetected until two-team play
-    actually exercised it: see docs/log.md) -- it just quietly returns a
-    wider-than-declared block, corrupting the feature vector's width with
-    no error until a completely unrelated matmul shape mismatch several
-    layers downstream. Raising immediately, with a clear message, is the
-    module docstring's own standard: "a bug here is silent and poisons
-    everything built on top of it."""
+    """Every one of these padding functions assumes `n_words <= pad_to`.
+    FEATURE_SLOT_COUNTS is sized so this holds for every real perspective,
+    including codenames.board.OpponentBoardView's swapped one (own=8/
+    opponent=9 from the second team's view) -- see the module docstring.
+    This guard is defense-in-depth left over from when it wasn't sized
+    that way yet: OPPONENT's slot used to just reuse ROLE_COUNTS's real-
+    board count (8), and a swapped-perspective 9-word group would either
+    silently overflow (a numpy assignment past an array's own length
+    simply clips, or -- in the batched path -- there was no bounds check
+    at all) or, once a bounds check existed, hard-crash a codemaster that
+    could otherwise play fine. See docs/log.md for that history. Raising
+    immediately here, with a clear message, stays the module docstring's
+    own standard regardless: "a bug here is silent and poisons everything
+    built on top of it."
+    """
     if n_words > pad_to:
         raise ValueError(
-            f"{n_words} words for a role allocated only {pad_to} slots -- LearnedCodemaster's fixed feature "
-            "layout (own=9, opponent=8 slots, see ROLE_COUNTS) assumes the 9-card team's own perspective. "
-            "It hasn't been trained to play as the 8-card team (codenames/board.py::OpponentBoardView's "
-            "swapped view) -- use a baseline codemaster for that side in two-team play instead."
+            f"{n_words} words for a role allocated only {pad_to} slots -- see FEATURE_SLOT_COUNTS. "
+            "This shouldn't happen for any role/perspective this file's slot widths were sized for "
+            "(including codenames/board.py::OpponentBoardView's swapped two-team perspective) -- if it "
+            "fires, something is handing build_features a board-like object with more real words in a "
+            "role than any known perspective produces."
         )
 
 
@@ -189,13 +215,21 @@ def _role_mask(remaining: int, count: int) -> np.ndarray:
 
 
 def _compute_mask(role_words: dict[Role, list[str]]) -> np.ndarray:
-    return np.concatenate([_role_mask(len(role_words[role]), ROLE_COUNTS[role]) for role in ROLE_ORDER])
+    return np.concatenate([_role_mask(len(role_words[role]), FEATURE_SLOT_COUNTS[role]) for role in ROLE_ORDER])
 
 
 def _compute_scalars(board: Board, turn_index: int) -> np.ndarray:
+    # True per-role totals from *this* perspective, not the ROLE_COUNTS
+    # constant -- that constant is only correct for a board's own real
+    # perspective (own=9, opponent=8). Under OpponentBoardView's swap,
+    # "own" genuinely totals 8 and "opponent" genuinely totals 9, so
+    # deriving each total from the words actually assigned that role here
+    # (revealed or not) is what stays correct in both directions.
+    own_total = len(board.words_by_role(Role.OWN))
+    opponent_total = len(board.words_by_role(Role.OPPONENT))
     own_remaining = float(board.remaining(Role.OWN))
-    own_revealed = ROLE_COUNTS[Role.OWN] - board.remaining(Role.OWN)
-    opponent_revealed = ROLE_COUNTS[Role.OPPONENT] - board.remaining(Role.OPPONENT)
+    own_revealed = own_total - board.remaining(Role.OWN)
+    opponent_revealed = opponent_total - board.remaining(Role.OPPONENT)
     score_differential = float(own_revealed - opponent_revealed)
     return np.array([own_remaining, float(turn_index), score_differential], dtype=np.float32)
 
@@ -209,7 +243,7 @@ def build_features(board: Board, clue: str, sims: SimilarityTensor, turn_index: 
     for space in sims.spaces:
         block = np.concatenate(
             [
-                _sorted_padded_values(sims, clue, role_words[role], space, ROLE_COUNTS[role])
+                _sorted_padded_values(sims, clue, role_words[role], space, FEATURE_SLOT_COUNTS[role])
                 for role in ROLE_ORDER
             ]
         )
@@ -232,7 +266,7 @@ def build_features_unsorted(board: Board, clue: str, sims: SimilarityTensor, tur
     for space in sims.spaces:
         block = np.concatenate(
             [
-                _unsorted_padded_values(sims, clue, role_words[role], space, ROLE_COUNTS[role])
+                _unsorted_padded_values(sims, clue, role_words[role], space, FEATURE_SLOT_COUNTS[role])
                 for role in ROLE_ORDER
             ]
         )
@@ -289,14 +323,14 @@ def build_features_batch(board: Board, sims: SimilarityTensor, turn_index: int) 
     for space in sims.spaces:
         block = np.concatenate(
             [
-                _sorted_padded_values_batch(sims, role_words[role], space, ROLE_COUNTS[role])
+                _sorted_padded_values_batch(sims, role_words[role], space, FEATURE_SLOT_COUNTS[role])
                 for role in ROLE_ORDER
             ],
             axis=1,
         )
         space_blocks.append(block)
 
-    mask_block = np.broadcast_to(_compute_mask(role_words), (n_clues, BOARD_SIZE))
+    mask_block = np.broadcast_to(_compute_mask(role_words), (n_clues, FEATURE_BOARD_SIZE))
     scalars_block = np.broadcast_to(_compute_scalars(board, turn_index), (n_clues, N_SCALARS))
 
     return np.concatenate([*space_blocks, mask_block, scalars_block], axis=1).astype(np.float32)

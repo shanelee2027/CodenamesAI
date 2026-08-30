@@ -243,9 +243,7 @@ class TestPlayTwoTeamGame:
         board = make_board()
         cm_a = SequencedCodemaster([("ca", 2)])
         cm_b = SequencedCodemaster([("cb", 1)])
-        # Board0 is pre-revealed by play_two_team_game's own bootstrap
-        # step (see its docstring), so Board1 stands in as A's own word.
-        team_a = (cm_a, AlwaysBonusGuesser(["Board1", "Board9"]))  # Board9 is a miss (opponent, from A's view)
+        team_a = (cm_a, AlwaysBonusGuesser(["Board0", "Board9"]))  # Board9 is a miss (opponent, from A's view)
         # Board10/11 (not Board9, which A's turn already revealed) --
         # both B's own unrevealed words, so a wrongly-granted bonus would
         # actually change the guess count here, not just be masked by
@@ -254,7 +252,7 @@ class TestPlayTwoTeamGame:
         result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=1)
 
         turn_a, turn_b = result.turns[0].turn, result.turns[1].turn
-        assert [w for w, _ in turn_a.guesses] == ["Board1", "Board9"]  # A's own miss creates A's backlog
+        assert [w for w, _ in turn_a.guesses] == ["Board0", "Board9"]  # A's own miss creates A's backlog
         # B's turn should get exactly its announced number=1 guess, not a
         # bonus-extended 2, since B's own history starts empty regardless
         # of what happened on A's turn.

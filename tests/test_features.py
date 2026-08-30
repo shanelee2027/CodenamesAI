@@ -7,6 +7,8 @@ import pytest
 
 from codenames.board import BOARD_SIZE, ROLE_COUNTS, Board, Card, Role
 from codenames.features import (
+    FEATURE_BOARD_SIZE,
+    FEATURE_SLOT_COUNTS,
     ROLE_ORDER,
     SENTINEL,
     FeatureLayout,
@@ -46,16 +48,17 @@ def base_tensor(value: float = 0.5) -> np.ndarray:
 
 class TestFeatureDimAndLayout:
     def test_feature_dim_matches_formula(self):
-        assert feature_dim(3) == 25 * 3 + 25 + 3
-        assert feature_dim(4) == 25 * 4 + 25 + 3
+        assert feature_dim(3) == FEATURE_BOARD_SIZE * 3 + FEATURE_BOARD_SIZE + 3
+        assert feature_dim(4) == FEATURE_BOARD_SIZE * 4 + FEATURE_BOARD_SIZE + 3
 
     def test_layout_slices_are_contiguous_and_cover_everything(self):
         layout = FeatureLayout(spaces=["a", "b"])
-        assert layout.space_slice("a") == slice(0, 25)
-        assert layout.space_slice("b") == slice(25, 50)
-        assert layout.mask_slice() == slice(50, 75)
-        assert layout.scalar_slice() == slice(75, 78)
-        assert layout.size == 78
+        n = FEATURE_BOARD_SIZE
+        assert layout.space_slice("a") == slice(0, n)
+        assert layout.space_slice("b") == slice(n, 2 * n)
+        assert layout.mask_slice() == slice(2 * n, 3 * n)
+        assert layout.scalar_slice() == slice(3 * n, 3 * n + 3)
+        assert layout.size == 3 * n + 3
 
 
 class TestBuildFeaturesShape:
@@ -95,13 +98,20 @@ class TestPermutationInvariance:
 
 
 class TestMasking:
-    def test_mask_is_all_ones_when_nothing_revealed(self, tmp_path):
+    def test_mask_is_all_ones_except_the_always_padded_opponent_slot(self, tmp_path):
+        # OPPONENT's feature slot is 9 wide (FEATURE_SLOT_COUNTS) but the
+        # real board only ever deals 8 opponent cards (ROLE_COUNTS) -- so
+        # even with nothing revealed, exactly one opponent slot (the
+        # extra one reserved for OpponentBoardView's swapped two-team
+        # perspective) is always padding.
         sims = make_sims(tmp_path, base_tensor())
         board = make_board()
         vec = build_features(board, "clueone", sims, turn_index=0)
         layout = FeatureLayout(spaces=SPACES)
         mask = vec[layout.mask_slice()]
-        assert np.all(mask == 1.0)
+        assert mask.sum() == 25  # every real board word (9+8+7+1), no more
+        opp_start, opp_end = FEATURE_SLOT_COUNTS[Role.OWN], FEATURE_SLOT_COUNTS[Role.OWN] + FEATURE_SLOT_COUNTS[Role.OPPONENT]
+        assert list(mask[opp_start:opp_end]) == [1.0] * 8 + [0.0]
 
     def test_revealing_own_words_zeroes_the_tail_of_the_own_mask_block(self, tmp_path):
         sims = make_sims(tmp_path, base_tensor())
@@ -111,7 +121,7 @@ class TestMasking:
         vec = build_features(board, "clueone", sims, turn_index=0)
         layout = FeatureLayout(spaces=SPACES)
         mask = vec[layout.mask_slice()]
-        own_start, own_end = 0, ROLE_COUNTS[Role.OWN]
+        own_start, own_end = 0, FEATURE_SLOT_COUNTS[Role.OWN]
         own_mask = mask[own_start:own_end]
         assert own_mask.sum() == 6
         assert list(own_mask) == [1.0] * 6 + [0.0] * 3
@@ -121,7 +131,8 @@ class TestMasking:
         board = make_board(revealed=BOARD_WORDS[24:25])  # reveal the single assassin word
         vec = build_features(board, "clueone", sims, turn_index=0)
         layout = FeatureLayout(spaces=SPACES)
-        assassin_start, assassin_end = ROLE_COUNTS[Role.OWN] + ROLE_COUNTS[Role.OPPONENT] + ROLE_COUNTS[Role.NEUTRAL], 25
+        assassin_start = FEATURE_SLOT_COUNTS[Role.OWN] + FEATURE_SLOT_COUNTS[Role.OPPONENT] + FEATURE_SLOT_COUNTS[Role.NEUTRAL]
+        assassin_end = assassin_start + FEATURE_SLOT_COUNTS[Role.ASSASSIN]
         for space in SPACES:
             values = vec[layout.space_slice(space)]
             assert values[assassin_start:assassin_end][0] == SENTINEL
@@ -156,11 +167,14 @@ class TestBuildFeaturesBatch:
 
 
 class TestRoleCapacityGuard:
-    """codenames/board.py::OpponentBoardView can hand a codemaster a role
-    group larger than ROLE_COUNTS allocates a slot for -- see docs/log.md's
-    two-team-play entry for how this went from a silent, wrongly-shaped
-    feature vector to a confusing matmul error several layers downstream,
-    before this guard existed."""
+    """_check_capacity is defense-in-depth: FEATURE_SLOT_COUNTS is sized
+    (own=9, opponent=9) so no real perspective -- including
+    codenames/board.py::OpponentBoardView's swapped two-team one -- ever
+    overflows it (see docs/log.md's two-team-play entries for the history
+    of this: it used to silently corrupt the feature vector, then it hard
+    crashed once a bounds check existed but the slot was still only 8
+    wide). These tests exercise the guard function directly rather than
+    via a real overflow, since one no longer naturally occurs."""
 
     def test_check_capacity_raises_on_overflow(self):
         from codenames.features import _check_capacity
@@ -188,19 +202,18 @@ class TestRoleCapacityGuard:
         with pytest.raises(ValueError):
             _sorted_padded_values_batch(sims, BOARD_WORDS[:9], "a", pad_to=8)
 
-    def test_build_features_batch_raises_via_opponent_board_view(self, tmp_path):
+    def test_build_features_batch_does_not_raise_via_opponent_board_view(self, tmp_path):
         # A fresh board, viewed from OpponentBoardView: team B's "opponent"
         # role is the physical board's 9-member OWN group, all still
-        # unrevealed -- exactly the scenario that crashes a LearnedCodemaster
-        # asked to play as the second (8-card) team before any of the first
-        # team's own words have been found yet.
+        # unrevealed -- this used to overflow the old 8-wide OPPONENT slot;
+        # FEATURE_SLOT_COUNTS[OPPONENT] == 9 now, so it fits exactly.
         from codenames.board import OpponentBoardView
 
         sims = make_sims(tmp_path, base_tensor())
         board = make_board()
         view = OpponentBoardView(board)
-        with pytest.raises(ValueError, match="8 slots"):
-            build_features_batch(view, sims, turn_index=0)
+        batch = build_features_batch(view, sims, turn_index=0)
+        assert batch.shape == (len(CLUE_WORDS), feature_dim(len(SPACES)))
 
 
 class TestMissingVectorHandling:
@@ -282,18 +295,19 @@ class TestFeatureLayoutDescribe:
 
     def test_last_index_of_a_space_assassin_block(self):
         layout = FeatureLayout(spaces=["a", "b"])
-        assert layout.describe(24) == "a/assassin/rank0"
+        assert layout.describe(FEATURE_BOARD_SIZE - 1) == "a/assassin/rank0"
 
     def test_second_space_offset(self):
         layout = FeatureLayout(spaces=["a", "b"])
-        assert layout.describe(25) == "b/own/rank0"
+        assert layout.describe(FEATURE_BOARD_SIZE) == "b/own/rank0"
 
     def test_mask_index(self):
         layout = FeatureLayout(spaces=["a", "b"])
-        assert layout.describe(50) == "mask/own/rank0"
+        assert layout.describe(2 * FEATURE_BOARD_SIZE) == "mask/own/rank0"
 
     def test_scalar_indices(self):
         layout = FeatureLayout(spaces=["a", "b"])
-        assert layout.describe(75) == "scalar/own_remaining"
-        assert layout.describe(76) == "scalar/turn_index"
-        assert layout.describe(77) == "scalar/score_differential"
+        scalar_start = 3 * FEATURE_BOARD_SIZE
+        assert layout.describe(scalar_start) == "scalar/own_remaining"
+        assert layout.describe(scalar_start + 1) == "scalar/turn_index"
+        assert layout.describe(scalar_start + 2) == "scalar/score_differential"

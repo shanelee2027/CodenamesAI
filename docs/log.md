@@ -2213,4 +2213,59 @@ an erratic opposing clue-giver flooding the board with confusing
 reveals the way a noisier baseline codemaster does. Written up in
 `docs/versions/v1.md`'s open question #2.
 
+## Superseded: decoupling real board counts from feature-vector slot widths
+
+User pushback (correctly) on the bootstrap-reveal entry above: it changed
+a real game rule -- team A's true win condition silently shrank from
+"find all 9" to "find all 8," since the pre-revealed word is gone from
+play, not just hidden. That's a real cost the previous entry's "no reward
+charged" framing undersold.
+
+Root cause, restated precisely: `codenames/board.py::ROLE_COUNTS` was
+being reused for two different jobs that only looked identical by
+coincidence -- (1) how many real cards `Board.generate` deals per role,
+and (2) how wide each role's padded block is in the feature vector
+(`codenames/features.py` imported the same dict for both). Job (1) must
+stay 9/8/7/1 to keep the real game faithful to actual Codenames rules.
+Job (2) just needs to be wide enough to hold whatever real count could
+ever land in that slot from *any* perspective -- and under
+`OpponentBoardView`'s two-team swap, "opponent" can genuinely be team A's
+real 9-word group, one over the old 8-wide slot.
+
+**Fix**: split them. `codenames/features.py` now defines its own
+`FEATURE_SLOT_COUNTS` (own=9, opponent=9, neutral=7, assassin=1) and
+`FEATURE_BOARD_SIZE` (26, not 25), used everywhere in that file instead
+of `ROLE_COUNTS`/`BOARD_SIZE`. `codenames/board.py::ROLE_COUNTS` is
+untouched -- `Board.generate` still deals a real 9/8/7/1 board, so
+neither team's true win condition changes. The extra opponent slot is
+ordinary padding (mask=0) on every normal single-team turn, exactly like
+any role that's lost words to reveals; it's only genuinely populated on
+team B's turn in two-team play, which is exactly the case it exists for.
+`play_two_team_game`'s bootstrap-reveal step is removed entirely -- no
+longer needed, and no longer correct once the game rules must stay
+faithful.
+
+Also fixed in the same pass, found while touching this: `_compute_scalars`
+computed `own_revealed`/`opponent_revealed` as `ROLE_COUNTS[role] -
+board.remaining(role)` -- correct for a board's own real perspective (own
+total is genuinely 9), but wrong under `OpponentBoardView` (that view's
+"own" total is genuinely 8, not `ROLE_COUNTS[Role.OWN]`'s constant 9), so
+this silently reported one extra "revealed" own word for team B from
+turn one. Fixed by deriving each total from `len(board.words_by_role(role))`
+(revealed + unrevealed together, correct from whichever perspective is
+asking) instead of the constant. Mirrored the same two fixes in
+`codenames/gpu_features.py` (the GPU-batched path), including replacing
+its silent truncate-on-overflow (`sorted_desc[:, :, :pad_to]`) with an
+explicit raise, matching `features.py`'s `_check_capacity`.
+
+**Real cost, not swept under the rug**: this widens the model's input
+dimension (107 vs. the old 103, for 3 spaces), so every existing
+`LearnedCodemaster` checkpoint (5 noise-level ones plus the blend-pool
+one) is now incompatible and must be retrained before `LearnedCodemaster`
+works again *at all*, single-team included. No baseline codemaster
+(random/centroid/oracle/linear_scorer) touches `features.py`, so none of
+them are affected or need retraining. 230 tests passing (rewrote several
+in `tests/test_features.py`/`tests/test_ablation.py` that hardcoded the
+old 25-wide role-block layout).
+
 ## Human evaluation (not started)

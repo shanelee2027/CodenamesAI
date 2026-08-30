@@ -24,7 +24,7 @@ import argparse
 import time
 from pathlib import Path
 
-from codenames.codemasters import CentroidCodemaster, LearnedCodemaster, LinearScorerCodemaster, RandomCodemaster
+from codenames.codemasters import CentroidCodemaster, LearnedCodemaster, LinearScorerCodemaster, OracleCodemaster, RandomCodemaster
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.two_team_arena import run_two_team_self_play
 
@@ -32,6 +32,7 @@ BASE_CODEMASTER_SPECS: dict[str, tuple[type, dict]] = {
     "random": (RandomCodemaster, {"seed": 0}),
     "centroid": (CentroidCodemaster, {"seed": 0}),
     "linear_scorer": (LinearScorerCodemaster, {}),
+    "oracle": (OracleCodemaster, {}),
 }
 
 

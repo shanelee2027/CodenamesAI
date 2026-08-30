@@ -209,21 +209,14 @@ def play_two_team_game(
     (so up to `2 * max_turns` total half-turns) before a timeout,
     mirroring play_game's guesser-that-never-guesses safety valve.
 
-    Bootstrap step, before any turn: one of team A's 9 words is silently
-    marked revealed with no reward charged to anyone. This isn't a real
-    guess -- it exists only to fix a real capacity limit in
-    codenames/features.py: LearnedCodemaster's feature vector has a fixed
-    9-own/8-opponent slot layout (the standard board split, true from any
-    single real perspective). Team B's OpponentBoardView swaps roles, so
-    B's "opponent" is team A's real 9-word group -- one word over the
-    8-slot allocation, the exact overflow `_check_capacity` guards
-    against. Pre-revealing one of A's words drops A's remaining count to
-    8 everywhere it's looked at (both A's own-count and B's opponent-
-    count), which is sufficient and necessary: it's the only single
-    9-vs-8 mismatch in either direction, no other role pairing overflows.
-    See docs/log.md for why this, rather than retraining a symmetric
-    model, was the fix."""
-    board.reveal(board.words_by_role(Role.OWN, unrevealed_only=True)[0])
+    No board-setup workaround needed here (an earlier version of this
+    function pre-revealed one of team A's words to dodge a feature-vector
+    capacity limit -- see docs/log.md): codenames/features.py's OPPONENT
+    slot width is sized independently from the real board's OPPONENT card
+    count specifically so it can hold team B's OpponentBoardView-swapped
+    view of team A's real 9-word group without overflowing. Both teams'
+    true win conditions (A needs all 9, B needs all 8) are exactly the
+    real Codenames rules, unchanged."""
     view_b = OpponentBoardView(board)
     sides: dict[str, dict] = {
         "A": {"view": board, "codemaster": team_a[0], "guesser": team_a[1], "history": []},
