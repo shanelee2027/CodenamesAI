@@ -2566,4 +2566,30 @@ after garbage collection is a real risk this test suite's growth just
 started to expose). Not fixed here -- flagged as a known, pre-existing
 flaky-test hazard, not something introduced by this change.
 
+## HistoryAwareGuesser in real two-team play: the negative result holds up
+
+With two-team self-play now cheap (previous entry), reran the
+HistoryAwareGuesser comparison the earlier single-team-arena negative
+finding was based on, this time in real two-team play and after the
+NoisyGuesser determinism fix -- both changes could plausibly have
+altered the picture. They didn't: 300 boards each, GPU-batched
+(`scripts/run_two_team_arena.py --gpu-batch-size 32`).
+
+- `learned:noise_0.08` + `noisy_glove`: 0.0% assassin-hit, 97.4% own.
+- `learned:noise_0.08` + `history_aware_noisy_glove`: 7.3% assassin-hit,
+  85.2% own (148.1s -- notably slower than the plain guesser's 26.9s,
+  since HistoryAwareGuesser's backlog scoring adds real per-turn cost).
+- `learned:blend` + `blend`: 5.0% assassin-hit, 86.9% own.
+- `learned:blend` + `history_aware_blend`: 7.3% assassin-hit, 83.8% own
+  (151.1s).
+
+Confirms the earlier single-team finding rather than overturning it:
+history-awareness is a real, reproducible negative for both models in
+the setting that actually matters (real two-team play), not an artifact
+of the older single-team-vs-static-distractors methodology or the since-
+fixed NoisyGuesser bug. Written up in the README (new "History-aware
+guessers: a negative result" section) and `docs/versions/v1.md`'s open
+question #1, which previously read "not yet evaluated" -- now corrected
+to describe the actual, confirmed negative result.
+
 ## Human evaluation (not started)

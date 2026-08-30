@@ -234,6 +234,34 @@ overly conservative (18.97 half-turns/game). Not a controlled comparison
 against model 1 (different guesser pool, different game difficulty) —
 see [`docs/versions/v1.1.md`](docs/versions/v1.1.md) for the run details.
 
+### History-aware guessers: a negative result
+
+`HistoryAwareGuesser` (`codenames/guessers/history_aware.py`) is a guesser
+that can spend one earned bonus guess per turn — real Codenames' `n+1`
+rule, reinstated only when a past clue's miss plausibly left a word
+unaccounted-for (see [`docs/versions/v1.md`](docs/versions/v1.md)'s open
+questions). No codemaster or training changes needed to add it. Tested in
+real two-team self-play against both models, same 300-board methodology
+as above, each model's own guesser with vs. without history-awareness:
+
+| pairing | assassin-hit rate | half-turns (all) | own rate |
+|---|---|---|---|
+| model 1 + noisy_glove | 0.0% | 9.03 | 97.4% |
+| model 1 + history_aware_noisy_glove | **7.3%** | 8.72 | 85.2% |
+| model 1.1 + blend | 5.0% | 8.18 | 86.9% |
+| model 1.1 + history_aware_blend | **7.3%** | 7.79 | 83.8% |
+
+History-awareness makes both models measurably worse at avoiding the
+assassin and finding their own words, despite modestly shorter games.
+Root cause (checked directly, not just inferred from the top-line
+numbers): when the bonus guess actually fires, it lands on "own" far
+less reliably than an ordinary guess, and its assassin-hit rate
+specifically is markedly higher than the guesser's normal rate — the
+backlog mechanism is willing to spend its earned confidence on a word
+that turns out to be dangerous more often than a fresh, number-driven
+guess would be. **Not adopted** — kept in the codebase as a documented
+negative result, not a recommended guesser.
+
 ## Layout
 
 ```
