@@ -147,22 +147,23 @@ reward values live outside training entirely, so any of them — including
 `assassin_reward`, which doubles as a risk-aversion knob — can be changed
 at play time with no retraining.
 
-**Results.** Real two-team self-play, `noise_std=0.08`'s `noisy_glove`
-guesser, 300 boards:
+**Results.** Real two-team self-play, 300 boards, each game's guesser
+drawn uniformly from `noise_std=0.08`'s 3 guessers (matching the mix the
+codemaster was trained against):
 
-| codemaster | assassin-hit rate | half-turns (all) | half-turns (clean) |
-|---|---|---|---|
-| **model 1 (learned)** | **0.0%** | **9.03** | **9.03** |
-| centroid | 13.3% | 10.33 | 11.03 |
-| linear_scorer | 5.0% | 18.69 | 18.69 |
-| random | 83.3% | 9.77 | 15.30 |
+| codemaster | assassin-hit rate | half-turns (all) | half-turns (clean) | mean clue number | mean correct/clue |
+|---|---|---|---|---|---|
+| **model 1 (learned)** | **0.7%** | **8.99** | **9.02** | **1.81** | **1.74** |
+| centroid | 14.0% | 10.34 | 11.21 | 1.47 | 1.29 |
+| linear_scorer | 7.7% | 18.96 | 19.04 | 1.18 | 0.45 |
+| random | 89.7% | 9.16 | 15.03 | 2.39 | 0.41 |
 
 | codemaster | own | opponent | neutral | assassin |
 |---|---|---|---|---|
-| **model 1 (learned)** | **97.4%** | **0.3%** | **2.3%** | **0.0%** |
-| centroid | 90.0% | 4.1% | 4.9% | 0.9% |
-| linear_scorer | 40.5% | 31.4% | 27.8% | 0.2% |
-| random | 32.8% | 33.3% | 27.3% | 6.5% |
+| **model 1 (learned)** | **96.3%** | **0.8%** | **2.8%** | **0.0%** |
+| centroid | 89.2% | 4.2% | 5.7% | 0.9% |
+| linear_scorer | 41.2% | 30.5% | 27.9% | 0.4% |
+| random | 31.8% | 34.1% | 26.4% | 7.6% |
 
 Full detail (all six trained noise-level checkpoints, what the web UI
 exposes on top of this, open questions for the next model) is in
@@ -186,19 +187,19 @@ blend guesser on both sides (baselines evaluated with the same guesser —
 not a controlled comparison against model 1, which uses a different,
 harder guesser pool):
 
-| codemaster | assassin-hit rate | half-turns (all) | half-turns (clean) |
-|---|---|---|---|
-| **model 1.1 (learned)** | **5.0%** | **8.18** | **8.35** |
-| centroid | 17.0% | 10.64 | 11.62 |
-| linear_scorer | 8.7% | 18.97 | 19.21 |
-| random | 85.0% | 9.26 | 15.33 |
+| codemaster | assassin-hit rate | half-turns (all) | half-turns (clean) | mean clue number | mean correct/clue |
+|---|---|---|---|---|---|
+| **model 1.1 (learned)** | **5.7%** | **8.15** | **8.37** | **2.11** | **1.74** |
+| centroid | 17.3% | 10.50 | 11.57 | 1.47 | 1.22 |
+| linear_scorer | 24.3% | 18.50 | 19.21 | 1.19 | 0.41 |
+| random | 86.7% | 9.58 | 15.62 | 2.32 | 0.42 |
 
 | codemaster | own | opponent | neutral | assassin |
 |---|---|---|---|---|
-| **model 1.1 (learned)** | **86.9%** | **3.6%** | **9.2%** | **0.3%** |
-| centroid | 86.0% | 5.6% | 7.2% | 1.1% |
-| linear_scorer | 39.3% | 32.1% | 28.2% | 0.4% |
-| random | 32.3% | 34.3% | 26.3% | 7.1% |
+| **model 1.1 (learned)** | **86.1%** | **4.1%** | **9.4%** | **0.3%** |
+| centroid | 86.0% | 6.0% | 6.9% | 1.2% |
+| linear_scorer | 38.0% | 33.1% | 27.8% | 1.2% |
+| random | 32.6% | 33.0% | 27.3% | 7.1% |
 
 See [`docs/versions/v1.1.md`](docs/versions/v1.1.md) for run details.
 

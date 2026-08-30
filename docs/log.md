@@ -2592,4 +2592,39 @@ guessers: a negative result" section) and `docs/versions/v1.md`'s open
 question #1, which previously read "not yet evaluated" -- now corrected
 to describe the actual, confirmed negative result.
 
+## Mixed-guesser evaluation and two new stats
+
+User correction: model 1's README numbers evaluated against `noisy_glove`
+alone, 300 games -- narrower than the 3-guesser, equally-weighted
+distribution the model was actually trained against (`docs/design-
+decisions.md`'s "guesser pool is 3 members ... equally weighted"). Added
+`MIXED_GUESSER` to `codenames/two_team_arena.py`: each game independently
+draws its guesser, uniformly, from the whole pool, matching
+`generate_training_data.py`'s own `rng.choice(guesser_names)` sampling.
+Implemented for both the CPU path (`random.Random(seed).choice(...)` per
+task) and the GPU-batched path (a per-seed guesser dict -- the guesser
+only matters after the batched codemaster forward pass, so different
+games can use different guessers with no change to the batching itself).
+
+Also added two requested stats to `TwoTeamSelfPlayResult`: mean announced
+clue number and mean correct guesses per clue, both pooled across both
+teams. 243 tests passing (new: mixed-guesser end-to-end on CPU,
+mixed-guesser GPU-vs-CPU exact match, the two new stats' bookkeeping).
+
+Reran model 1 and model 1.1's README numbers under this corrected
+methodology, 300 boards each:
+
+- Model 1 (mixed guesser): 0.7% assassin-hit (up from 0.0% under
+  `noisy_glove` alone -- expected, a genuinely harder/more varied test),
+  96.3% own, mean clue number 1.81, mean correct/clue 1.74. Baselines
+  rerun the same way: centroid 14.0%/89.2% own, linear_scorer
+  7.7%/41.2% own, random 89.7%/31.8% own.
+- Model 1.1 (still `blend` only, by design -- a single guesser is the
+  whole point of that subversion): 5.7% assassin-hit, 86.1% own, mean
+  clue number 2.11, mean correct/clue 1.74. Baselines: centroid
+  17.3%/86.0%, linear_scorer 24.3%/38.0%, random 86.7%/32.6%.
+
+README and `docs/versions/v1.md` updated with these numbers superseding
+the single-guesser ones from the previous entries.
+
 ## Human evaluation (not started)
