@@ -48,6 +48,25 @@ to boards built from never-seen words is checked separately, not trained
 against here (first-pass revision, see docs/log.md: this replaces held-out
 guessers as the generalization check).
 
+**Perspective sampling** (added for two-team play, see docs/log.md):
+`SWAP_PERSPECTIVE_PROB` of examples are built from the second team's
+`OpponentBoardView`-swapped perspective instead of the real board's own
+one -- team A's real perspective was the *only* one ever generated
+before this, which meant `codenames/features.py`'s widened 9-slot
+OPPONENT block (sized for `OpponentBoardView`'s swap, see that module's
+docstring) was never actually populated with a real value in any
+training example, only ever mask=0 padding. Every function in this file
+that takes a `board` only ever calls `role_of`/`words_by_role`/
+`is_revealed`/`words`/`remaining` on it (never `isinstance` checks), so
+`OpponentBoardView` is a drop-in substitute everywhere here, exactly as
+it is for a codemaster or guesser -- no other change to clue sampling,
+guesser rollout, or feature building was needed. The one case handled
+specially: if a swap is drawn but the real OPPONENT role (team B's real
+own words) has already been fully revealed, that's a state where the
+game would already be over for team B -- falls back to team A's real
+perspective for that example instead, mirroring `sample_partial_board`'s
+own "always >=1 own word left" rule.
+
 **Output** is sharded .npy files under `--output-dir` (default
 cache/training_data/, gitignored): `features_NNNNN.npy` (float32,
 shard_size x feature_dim), `outcome_NNNNN.npy` (int32, one of
@@ -77,7 +96,7 @@ import numpy as np
 import torch
 
 from codenames.board import MAX_CLUE_NUMBER as MAX_K
-from codenames.board import Board, Role, is_legal_clue, load_training_wordlist
+from codenames.board import Board, OpponentBoardView, Role, is_legal_clue, load_training_wordlist
 from codenames.clue_search import mean_from_columns, top_k_legal_clues
 from codenames.features import build_features, feature_dim
 from codenames.game import ROLE_REWARD
@@ -99,6 +118,11 @@ PLAN_BATCH_SIZE = 4096
 CLUE_MIX = {"subset_topk": 0.6, "any_word_topk": 0.3, "random": 0.1}
 TOPK_POOL = 20  # sample among the top-K neighbors, not always the single best
 _RANDOM_CLUE_ATTEMPTS = 1000
+
+# Team A is just as important as team B: half of all examples are built
+# from OpponentBoardView's swapped perspective instead of the board's own
+# real one. See the module docstring's "Perspective sampling" section.
+SWAP_PERSPECTIVE_PROB = 0.5
 
 # The board vocabulary is fixed at ~400 words, so across millions of sampled
 # examples the *same* board word gets drawn over and over. Reading a word's
@@ -148,6 +172,30 @@ def sample_partial_board(rng: random.Random, vocabulary: list[str]) -> tuple[Boa
             board.reveal(w)
         revealed_count += n_reveal
     return board, revealed_count
+
+
+def sample_partial_board_perspective(
+    rng: random.Random, vocabulary: list[str], swap_prob: float = SWAP_PERSPECTIVE_PROB
+) -> tuple[Board, int]:
+    """sample_partial_board, plus a coin flip for which team's perspective
+    this example represents. Returns an `OpponentBoardView` in place of
+    the real `Board` with probability `swap_prob` -- every caller in this
+    file only ever uses the read-only role_of/words_by_role/is_revealed/
+    words/remaining interface both objects share (see this module's
+    "Perspective sampling" docstring section), so this is a drop-in swap
+    with no other change needed downstream. Falls back to the real
+    perspective, untouched, on the rare draw where team B's real own
+    words (the physical OPPONENT role) are already all revealed -- that
+    state would mean the game already ended for team B, which
+    sample_partial_board's own invariant already rules out for team A's
+    real own role by construction. Typed as returning `Board` to match
+    every other board-consuming function in this file (build_features,
+    etc.), which do the same despite also accepting `OpponentBoardView`
+    in practice -- see codenames/board.py's module docstring."""
+    board, turn_index = sample_partial_board(rng, vocabulary)
+    if rng.random() < swap_prob and board.remaining(Role.OPPONENT) >= 1:
+        return OpponentBoardView(board), turn_index
+    return board, turn_index
 
 
 def _plan_clue(rng: random.Random, sims: SimilarityTensor, board: Board) -> tuple[str, list[str] | str] | None:
@@ -244,7 +292,7 @@ def _existing_shard_count(output_dir: Path) -> int:
 
 
 def _plan_batch(
-    rng: random.Random, sims: SimilarityTensor, board_vocabulary: list[str], target: int
+    rng: random.Random, sims: SimilarityTensor, board_vocabulary: list[str], target: int, swap_perspective_prob: float = SWAP_PERSPECTIVE_PROB
 ) -> tuple[list[tuple[Board, int, str]], list[Board], list[int], list[list[str]]]:
     """Sample boards and plan clues (RNG-consuming, cheap) until `target`
     plans are collected. Returns (already-resolved (board, turn_index,
@@ -256,7 +304,7 @@ def _plan_batch(
     pending_turn_indices: list[int] = []
     pending_queries: list[list[str]] = []
     while len(resolved) + len(pending_boards) < target:
-        board, turn_index = sample_partial_board(rng, board_vocabulary)
+        board, turn_index = sample_partial_board_perspective(rng, board_vocabulary, swap_perspective_prob)
         plan = _plan_clue(rng, sims, board)
         if plan is None:
             continue
@@ -281,6 +329,7 @@ def generate(
     feature_builder: Callable[[Board, str, SimilarityTensor, int], np.ndarray] = build_features,
     guesser_weights: dict[str, float] | None = None,
     use_gpu_batch: bool = True,
+    swap_perspective_prob: float = SWAP_PERSPECTIVE_PROB,
 ) -> int:
     """`feature_builder` and `guesser_weights` exist for SCOPE §9's
     ablations (scripts/run_ablation_study.py), not as CLI flags: swapping
@@ -347,7 +396,7 @@ def generate(
         filled = 0
         while filled < this_shard_size:
             if device is None:
-                board, turn_index = sample_partial_board(rng, board_vocabulary)
+                board, turn_index = sample_partial_board_perspective(rng, board_vocabulary, swap_perspective_prob)
                 clue = sample_clue(rng, sims, board)
                 if clue is None:
                     continue
@@ -356,7 +405,7 @@ def generate(
                 continue
 
             target = min(PLAN_BATCH_SIZE, this_shard_size - filled)
-            resolved, pending_boards, pending_turn_indices, pending_queries = _plan_batch(rng, sims, board_vocabulary, target)
+            resolved, pending_boards, pending_turn_indices, pending_queries = _plan_batch(rng, sims, board_vocabulary, target, swap_perspective_prob)
             if pending_queries:
                 scores_batch = batched_mean_similarity(sims, pending_queries, device)
                 for board, turn_index, scores in zip(pending_boards, pending_turn_indices, scores_batch):

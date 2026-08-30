@@ -14,11 +14,12 @@ from generate_training_data import (  # noqa: E402
     generate,
     sample_clue,
     sample_partial_board,
+    sample_partial_board_perspective,
     simulate_natural_stop,
 )
 
-from codenames.board import Board, Card, Role, load_wordlist  # noqa: E402
-from codenames.features import feature_dim  # noqa: E402
+from codenames.board import Board, Card, OpponentBoardView, Role, load_wordlist  # noqa: E402
+from codenames.features import FEATURE_SLOT_COUNTS, FeatureLayout, feature_dim  # noqa: E402
 from codenames.game import ROLE_REWARD  # noqa: E402
 from codenames.guessers.base import Guesser  # noqa: E402
 from codenames.scorer import N_OUTCOME_CLASSES  # noqa: E402
@@ -81,6 +82,40 @@ class TestSamplePartialBoard:
         for _ in range(20):
             board, _ = sample_partial_board(rng, small_vocab)
             assert set(board.words) <= set(small_vocab)
+
+
+class TestSamplePartialBoardPerspective:
+    def test_swap_prob_zero_never_swaps(self):
+        rng = __import__("random").Random(0)
+        for _ in range(20):
+            board, _ = sample_partial_board_perspective(rng, VOCAB, swap_prob=0.0)
+            assert not isinstance(board, OpponentBoardView)
+
+    def test_swap_prob_one_swaps_almost_always(self):
+        # ~1-in-9 draws fall back to the real board (team B's real own
+        # words already fully revealed) -- the rest should swap.
+        rng = __import__("random").Random(0)
+        swapped = 0
+        for _ in range(200):
+            board, _ = sample_partial_board_perspective(rng, VOCAB, swap_prob=1.0)
+            if isinstance(board, OpponentBoardView):
+                swapped += 1
+                assert board.remaining(Role.OWN) >= 1  # never a game-already-over state
+        assert swapped > 150
+
+    def test_falls_back_to_real_board_when_team_bs_own_words_are_gone(self, monkeypatch):
+        import generate_training_data as gtd
+
+        def fake_sample(rng, vocabulary):
+            board = Board.generate(seed=1, vocabulary=VOCAB)
+            for w in board.words_by_role(Role.OPPONENT):
+                board.reveal(w)  # team B's real own words, all gone
+            return board, 8
+
+        monkeypatch.setattr(gtd, "sample_partial_board", fake_sample)
+        rng = __import__("random").Random(0)
+        board, _ = gtd.sample_partial_board_perspective(rng, VOCAB, swap_prob=1.0)
+        assert not isinstance(board, OpponentBoardView)
 
 
 class TestSampleClue:
@@ -239,6 +274,50 @@ class TestGenerate:
 
         held_out_guessers = {e.guesser for e in load_pool(guesser_pool_config).values() if e.held_out}
         assert not any(g in held_out_guessers for g in seen_guessers)
+
+    def test_swap_perspective_prob_one_populates_the_9th_opponent_slot(self, sims_cache_dir, guesser_pool_config, tmp_path):
+        # With every example forced to team B's swapped perspective, team
+        # A's real 9-word group (team B's "opponent") is unrevealed often
+        # enough that at least one example should show all 9 opponent
+        # slots as real (mask=1) -- the exact case FEATURE_SLOT_COUNTS'
+        # widened OPPONENT slot exists for, and the case no example ever
+        # exercised before this perspective-sampling was added.
+        output_dir = tmp_path / "out"
+        generate(
+            n_examples=200,
+            shard_size=200,
+            output_dir=output_dir,
+            seed=0,
+            guesser_pool_config=guesser_pool_config,
+            sims_cache_dir=sims_cache_dir,
+            swap_perspective_prob=1.0,
+        )
+        features = np.load(output_dir / "features_00000.npy")
+        layout = FeatureLayout(spaces=SPACES)
+        mask = features[:, layout.mask_slice()]
+        opp_start = FEATURE_SLOT_COUNTS[Role.OWN]
+        opp_end = opp_start + FEATURE_SLOT_COUNTS[Role.OPPONENT]
+        ninth_opponent_slot = mask[:, opp_end - 1]
+        assert ninth_opponent_slot.sum() > 0
+
+    def test_swap_perspective_prob_zero_never_populates_the_9th_opponent_slot(self, sims_cache_dir, guesser_pool_config, tmp_path):
+        output_dir = tmp_path / "out"
+        generate(
+            n_examples=200,
+            shard_size=200,
+            output_dir=output_dir,
+            seed=0,
+            guesser_pool_config=guesser_pool_config,
+            sims_cache_dir=sims_cache_dir,
+            swap_perspective_prob=0.0,
+        )
+        features = np.load(output_dir / "features_00000.npy")
+        layout = FeatureLayout(spaces=SPACES)
+        mask = features[:, layout.mask_slice()]
+        opp_start = FEATURE_SLOT_COUNTS[Role.OWN]
+        opp_end = opp_start + FEATURE_SLOT_COUNTS[Role.OPPONENT]
+        ninth_opponent_slot = mask[:, opp_end - 1]
+        assert ninth_opponent_slot.sum() == 0
 
     def test_resumes_by_adding_new_shards_not_overwriting(self, sims_cache_dir, guesser_pool_config, tmp_path):
         output_dir = tmp_path / "out"
