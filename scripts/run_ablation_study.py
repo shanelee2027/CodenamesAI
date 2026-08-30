@@ -22,13 +22,15 @@ Variants trained:
 - noise_<value> (opt-in via --noise-levels): fresh datasets, one per
   requested noise_std, each generated from a temporary copy of the
   guesser pool config with every guesser's noise_std overridden to that
-  value (same spaces, same per-guesser seeds 1/2/3) -- since NoisyGuesser
-  draws `rng.normal(0, noise_std)` from a seed-determined stream, the same
-  seed at a different noise_std is the same underlying draws at a
-  different scale, so levels are directly comparable, not just similarly
-  distributed. Same generation seed as `base` too, so all noise levels
-  (and `full`, effectively noise_std=whatever's in the default pool
-  config) share the identical board/clue sample sequence as well.
+  value (same spaces, same per-guesser seeds 1/2/3) -- NoisyGuesser's
+  noise is a deterministic function of (seed, clue, word), independent of
+  noise_std itself (see codenames/guessers/noisy.py), so the same seed at
+  a different noise_std reuses the exact same underlying standard-normal
+  draw per (clue, word) at a different scale -- levels are directly
+  comparable, not just similarly distributed. Same generation seed as
+  `base` too, so all noise levels (and `full`, effectively noise_std=
+  whatever's in the default pool config) share the identical board/clue
+  sample sequence as well.
 
 The 6 dataset-generation calls above are independent (separate output
 dirs, no shared mutable state) and CPU-bound, so they run across a

@@ -43,9 +43,17 @@ of the candidate pool by then. `owed_count` only ever decreases when an
 own-word is actually attributed to that clue (see `update_history`); nothing
 needs to track *which* word specifically, so this stays a plain,
 stateless data structure threaded through `codenames/game.py`'s functions
-rather than mutable per-instance state (the one place this project
-already has that -- `NoisyGuesser`'s RNG -- is a documented source of
-run-to-run non-determinism, not a pattern to repeat).
+rather than mutable per-instance state.
+
+That "re-ranking always reproduces the same answer" guarantee depends on
+every guesser's `score_candidates` being a pure function of (clue,
+candidates) -- true of everything in this pool except, until it was
+fixed, `NoisyGuesser` (codenames/guessers/noisy.py), whose noise used to
+come from a continuously-advancing RNG stream rather than a fixed
+function of (clue, word). Re-scoring the same clue twice -- once during
+real play, once retrospectively in `update_history`'s collision check --
+could silently disagree, letting an already-satisfied backlog entry look
+still-owed. See that module's docstring and docs/log.md.
 """
 
 from __future__ import annotations

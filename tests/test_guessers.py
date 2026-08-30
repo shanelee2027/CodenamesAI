@@ -134,6 +134,34 @@ class TestNoisyGuesser:
         g2 = NoisyGuesser(base=base, noise_std=0.5, seed=7)
         assert g1.rank_candidates("clue", BOARD_WORDS, sims) == g2.rank_candidates("clue", BOARD_WORDS, sims)
 
+    def test_repeated_calls_on_the_same_instance_agree(self, sims):
+        # The actual bug this guards against: codenames/guessers/base.py's
+        # backlog mechanism (and HistoryAwareGuesser's baseline cache)
+        # re-score the same clue multiple times across a game and assume
+        # they always get the same answer -- true of every guesser here
+        # except NoisyGuesser before its noise was made a pure function of
+        # (seed, clue, word) instead of a draw from a continuously-
+        # advancing RNG stream.
+        g = NoisyGuesser(base=SingleSpaceGuesser(space="a"), noise_std=0.5, seed=3)
+        first = g.score_candidates("clue", BOARD_WORDS, sims)
+        second = g.score_candidates("clue", BOARD_WORDS, sims)
+        assert first == second
+
+    def test_noise_is_independent_of_noise_std(self, sims):
+        # scripts/run_ablation_study.py's noise-level sweep depends on
+        # this: the same seed at a different noise_std should be the same
+        # underlying standard-normal draw per (clue, word), just scaled --
+        # not an unrelated draw -- so different noise_std levels are
+        # directly comparable, not just similarly distributed.
+        base = SingleSpaceGuesser(space="a")
+        low = NoisyGuesser(base=base, noise_std=1.0, seed=9)
+        high = NoisyGuesser(base=base, noise_std=2.0, seed=9)
+        base_scores = base.score_candidates("clue", BOARD_WORDS, sims)
+        low_delta = low._noise("clue", "Apple")
+        high_delta = high._noise("clue", "Apple")
+        assert high_delta == pytest.approx(2.0 * low_delta)
+        assert base_scores  # sanity: fixture actually has finite scores to perturb
+
     def test_negative_infinity_is_not_perturbed(self, sims):
         base = SingleSpaceGuesser(space="a")
         g = NoisyGuesser(base=base, noise_std=5.0, seed=1)
@@ -451,3 +479,42 @@ class TestHistoryAwareGuesser:
         history = [("absent", 1)]
         assert g.bonus_guesses("kitchen", self.WORDS, sims, number=1, history=history) == 0
         assert g.rank_candidates("kitchen", self.WORDS, sims, number=1, history=history) == ["B", "A", "C"]
+
+    def test_a_satisfied_backlog_does_not_earn_a_bonus_on_a_later_turn(self, tmp_path):
+        """Regression test for a real bug report: a NoisyGuesser-wrapped
+        HistoryAwareGuesser correctly used its bonus guess to satisfy a
+        backlog entry, but a *later* turn still claimed an unearned bonus
+        for the same (already-resolved) backlog. Root cause: NoisyGuesser
+        used to draw fresh random noise on every call, so re-scoring
+        "fruit" during update_history's retrospective collision check
+        could disagree with what was actually guessed during real play --
+        fixed by making its noise a pure function of (seed, clue, word).
+        This test wraps a NoisyGuesser specifically because a deterministic
+        base guesser could never have exposed this."""
+        sims = _make_two_clue_sims(tmp_path, self.WORDS, {"kitchen": self.KITCHEN, "fruit": self.FRUIT})
+        g = HistoryAwareGuesser(base=NoisyGuesser(base=SingleSpaceGuesser(space="a"), noise_std=0.2, seed=5))
+
+        # Turn 1 (some earlier clue "fruit", number=1): A is fruit's clear
+        # top pick, but suppose the guesser actually got it wrong somehow
+        # -- simplest way to reach the same state as the bug report
+        # (a genuine backlog entry) is to hand it in directly, same as
+        # TestGuesserUpdateHistory does.
+        history = [("fruit", 1)]
+
+        # Turn 2 ("kitchen", number=1): merged ranking should be B, A, C
+        # (same z-score computation as the deterministic test above, since
+        # noise is fixed per (clue, word) and both calls below use the
+        # exact same clue/candidates). The guesser claims its bonus and
+        # correctly guesses both B (kitchen's own pick) and A (fruit's
+        # backlog pick).
+        assert g.bonus_guesses("kitchen", self.WORDS, sims, number=1, history=history) == 1
+        ranked = g.rank_candidates("kitchen", self.WORDS, sims, number=1, history=history)
+        guesses = [(w, Role.OWN) for w in ranked[:2]]  # number=1 + bonus=1
+        turn = make_turn("kitchen", number=1, guesses=guesses, ended_reason="exhausted_guesses")
+        candidates_before_turn = self.WORDS
+        new_history = g.update_history(history, "kitchen", 1, turn, candidates_before_turn, sims)
+
+        # The backlog was actually satisfied this turn -- it must not
+        # survive into turn 3, and turn 3 must not claim an unearned bonus.
+        assert new_history == []
+        assert g.bonus_guesses("kitchen", self.WORDS, sims, number=1, history=new_history) == 0

@@ -34,10 +34,13 @@ class HistoryAwareGuesser(Guesser):
     def __init__(self, base: Guesser):
         self.base = base
         # Memoizes a pure function of (clue, the fixed board vocabulary),
-        # not any particular game's state -- unlike NoisyGuesser's RNG,
-        # caching this across many games sharing one instance is safe:
-        # the same clue always produces the same baseline no matter which
-        # game or how many other clues were scored first.
+        # not any particular game's state, so caching this across many
+        # games sharing one instance is safe: the same clue always
+        # produces the same baseline no matter which game or how many
+        # other clues were scored first -- this relies on self.base's own
+        # score_candidates being a pure function of (clue, candidates)
+        # too, which wasn't actually true of NoisyGuesser until that was
+        # fixed (see codenames/guessers/noisy.py).
         self._baseline_cache: dict[str, tuple[float, float]] = {}
 
     def score_candidates(self, clue: str, candidate_words: list[str], sims: SimilarityTensor) -> dict[str, float]:
