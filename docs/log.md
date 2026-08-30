@@ -2201,4 +2201,16 @@ side of two-team mode, including the same checkpoint as both teams --
 the originally-planned pure self-play comparison the previous entry said
 was blocked is now possible after all.
 
+Ran it for real: `learned:noise_0.08` + `noisy_glove` on both sides, 300
+boards (`python scripts/run_two_team_arena.py --n-boards 300 --checkpoint
+cache/m9/checkpoints/noise_0_08/scorer_best.pt --guesser noisy_glove`).
+Assassin-hit rate 0.3%, 8.07 half-turns/game (8.08 clean-finish-only --
+almost every game ends cleanly), per-guess breakdown own 95.4% /
+opponent 0.5% / neutral 4.0% / assassin 0.0%. Substantially safer than
+the earlier `centroid`-opponent smoke test's 10.0% assassin-hit rate --
+expected, since a symmetric self-play matchup never has to contend with
+an erratic opposing clue-giver flooding the board with confusing
+reveals the way a noisier baseline codemaster does. Written up in
+`docs/versions/v1.md`'s open question #2.
+
 ## Human evaluation (not started)
