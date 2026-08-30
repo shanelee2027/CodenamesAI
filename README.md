@@ -143,49 +143,46 @@ highest. Because those four reward values live outside training entirely,
 any of them — including `assassin_reward`, which doubles as a risk-aversion
 knob — can be changed at play time with no retraining.
 
-**How it actually plays**, against every baseline above, same setup for
-all four: full games (not just single-turn scoring), each codemaster
-against `noise_std=0.08`'s 3 guessers, 900 games each
-(`codenames/arena.py`). Win rate isn't its own column here — every game
-ends in either a win or an assassin hit, so it's always just
-`1 - assassin-hit rate`, and it can't tell "plays it safe" apart from
-"actually finds its own words efficiently":
+**How it actually plays.** Real two-team play (`codenames/game.py::play_two_team_game`):
+the same codemaster+guesser pair on *both* sides of the board, alternating
+turns, against `noise_std=0.08`'s 3 guessers, 300 boards
+(`codenames/two_team_arena.py`). A symmetric win rate isn't reported here —
+since both teams run the identical codemaster/guesser, it mostly reflects
+the fixed first-move edge (team A always has 9 words to team B's 8), not
+model quality. Instead, both teams' turns are pooled into one set of
+stats: assassin-hit rate (fraction of games ending in anyone hitting the
+assassin, i.e. `1 - clean-finish rate`) and half-turns (a "half-turn" is
+one team's turn; a two-team game is naturally about 2x as long as a
+single-team one), split into all games vs. clean-finish games only:
 
-| codemaster | assassin-hit rate | turns (all games) | turns (wins only) |
+| codemaster | assassin-hit rate | half-turns (all) | half-turns (clean) |
 |---|---|---|---|
-| **model 1 (learned)** | **4.0%** | **6.54** | **6.66** |
-| centroid | 12.2% | 7.69 | 8.17 |
-| linear_scorer | 26.7% | 19.45 | 19.81 |
-| random | 89.4% | 9.89 | 15.81 |
+| **model 1 (learned)** | **0.0%** | **9.03** | **9.03** |
+| centroid | 13.3% | 10.33 | 11.03 |
+| linear_scorer | 5.0% | 18.69 | 18.69 |
+| random | 83.3% | 9.77 | 15.30 |
 
 Per-guess role breakdown — of every individual word actually guessed,
-across all 900 games per codemaster:
+pooled across both teams, across all 300 games per codemaster:
 
 | codemaster | own | opponent | neutral | assassin |
 |---|---|---|---|---|
-| **model 1 (learned)** | **86.6%** | **6.2%** | **6.9%** | **0.4%** |
-| centroid | 82.9% | 8.9% | 7.0% | 1.2% |
-| linear_scorer | 39.7% | 31.1% | 27.9% | 1.3% |
-| random | 35.4% | 30.9% | 26.9% | 6.8% |
-
-(Rerun under `neutral_reward=-0.2` — see `docs/log.md` — after being
-generated once already under the old `neutral_reward=0.0` default;
-model 1's assassin-hit rate moved from 3.2% to 4.0%, plausible since
-penalizing neutral pushes the model to consider it a real cost rather
-than a free miss, which trades off slightly against pure assassin-
-avoidance. Baselines barely move, as expected — only `LearnedCodemaster`
-reads this reward table.)
+| **model 1 (learned)** | **97.4%** | **0.3%** | **2.3%** | **0.0%** |
+| centroid | 90.0% | 4.1% | 4.9% | 0.9% |
+| linear_scorer | 40.5% | 31.4% | 27.8% | 0.2% |
+| random | 32.8% | 33.3% | 27.3% | 6.5% |
 
 A few things worth reading off these together, not just the headline
-assassin-hit number: `centroid`'s per-guess breakdown is now clearly
-behind model 1's (82.9% own vs. 86.6%), and its assassin-hit rate is
-still 3x higher (12.2% vs. 4.0%) — worse at finding own words *and*
-worse at avoiding the one guess that ends the game. `linear_scorer` and
-`random` both guess own-words less than half the time model 1 or
-centroid do, and `random`'s "wins only" turn count (15.81) is more than
-half again its "all games" figure (9.89) — its rare wins take a lot
-longer than its typical (early-assassin-ending) game, unlike the learned
-model's two turn-length figures, which stay close together.
+assassin-hit number: model 1 didn't hit the assassin in any of these 300
+real two-team games, and its own-guess rate (97.4%) clears every baseline
+by a wide margin — `centroid`'s 90.0% is the closest, and its assassin-hit
+rate is still notably higher (13.3% vs. 0.0%). `linear_scorer`'s low
+assassin rate (5.0%) comes from being slow and overly conservative
+(18.69 half-turns/game — nearly double model 1's), not from being
+skilled; it almost never finishes cleanly. `random`'s "clean finish"
+half-turn count (15.30) is well above its "all games" figure (9.77) —
+its rare clean finishes take a lot longer than its typical
+(early-assassin-ending) game.
 
 Full detail (attempts rule, all six trained noise-level checkpoints and
 their results, what the web UI exposes on top of this, open questions for
@@ -205,37 +202,37 @@ listener here, not three differently-knowledgeable ones. Available in the
 web UI as `learned:blend`, and as a guesser choice (`blend`) alongside the
 standard 3.
 
-Self-play (300 seeded boards, model 1.1 vs. its own blend guesser,
-against the same baselines evaluated with that same guesser):
+Real two-team self-play (300 boards, model 1.1 vs. its own blend guesser
+on both sides, same pooled-stats methodology as model 1 above, baselines
+evaluated with that same guesser):
 
-| codemaster | assassin-hit rate | turns (all games) | turns (wins only) |
+| codemaster | assassin-hit rate | half-turns (all) | half-turns (clean) |
 |---|---|---|---|
-| **model 1.1 (learned)** | **4.0%** | **5.52** | **5.65** |
-| centroid | 8.7% | 7.35 | 7.76 |
-| linear_scorer | 17.7% | 19.56 | 19.77 |
-| random | 88.7% | 9.77 | 15.88 |
+| **model 1.1 (learned)** | **5.0%** | **8.18** | **8.35** |
+| centroid | 17.0% | 10.64 | 11.62 |
+| linear_scorer | 8.7% | 18.97 | 19.21 |
+| random | 85.0% | 9.26 | 15.33 |
 
 | codemaster | own | opponent | neutral | assassin |
 |---|---|---|---|---|
-| **model 1.1 (learned)** | **86.1%** | **6.5%** | **7.1%** | **0.4%** |
-| centroid | 87.5% | 6.1% | 5.4% | 0.9% |
-| linear_scorer | 40.0% | 31.1% | 28.1% | 0.8% |
-| random | 35.6% | 31.0% | 26.4% | 6.9% |
+| **model 1.1 (learned)** | **86.9%** | **3.6%** | **9.2%** | **0.3%** |
+| centroid | 86.0% | 5.6% | 7.2% | 1.1% |
+| linear_scorer | 39.3% | 32.1% | 28.2% | 0.4% |
+| random | 32.3% | 34.3% | 26.3% | 7.1% |
 
-(Rerun under `neutral_reward=-0.2`, same reason as model 1 above — moved
-from 3.7% to 4.0% assassin-hit, in line with the same small shift.)
-
-Same shape of result as model 1 against the standard pool: `centroid`'s
-own-word rate (87.5%) still edges out model 1.1's (86.1%) here, but its
-assassin-hit rate is more than double (8.7% vs. 4.0%) — a single,
-more-informed blended listener makes the whole game easier for every
-codemaster (compare `random`'s 88.7% assassin-hit rate here against its
-89.4% against the standard pool), and model 1.1 converts that into
-noticeably shorter games (5.52 turns vs. model 1's 6.54 against the
-harder standard pool) without giving up any of its safety margin over the
-baselines. Not a controlled comparison against model 1 (different guesser
-pool, different game difficulty) — see
-[`docs/versions/v1.1.md`](docs/versions/v1.1.md) for the run details.
+Unlike model 1's standard-pool result, model 1.1's real two-team
+assassin-hit rate (5.0%) is *not* zero, and is actually a bit worse than
+model 1's 0.0% — a genuine, not yet explained difference, plausibly
+because a single, more-knowledgeable blended listener behaves more
+predictably than three diverse noisy ones, which may let the codemaster
+get away with (and therefore learn) slightly more aggressive clues that
+occasionally backfire. Still comfortably ahead of every baseline here:
+`centroid`'s own-word rate (86.0%) is close behind model 1.1's (86.9%),
+but its assassin-hit rate is well over 3x higher (17.0% vs. 5.0%).
+`linear_scorer` again trades a low assassin rate for being slow and
+overly conservative (18.97 half-turns/game). Not a controlled comparison
+against model 1 (different guesser pool, different game difficulty) —
+see [`docs/versions/v1.1.md`](docs/versions/v1.1.md) for the run details.
 
 ## Layout
 

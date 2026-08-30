@@ -2350,4 +2350,60 @@ model. Written up in `docs/versions/v1.md`'s open question #2, which now
 also flags the superseded pre-reveal-era number as not a valid baseline
 for future comparisons.
 
+## Policy: two-team self-play is now the headline evaluation, not single-team
+
+User direction: "we shouldn't have any single team stats at this point,
+everything should be considered with both teams playing against each
+other." Scope, per follow-up question: replace the numbers reported in
+README.md and the version docs' headline sections with two-team
+self-play numbers -- not a retirement of `codenames/arena.py`/
+`codenames/gpu_arena.py`, which stay in use for fast iteration (the
+6-checkpoint noise sweep's internal per-clue rollouts, ablation-study
+comparisons) where two-team's current ~50x-slower non-batched cost would
+make routine comparisons impractical.
+
+Ran the full set of two-team comparisons needed to replace README's
+existing single-team tables, 300 boards each:
+
+Standard pool (`noisy_glove`, matches model 1's `noise_std=0.08`):
+learned 0.0% assassin-hit / 9.03 half-turns / 97.4% own; centroid 13.3% /
+10.33 / 90.0%; linear_scorer 5.0% / 18.69 / 40.5%; random 83.3% / 9.77 /
+32.8% (random/centroid/linear_scorer rerun at 300 boards for consistency
+with learned's count -- the earlier 200-board versions from the prior
+entry are superseded by these).
+
+Blend pool (matches model 1.1): learned:blend 5.0% assassin-hit / 8.18
+half-turns / 86.9% own; centroid 17.0% / 10.64 / 86.0%; linear_scorer
+8.7% / 18.97 / 39.3%; random 85.0% / 9.26 / 32.3%.
+
+Notable finding, not yet explained: model 1.1's real two-team
+assassin-hit rate (5.0%) is worse than model 1's (0.0%), the opposite of
+their single-team ordering (model 1.1 was reported as comparable or
+slightly safer than model 1 there). Plausible hypothesis: a single,
+more-knowledgeable blended listener behaves more predictably than three
+diverse noisy ones, which may let the codemaster get away with -- and
+therefore learn -- slightly more aggressive clues that occasionally
+backfire in real two-team play, where both sides are actually acting
+rather than one side facing static distractors. Not investigated further
+here; a real open question for the next version.
+
+README.md's Model 1 and Model 1.1 sections rewritten with these numbers,
+using the same pooled-stats methodology write-up as the two-team-arena
+work above (assassin-hit rate + half-turns split, not a symmetric win
+rate). `docs/versions/v1.md` and `v1.1.md`'s single-team self-play
+sections are kept as historical record (not deleted -- they document a
+real methodology this project used for most of its life) but flagged at
+the top as superseded, pointing to the new numbers.
+
+Also surfaced in the same conversation: the current two-team arena has
+no GPU-batched path (`codenames/two_team_arena.py`'s own docstring
+already flagged this), unlike single-team's `gpu_arena.py` -- not a
+fundamental limitation, just an unbuilt optimization (different *games*
+are independent of each other even though turns within one game aren't,
+so the same per-round batching trick should apply, just batching each
+half-turn's forward pass across many simultaneous games instead of each
+full turn). Deferred until after this round of numbers; a real next step
+now that two-team is the standing evaluation method, not an occasional
+one-off.
+
 ## Human evaluation (not started)
