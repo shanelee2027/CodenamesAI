@@ -2166,4 +2166,39 @@ comparison originally planned (same learned codemaster on both sides)
 isn't possible without retraining a symmetric-capacity model -- a real
 scope question for a future version, not attempted here.
 
+## Bypassing the 9-vs-8 capacity mismatch with a one-word bootstrap reveal
+
+The previous entry's "practical consequence" (LearnedCodemaster can only
+play team A) turned out to be avoidable, not fundamental -- user's
+suggestion: since the actual overflow is a single, specific mismatch
+(team B's OpponentBoardView-swapped "opponent" role is team A's real
+9-word group, one over the fixed 8-slot allocation), fix the *count*
+rather than the model. `play_two_team_game` now silently reveals one of
+team A's 9 own words before any turn, crediting no reward to anyone --
+it's a board-setup artifact, not a real guess by either guesser. That
+single reveal drops team A's remaining-own count to 8 everywhere it's
+looked at: A's own real perspective (8 ≤ 9 own slots, fine) and B's
+swapped view of A as "opponent" (8 ≤ 8 opponent slots, now exact fit).
+No other role pairing in either direction ever overflows, so one reveal
+is both necessary and sufficient -- confirmed by re-deriving each of the
+four (perspective, role) counts by hand before implementing, not just by
+testing after the fact.
+
+This required no changes to `codenames/features.py` (the `_check_capacity`
+guard from the previous entry stays as defense-in-depth, now expected to
+never actually fire in two-team play) and no retraining. Updated
+`tests/test_game.py::TestPlayTwoTeamGame::test_each_teams_backlog_history_is_independent`,
+which had hardcoded `"Board0"` as a scripted own-word guess for team A --
+now pre-revealed by the bootstrap step, so it never appears in that
+turn's candidates. Swapped for `"Board1"`. 230 tests still passing (no
+new tests added: the existing `TestRoleCapacityGuard` suite already
+exercises the guard directly against a bare `OpponentBoardView`, which
+remains valid since that test bypasses `play_two_team_game`'s bootstrap
+entirely).
+
+**Consequence**: `LearnedCodemaster` can now legitimately play *either*
+side of two-team mode, including the same checkpoint as both teams --
+the originally-planned pure self-play comparison the previous entry said
+was blocked is now possible after all.
+
 ## Human evaluation (not started)
