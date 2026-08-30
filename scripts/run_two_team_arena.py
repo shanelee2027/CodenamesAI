@@ -10,12 +10,13 @@ Usage:
         --checkpoint cache/blend_pool/checkpoints/scorer_best.pt \\
         --guesser-pool-config configs/guesser_pool_blend.json --guesser blend
 
-No GPU-batched path here (unlike scripts/run_arena.py) -- codenames/gpu_arena.py's
-batching works by driving many *independent single-team* boards through one
-shared forward pass each round, which doesn't carry over cleanly to two-team
-play (each game is already two calls per round, alternating, tied to one
-board's specific state) -- not attempted here; see docs/log.md if that
-changes.
+With --checkpoint, routes through codenames/two_team_gpu_arena.py's
+batched-across-games GPU path by default (mirrors scripts/run_arena.py's
+--gpu-batch-size for the single-team case -- pass --no-gpu-batch for the
+normal per-process CPU path instead). A baseline --codemaster always
+runs through the normal per-process path either way, since it's already
+cheap and has nothing to gain from batching (it scores a handful of
+candidates, not the whole clue vocabulary, each turn).
 """
 
 from __future__ import annotations
@@ -24,9 +25,13 @@ import argparse
 import time
 from pathlib import Path
 
+import torch
+
 from codenames.codemasters import CentroidCodemaster, LearnedCodemaster, LinearScorerCodemaster, OracleCodemaster, RandomCodemaster
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
+from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 from codenames.two_team_arena import run_two_team_self_play
+from codenames.two_team_gpu_arena import run_two_team_self_play_gpu
 
 BASE_CODEMASTER_SPECS: dict[str, tuple[type, dict]] = {
     "random": (RandomCodemaster, {"seed": 0}),
@@ -45,11 +50,22 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=Path, default=None, help="a learned scorer checkpoint instead of a baseline codemaster")
     parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for a learned codemaster (default: -10.0)")
     parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS (per team)")
-    parser.add_argument("--max-workers", type=int, default=None, help="default: os.cpu_count()")
+    parser.add_argument("--max-workers", type=int, default=None, help="default: os.cpu_count() -- only used without --checkpoint's GPU path")
+    parser.add_argument(
+        "--gpu-batch-size",
+        type=int,
+        default=32,
+        help="with --checkpoint, batch of simultaneous two-team games scored per forward pass "
+        "(codenames/two_team_gpu_arena.py). Falls back to CPU automatically if no CUDA device is available.",
+    )
+    parser.add_argument("--no-gpu-batch", action="store_true", help="use the normal per-process path for --checkpoint too, instead of --gpu-batch-size")
+    parser.add_argument("--sims-cache-dir", type=Path, default=DEFAULT_CACHE_DIR, help="only used by the GPU-batched --checkpoint path")
     args = parser.parse_args()
 
     if (args.codemaster is None) == (args.checkpoint is None):
         parser.error("pass exactly one of --codemaster or --checkpoint")
+
+    use_gpu_batch = args.checkpoint is not None and not args.no_gpu_batch
 
     if args.checkpoint is not None:
         codemaster_cls, codemaster_kwargs = LearnedCodemaster, {"checkpoint_path": args.checkpoint}
@@ -66,15 +82,29 @@ def main() -> None:
 
     seeds = list(range(args.n_boards))
     start = time.time()
-    result = run_two_team_self_play(
-        codemaster_cls,
-        codemaster_kwargs,
-        args.guesser_pool_config,
-        args.guesser,
-        seeds,
-        max_workers=args.max_workers,
-        **kwargs,
-    )
+    if use_gpu_batch:
+        sims = SimilarityTensor.load(args.sims_cache_dir)
+        learned_codemaster = codemaster_cls(**codemaster_kwargs)
+        result = run_two_team_self_play_gpu(
+            codemaster=learned_codemaster,
+            guesser_pool_config=args.guesser_pool_config,
+            guesser_name=args.guesser,
+            seeds=seeds,
+            sims=sims,
+            batch_size=args.gpu_batch_size,
+            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
+            **kwargs,
+        )
+    else:
+        result = run_two_team_self_play(
+            codemaster_cls,
+            codemaster_kwargs,
+            args.guesser_pool_config,
+            args.guesser,
+            seeds,
+            max_workers=args.max_workers,
+            **kwargs,
+        )
     elapsed = time.time() - start
 
     print(f"{result.n_games} two-team games ({codemaster_label} + {args.guesser} on both sides) in {elapsed:.1f}s\n")

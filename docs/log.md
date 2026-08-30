@@ -2511,4 +2511,59 @@ so none of it is bit-for-bit reproducible from before this fix, though
 past directional findings likely still hold. A full regenerate-and-
 rerun is the natural next step whenever asked for.
 
+## GPU-batched two-team arena
+
+`codenames/two_team_arena.py`'s own docstring had flagged this as "not
+attempted" -- two-team play alternates turns within one game, which
+can't be batched, but *different games* are still independent of each
+other exactly like single-team play, so the same per-round batching
+trick (`codenames/gpu_arena.py`) should apply per *half-turn* instead of
+per turn. Confirmed the key invariant that makes this valid: every
+active game advances by exactly one half-turn per outer-loop iteration
+and only ever leaves the active set by finishing (never by desyncing),
+so at any iteration every still-active game is on the *same* team's
+turn -- meaning the correct board perspective (real `Board` for team A,
+`OpponentBoardView` for team B) can be gathered across every active game
+and scored in one batched forward pass.
+
+New `codenames/two_team_gpu_arena.py::run_two_team_self_play_gpu` /
+`_play_batch_group`, mirroring `gpu_arena.py`'s structure closely but
+doubled for two sides (per-game, per-side backlog history instead of
+one history per game). Reuses `two_team_arena.py`'s stats bookkeeping
+unchanged. Wired into `scripts/run_two_team_arena.py` as the default
+path for `--checkpoint` (mirrors `run_arena.py`'s `--gpu-batch-size`;
+`--no-gpu-batch` reverts to the process-parallel path). Baseline
+codemasters are unaffected -- nothing here to batch for a codemaster
+that scores a handful of candidates instead of the whole vocabulary.
+
+Verified correctness before trusting the speedup: a manual comparison
+against the CPU path (deterministic guesser, so no cross-path RNG-order
+sensitivity) matched **exactly**, bit-for-bit, across every stat, and
+was invariant to `--gpu-batch-size` (1, 5, 20 all agreed). New tests in
+`tests/test_two_team_gpu_arena.py` mirror `test_gpu_arena.py`'s two
+tests (exact CPU match, batch-size invariance) -- both pass for real
+against a genuine CUDA device in this environment (240 tests total).
+
+Real benchmark, `learned:noise_0.08` + `noisy_glove`, 300 boards,
+batch=32: **26.9s**, vs. the CPU path's earlier **338.4s** for the exact
+same comparison -- a **~12.6x speedup**, with statistically consistent
+results (0.0% assassin-hit, 97.4% own-rate, matching closely; small
+differences from noisy_glove's RNG draw order versus the process-
+parallel path, not a correctness concern). Two-team self-play is now
+cheap enough to be the routine evaluation method going forward, not just
+an occasional headline-number run.
+
+Also surfaced, unrelated to this work: `tests/test_gpu_features.py`'s
+existing `test_matches_numpy_reference_exactly_for_each_board` failed
+once, flakily, when run as part of the full suite (passed in isolation
+and on every rerun) -- root cause is almost certainly
+`gpu_features.py::tensor_on_gpu`'s `_TENSOR_GPU_CACHE`, keyed by
+`id(sims)` and explicitly documented as assuming "a SimilarityTensor is
+loaded exactly once per process and lives for that process's whole
+lifetime" (true in production, not true across many short-lived
+SimilarityTensor fixtures in one pytest process, where `id()` reuse
+after garbage collection is a real risk this test suite's growth just
+started to expose). Not fixed here -- flagged as a known, pre-existing
+flaky-test hazard, not something introduced by this change.
+
 ## Human evaluation (not started)
