@@ -2268,4 +2268,30 @@ them are affected or need retraining. 230 tests passing (rewrote several
 in `tests/test_features.py`/`tests/test_ablation.py` that hardcoded the
 old 25-wide role-block layout).
 
+Also ran real two-team self-play for every baseline codemaster (these
+were never affected by the feature-vector issue -- only `LearnedCodemaster`
+touches `codenames/features.py`), 200 boards each, `noisy_glove` on both
+sides, real 9-vs-8 rules throughout:
+
+| codemaster    | assassin-hit rate | half-turns (all/clean) | own/opp/neutral/assassin  |
+|---------------|-------------------:|-------------------------:|-----------------------------|
+| random        | 85.5%              | 9.71 / 15.48              | 33.6% / 32.0% / 27.7% / 6.7% |
+| oracle        | 56.0%              | 5.89 / 7.57                | 58.7% / 17.8% / 19.3% / 4.2% |
+| centroid      | 15.5%              | 10.20 / 11.04              | 90.0% / 3.8% / 5.1% / 1.0%   |
+| linear_scorer | 4.5%               | 18.71 / 18.71              | 41.8% / 30.1% / 27.9% / 0.2% |
+
+`oracle` (added to `scripts/run_two_team_arena.py`'s baseline choices in
+this same pass -- it was simply missing from the CLI list, nothing
+architectural blocked it) has perfect single-space foresight but no
+noise-robustness, so it posts a surprisingly high assassin rate despite
+a low turn count. `linear_scorer`'s low assassin rate comes from being
+slow and overly conservative (18.71 half-turns/game, rarely finishing
+cleanly), not from being skilled. Written up in `docs/versions/v1.md`'s
+open question #2.
+
+Retraining `LearnedCodemaster`'s checkpoints for the new feature width,
+and rerunning its two-team self-play numbers under the real (non-pre-
+revealed) 9-vs-8 rules, is the natural next step -- not done yet, since
+it's real compute time and worth confirming before spending it.
+
 ## Human evaluation (not started)
