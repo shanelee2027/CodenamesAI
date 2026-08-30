@@ -30,6 +30,7 @@ results are summarized once a clue is chosen.
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 import torch
@@ -42,9 +43,10 @@ from codenames.game import play_turn as _play_turn
 from codenames.gpu_features import build_features_batch_multi
 from codenames.guessers import load_pool
 from codenames.guessers.base import Guesser
+from codenames.guessers.registry import training_pool
 from codenames.scorer import expected_reward_and_best_n
 from codenames.similarity import SimilarityTensor
-from codenames.two_team_arena import TwoTeamSelfPlayResult, _new_stats, finalize_result, update_stats
+from codenames.two_team_arena import MIXED_GUESSER, TwoTeamSelfPlayResult, _new_stats, finalize_result, update_stats
 
 
 def _winner_if_any(board: Board) -> str | None:
@@ -57,7 +59,7 @@ def _winner_if_any(board: Board) -> str | None:
 
 def _play_batch_group(
     codemaster: LearnedCodemaster,
-    guesser: Guesser,
+    guessers: dict[int, Guesser],
     boards: list[Board],
     sims: SimilarityTensor,
     max_turns: int,
@@ -67,7 +69,10 @@ def _play_batch_group(
     batching the codemaster's clue selection across every game still in
     progress each half-turn. Mirrors codenames.game.play_two_team_game's
     exact win/loss/timeout semantics per game -- see this module's
-    docstring for why batching across games is valid here."""
+    docstring for why batching across games is valid here. `guessers` is
+    keyed by board seed -- each game can have its own guesser (see
+    MIXED_GUESSER in codenames/two_team_arena.py), since the guesser only
+    matters after the batched codemaster forward pass, not during it."""
     game_results = {b.seed: TwoTeamGameResult(seed=b.seed) for b in boards}
     # Per-game, per-side backlog history (see codenames/guessers/base.py)
     # -- mirrors play_two_team_game's `sides` dict, keyed by seed since
@@ -109,6 +114,7 @@ def _play_batch_group(
             clue = top_legal_clue(sims, view, scores)
             number = int(best_n[sims.clue_index[clue.lower()]])
 
+            guesser = guessers[seed]
             candidates_before_turn = [w for w in view.words if not view.is_revealed(w)]
             side_history = history_by_seed[seed][team]
             turn = _play_turn(view, codemaster, guesser, sims, clue_and_number=(clue, number), history=side_history)
@@ -146,19 +152,26 @@ def run_two_team_self_play_gpu(
     device: torch.device | None = None,
 ) -> TwoTeamSelfPlayResult:
     """Runs `len(seeds)` two-team games, `codemaster` + the named guesser
-    on both sides of each, batching clue selection across up to
-    `batch_size` simultaneous games."""
+    (or `MIXED_GUESSER` -- see codenames/two_team_arena.py) on both sides
+    of each, batching clue selection across up to `batch_size`
+    simultaneous games."""
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     codemaster.model.to(device)
     codemaster.device = device
 
-    guesser = load_pool(guesser_pool_config)[guesser_name].guesser
+    if guesser_name == MIXED_GUESSER:
+        pool = list(training_pool(guesser_pool_config).values())
+        guesser_for_seed = lambda seed: random.Random(seed).choice(pool)  # noqa: E731
+    else:
+        single_guesser = load_pool(guesser_pool_config)[guesser_name].guesser
+        guesser_for_seed = lambda seed: single_guesser  # noqa: E731
     stats = _new_stats()
 
     for start in range(0, len(seeds), batch_size):
         batch_seeds = seeds[start : start + batch_size]
         boards = [Board.generate(seed=s) for s in batch_seeds]
-        results = _play_batch_group(codemaster, guesser, boards, sims, max_turns, device)
+        guessers = {s: guesser_for_seed(s) for s in batch_seeds}
+        results = _play_batch_group(codemaster, guessers, boards, sims, max_turns, device)
         for result in results:
             update_stats(stats, result)
 

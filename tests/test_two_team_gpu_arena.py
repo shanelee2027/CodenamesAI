@@ -13,7 +13,7 @@ from codenames.features import feature_dim  # noqa: E402
 from codenames.board import load_wordlist  # noqa: E402
 from codenames.scorer import Scorer  # noqa: E402
 from codenames.similarity import SimilarityTensor  # noqa: E402
-from codenames.two_team_arena import run_two_team_self_play  # noqa: E402
+from codenames.two_team_arena import MIXED_GUESSER, run_two_team_self_play  # noqa: E402
 from codenames.two_team_gpu_arena import run_two_team_self_play_gpu  # noqa: E402
 
 CLUE_WORDS = ["clueone", "cluetwo", "cluethree", "cluefour"]
@@ -41,6 +41,19 @@ def guesser_pool_config(tmp_path):
     # between the two paths.
     config = {"guessers": [{"name": "space_a", "type": "single_space", "params": {"space": "a"}}]}
     path = tmp_path / "pool.json"
+    path.write_text(json.dumps(config))
+    return path
+
+
+@pytest.fixture
+def two_guesser_pool_config(tmp_path):
+    config = {
+        "guessers": [
+            {"name": "space_a", "type": "single_space", "params": {"space": "a"}},
+            {"name": "space_a_again", "type": "single_space", "params": {"space": "a"}},
+        ]
+    }
+    path = tmp_path / "pool2.json"
     path.write_text(json.dumps(config))
     return path
 
@@ -115,3 +128,33 @@ class TestRunTwoTeamSelfPlayGpu:
         for batch_size, r in results_by_batch.items():
             assert r.assassin_rate == pytest.approx(base.assassin_rate), batch_size
             assert r.guess_own_rate == pytest.approx(base.guess_own_rate), batch_size
+
+    def test_mixed_guesser_matches_cpu_path(self, sims_cache_dir, two_guesser_pool_config, checkpoint_path):
+        sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
+        seeds = list(range(1, 21))
+
+        gpu_codemaster = LearnedCodemaster(checkpoint_path, device="cpu")
+        gpu_result = run_two_team_self_play_gpu(
+            codemaster=gpu_codemaster,
+            guesser_pool_config=two_guesser_pool_config,
+            guesser_name=MIXED_GUESSER,
+            seeds=seeds,
+            sims=sims,
+            batch_size=7,
+            max_turns=10,
+            device=torch.device("cuda"),
+        )
+        cpu_result = run_two_team_self_play(
+            LearnedCodemaster,
+            {"checkpoint_path": checkpoint_path, "device": "cpu"},
+            two_guesser_pool_config,
+            MIXED_GUESSER,
+            seeds,
+            sims_cache_dir=sims_cache_dir,
+            max_turns=10,
+            max_workers=1,
+        )
+        assert gpu_result.n_games == cpu_result.n_games
+        assert gpu_result.assassin_rate == pytest.approx(cpu_result.assassin_rate)
+        assert gpu_result.mean_clue_number == pytest.approx(cpu_result.mean_clue_number)
+        assert gpu_result.mean_correct_per_clue == pytest.approx(cpu_result.mean_correct_per_clue)

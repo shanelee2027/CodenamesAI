@@ -17,19 +17,36 @@ mirroring codenames/arena.py's CrossPlayResult fields where the concepts
 carry over, but keyed by "clean finish vs. assassin ending" instead of
 "win vs. loss," since a genuine win rate here is a coin flip modulated by
 the first-move edge, not a quality signal.
+
+`guesser_name` can also be `MIXED_GUESSER` ("mixed"): instead of fixing
+one guesser for the whole run, each game independently draws one,
+uniformly, from every guesser in `guesser_pool_config` -- matching the
+distribution the codemaster was actually trained against (see
+docs/design-decisions.md), rather than the narrower test a single fixed
+guesser is.
 """
 
 from __future__ import annotations
 
 import multiprocessing
+import random
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
-from codenames.board import Board
+from codenames.board import Board, Role
 from codenames.game import DEFAULT_MAX_TURNS, TwoTeamGameResult, play_two_team_game
-from codenames.guessers.registry import load_pool
+from codenames.guessers.registry import load_pool, training_pool
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
+
+# Passed as `guesser_name` to mean "don't fix one guesser -- each game
+# independently draws one, uniformly, from every guesser in
+# --guesser-pool-config" (matching training's own sampling: see
+# scripts/generate_training_data.py's `rng.choice(guesser_names)` and
+# docs/design-decisions.md's "guesser pool is 3 members, equally
+# weighted" -- evaluating against a single fixed guesser instead is a
+# narrower test than what the model was actually trained against).
+MIXED_GUESSER = "mixed"
 
 
 @dataclass
@@ -42,6 +59,8 @@ class TwoTeamSelfPlayResult:
     guess_opponent_rate: float
     guess_neutral_rate: float
     guess_assassin_rate: float
+    mean_correct_per_clue: float  # own-word guesses per turn (the "k" a clue actually earned), pooled across both teams
+    mean_clue_number: float  # announced clue number, pooled across both teams
 
 
 def _new_stats() -> dict[str, float]:
@@ -56,6 +75,9 @@ def _new_stats() -> dict[str, float]:
         "guess_opponent": 0,
         "guess_neutral": 0,
         "guess_assassin": 0,
+        "clues": 0,
+        "clue_number_sum": 0,
+        "correct_per_clue_sum": 0,
     }
 
 
@@ -68,6 +90,9 @@ def update_stats(s: dict[str, float], result: TwoTeamGameResult) -> None:
         s["clean_games"] += 1
         s["half_turns_clean"] += len(result.turns)
     for tt in result.turns:
+        s["clues"] += 1
+        s["clue_number_sum"] += tt.turn.number
+        s["correct_per_clue_sum"] += sum(1 for _, role in tt.turn.guesses if role == Role.OWN)
         for _, role in tt.turn.guesses:
             s["guesses"] += 1
             s[f"guess_{role.value}"] += 1
@@ -83,6 +108,8 @@ def finalize_result(s: dict[str, float]) -> TwoTeamSelfPlayResult:
         guess_opponent_rate=(s["guess_opponent"] / s["guesses"]) if s["guesses"] else 0.0,
         guess_neutral_rate=(s["guess_neutral"] / s["guesses"]) if s["guesses"] else 0.0,
         guess_assassin_rate=(s["guess_assassin"] / s["guesses"]) if s["guesses"] else 0.0,
+        mean_correct_per_clue=(s["correct_per_clue_sum"] / s["clues"]) if s["clues"] else 0.0,
+        mean_clue_number=(s["clue_number_sum"] / s["clues"]) if s["clues"] else 0.0,
     )
 
 
@@ -104,14 +131,22 @@ def _worker_init(
     # there.
     _WORKER_STATE["sims"] = SimilarityTensor.load(sims_cache_dir)
     _WORKER_STATE["codemaster"] = codemaster_cls(**codemaster_kwargs)
-    _WORKER_STATE["guesser"] = load_pool(guesser_pool_config)[guesser_name].guesser
+    _WORKER_STATE["guesser_name"] = guesser_name
+    if guesser_name == MIXED_GUESSER:
+        _WORKER_STATE["guesser_pool"] = list(training_pool(guesser_pool_config).values())
+    else:
+        _WORKER_STATE["guesser"] = load_pool(guesser_pool_config)[guesser_name].guesser
     _WORKER_STATE["max_turns"] = max_turns
 
 
 def _play_task(seed: int) -> TwoTeamGameResult:
     state = _WORKER_STATE
     board = Board.generate(seed=seed)
-    team = (state["codemaster"], state["guesser"])
+    if state["guesser_name"] == MIXED_GUESSER:
+        guesser = random.Random(seed).choice(state["guesser_pool"])
+    else:
+        guesser = state["guesser"]
+    team = (state["codemaster"], guesser)
     return play_two_team_game(board, team, team, state["sims"], max_turns=state["max_turns"])
 
 

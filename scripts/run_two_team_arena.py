@@ -45,7 +45,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--n-boards", type=int, default=20, help="number of fixed seeded boards to play (seeds 0..n-1)")
     parser.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG)
-    parser.add_argument("--guesser", required=True, help="name of one guesser in --guesser-pool-config to use on both sides")
+    parser.add_argument(
+        "--guesser",
+        required=True,
+        help="name of one guesser in --guesser-pool-config to use on both sides, or 'mixed' -- each game "
+        "independently draws a guesser uniformly from the whole pool, matching the distribution the "
+        "codemaster was actually trained against (see codenames/two_team_arena.py::MIXED_GUESSER)",
+    )
     parser.add_argument("--codemaster", choices=list(BASE_CODEMASTER_SPECS), default=None, help="a baseline codemaster")
     parser.add_argument("--checkpoint", type=Path, default=None, help="a learned scorer checkpoint instead of a baseline codemaster")
     parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for a learned codemaster (default: -10.0)")
@@ -112,6 +118,8 @@ def main() -> None:
     print(f"{'half-turns (all)':22s} {result.mean_half_turns_all:6.2f}")
     turns_clean = f"{result.mean_half_turns_clean_finish:.2f}" if result.mean_half_turns_clean_finish is not None else "--"
     print(f"{'half-turns (clean finish)':22s} {turns_clean:>6s}")
+    print(f"{'mean clue number':22s} {result.mean_clue_number:6.2f}")
+    print(f"{'mean correct per clue':22s} {result.mean_correct_per_clue:6.2f}")
     print()
     print("per-guess role breakdown (of every word actually guessed, pooled across both teams):")
     print(

@@ -8,7 +8,7 @@ import pytest
 from codenames.board import Role, load_wordlist
 from codenames.codemasters.random_clue import RandomCodemaster
 from codenames.game import TurnResult, TwoTeamGameResult, TwoTeamTurnResult
-from codenames.two_team_arena import _new_stats, finalize_result, run_two_team_self_play, update_stats
+from codenames.two_team_arena import MIXED_GUESSER, _new_stats, finalize_result, run_two_team_self_play, update_stats
 
 CLUE_WORDS = ["clueone", "cluetwo", "cluethree"]
 SPACES = ["a"]
@@ -29,6 +29,19 @@ def sims_cache_dir(tmp_path):
 def guesser_pool_config(tmp_path):
     config = {"guessers": [{"name": "space_a", "type": "single_space", "params": {"space": "a"}}]}
     path = tmp_path / "pool.json"
+    path.write_text(json.dumps(config))
+    return path
+
+
+@pytest.fixture
+def two_guesser_pool_config(tmp_path):
+    config = {
+        "guessers": [
+            {"name": "space_a", "type": "single_space", "params": {"space": "a"}},
+            {"name": "space_a_again", "type": "single_space", "params": {"space": "a"}},
+        ]
+    }
+    path = tmp_path / "pool2.json"
     path.write_text(json.dumps(config))
     return path
 
@@ -82,6 +95,22 @@ class TestStatsBookkeeping:
         assert result.guess_neutral_rate == pytest.approx(0.25)
         assert result.guess_assassin_rate == pytest.approx(0.0)
 
+    def test_mean_clue_number_and_correct_per_clue_are_pooled_across_both_teams(self):
+        s = _new_stats()
+        # Team A's clue: number=2, both correct (k=2). Team B's clue:
+        # number=1, 0 correct (its one guess was neutral).
+        update_stats(
+            s,
+            make_result(
+                "win",
+                [("w1", Role.OWN), ("w2", Role.OWN)],
+                [("w3", Role.NEUTRAL)],
+            ),
+        )
+        result = finalize_result(s)
+        assert result.mean_clue_number == pytest.approx((2 + 1) / 2)
+        assert result.mean_correct_per_clue == pytest.approx((2 + 0) / 2)
+
 
 class TestRunTwoTeamSelfPlay:
     def test_runs_real_games_end_to_end(self, sims_cache_dir, guesser_pool_config):
@@ -101,3 +130,17 @@ class TestRunTwoTeamSelfPlay:
         rates = [result.guess_own_rate, result.guess_opponent_rate, result.guess_neutral_rate, result.guess_assassin_rate]
         assert all(0.0 <= r <= 1.0 for r in rates)
         assert sum(rates) == pytest.approx(1.0)
+
+    def test_mixed_guesser_runs_end_to_end(self, sims_cache_dir, two_guesser_pool_config):
+        result = run_two_team_self_play(
+            RandomCodemaster,
+            {"seed": 0},
+            two_guesser_pool_config,
+            MIXED_GUESSER,
+            seeds=list(range(4)),
+            sims_cache_dir=sims_cache_dir,
+            max_turns=5,
+            max_workers=2,
+        )
+        assert result.n_games == 4
+        assert result.mean_clue_number > 0
