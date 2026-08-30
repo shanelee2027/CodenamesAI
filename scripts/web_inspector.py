@@ -48,9 +48,9 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 
-from wordfreq import zipf_frequency
 from codenames.board import Board, Role, is_legal_clue
-from codenames.codemasters import CentroidCodemaster, OracleCodemaster, RandomCodemaster
+from codenames.clue_search import clue_rarity_percentile
+from codenames.codemasters import CentroidCodemaster, LearnedCodemaster, OracleCodemaster, RandomCodemaster
 from codenames.game import DEFAULT_MAX_TURNS, ROLE_REWARD, play_two_team_game
 from codenames.guessers import load_pool
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
@@ -115,39 +115,7 @@ GAME_GUESSERS.update(
 )
 
 
-def _build_clue_rarity_percentile(clue_words: list[str]) -> dict[str, float]:
-    """0.0 = the most common word in the clue vocabulary, ~100.0 = the
-    rarest -- lets the UI filter out obscure clues like "confectionery".
-
-    Originally derived from GloVe's own frequency-ordered file position,
-    but that was a bad proxy for "a person would recognize this word" --
-    proper nouns (city names especially) get mentioned constantly in the
-    news/web/Wikipedia text GloVe was trained on regardless of whether an
-    average speaker actually knows them, so e.g. "Stuttgart" and
-    "Helsinki" both landed in the top 10% by that measure (confirmed
-    empirically, not assumed -- see docs/log.md). `wordfreq.zipf_frequency`
-    blends subtitle/conversational-text frequency in alongside web text
-    specifically to correct for that skew (subtitle frequency is the
-    standard psycholinguistic fix for "recognizable word" vs. "frequently
-    printed word"), fully offline after install (bundled data, no network
-    calls at runtime).
-
-    Percentile is computed within the clue vocabulary itself (not all of
-    wordfreq's English vocabulary), since that's the pool an actual filter
-    choice is made over -- clue_words already skews toward moderately-
-    common words by construction (build_similarity_tensor.py's top-N +
-    intersection filtering), so a percentile against the full English
-    lexicon would make even a fairly obscure Codenames clue look
-    deceptively "common."
-    """
-    scores = np.array([zipf_frequency(w, "en") for w in clue_words])
-    order = np.argsort(-scores)  # descending: highest zipf (most common) first
-    percentile = np.empty(len(clue_words), dtype=np.float64)
-    percentile[order] = np.arange(len(clue_words)) / len(clue_words) * 100.0
-    return dict(zip(clue_words, percentile))
-
-
-CLUE_RARITY_PERCENTILE = _build_clue_rarity_percentile(SIMS.clue_words)
+CLUE_RARITY_PERCENTILE = clue_rarity_percentile(SIMS.clue_words)
 
 
 def _discover_checkpoints() -> dict[str, Path]:
@@ -176,13 +144,22 @@ def _discover_checkpoints() -> dict[str, Path]:
     return found
 
 
-def _load_learned_codemasters() -> dict:
-    from codenames.codemasters import LearnedCodemaster
+_DEFAULT_UI_MAX_RARITY = 50.0
 
+
+def _load_learned_codemasters() -> dict:
     learned = {}
     for label, path in _discover_checkpoints().items():
         try:
-            learned[f"learned:{label}"] = LearnedCodemaster(path)
+            # rarity_percentile/max_rarity: UI-only defaults (arena/training
+            # scripts construct LearnedCodemaster with the class default of
+            # 100.0 = no filtering, unaffected by this). See
+            # codenames/codemasters/learned.py's give_clue for how this is
+            # used, and _apply_reward_overrides below for how a request can
+            # override it per call.
+            learned[f"learned:{label}"] = LearnedCodemaster(
+                path, rarity_percentile=CLUE_RARITY_PERCENTILE, max_rarity=_DEFAULT_UI_MAX_RARITY
+            )
         except Exception as e:
             # e.g. linear_baseline's checkpoint holds a LinearScorer, whose
             # state dict doesn't match Scorer's architecture -- skip rather
@@ -290,19 +267,22 @@ def _parse_reveal(query: dict) -> list[str]:
 # its established name (-> miss_penalty, the assassin value) rather than
 # being renamed "assassin_reward" everywhere, since that's the field the
 # UI has always called it and matches SCOPE's own "risk aversion" framing.
+# max_rarity lives here too (not just a reward, but the same "per-request
+# override of a plain LearnedCodemaster attribute" mechanism applies).
 _REWARD_PARAMS = {
     "risk_aversion": "miss_penalty",
     "own_reward": "own_reward",
     "neutral_reward": "neutral_reward",
     "opponent_reward": "opponent_reward",
+    "max_rarity": "max_rarity",
 }
 
 
 def _apply_reward_overrides(codemaster, overrides: dict[str, str]) -> None:
-    """Set any of LearnedCodemaster's 4 reward attributes directly on the
-    shared instance from raw (possibly empty) query-string values -- fine
-    for a single-user local dev tool. No-op for codemasters without these
-    attributes (everything except LearnedCodemaster)."""
+    """Set any of these attributes directly on the shared codemaster
+    instance from raw (possibly empty) query-string values -- fine for a
+    single-user local dev tool. No-op for codemasters without a given
+    attribute (everything except LearnedCodemaster)."""
     for param, attr in _REWARD_PARAMS.items():
         value = overrides.get(param, "")
         if value and hasattr(codemaster, attr):
@@ -324,10 +304,11 @@ def build_give_clue_response(
     codemaster_name: str,
     reward_overrides: dict[str, str] | None = None,
     top_k: int = 1,
-    max_rarity: float = 100.0,
+    max_rarity: float = _DEFAULT_UI_MAX_RARITY,
 ) -> dict:
-    """`max_rarity` (0-100, default 100 = no filtering) excludes clues
-    above that CLUE_RARITY_PERCENTILE -- e.g. max_rarity=50 keeps only
+    """`max_rarity` (0-100, default 50 -- the UI's default, not "no
+    filtering"; pass 100 for that) excludes clues above that
+    CLUE_RARITY_PERCENTILE -- e.g. max_rarity=50 keeps only
     the more-common half of the clue vocabulary, screening out obscure
     picks like "confectionery". Only applies to codemasters exposing
     top_k_clues (i.e. not RandomCodemaster, which has no ranking to
@@ -419,11 +400,20 @@ def _resolve_guesser(name: str):
     return GAME_GUESSERS[name], None
 
 
-def _turn_payload(t) -> dict:
+def _turn_payload(t, board: Board) -> dict:
+    """`t.guesses` carries each word's role as seen by *that turn's own
+    team* (team B's OpponentBoardView-swapped OWN/OPPONENT, per
+    codenames/game.py::play_turn) -- correct for computing t.reward/
+    t.ended_reason, but wrong for coloring: the persistent board display
+    always uses the real, physical role (team A's real 9 words are always
+    blue, team B's real 8 are always red, regardless of whose turn it
+    is), so a team B turn's own-word guess must show red here too, not
+    blue. `board` is the one real, un-swapped Board, so `board.role_of`
+    always returns the physical role no matter which team guessed."""
     return {
         "clue": t.clue,
         "number": t.number,
-        "guesses": [{"word": w, "role": ROLE_LABELS[r]} for w, r in t.guesses],
+        "guesses": [{"word": w, "role": ROLE_LABELS[board.role_of(w)]} for w, _ in t.guesses],
         "reward": t.reward,
         "ended_reason": t.ended_reason,
         # Real Codenames' n+1 bonus, only claimed if the guesser has an
@@ -483,7 +473,7 @@ def build_play_game_response(
         "outcome": result.outcome,
         "winner": result.winner,
         "total_reward": result.total_reward,
-        "turns": [{"team": t.team, **_turn_payload(t.turn)} for t in result.turns],
+        "turns": [{"team": t.team, **_turn_payload(t.turn, board)} for t in result.turns],
         "board": _board_words_payload(board),
     }
 
@@ -556,7 +546,7 @@ class Handler(BaseHTTPRequestHandler):
             codemaster_name = query.get("codemaster", [""])[0]
             reward_overrides = {param: query.get(param, [""])[0] for param in _REWARD_PARAMS}
             top_k = int(query.get("top_k", ["1"])[0])
-            max_rarity = float(query.get("max_rarity", ["100"])[0])
+            max_rarity = float(query.get("max_rarity", [str(_DEFAULT_UI_MAX_RARITY)])[0])
             response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, reward_overrides, top_k, max_rarity)
             self._send_json(response, status=400 if "error" in response else 200)
             return
@@ -592,9 +582,9 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.checkpoint is not None:
-        from codenames.codemasters import LearnedCodemaster
-
-        CODEMASTERS["learned"] = LearnedCodemaster(args.checkpoint)
+        CODEMASTERS["learned"] = LearnedCodemaster(
+            args.checkpoint, rarity_percentile=CLUE_RARITY_PERCENTILE, max_rarity=_DEFAULT_UI_MAX_RARITY
+        )
         print(f"loaded learned codemaster from {args.checkpoint}")
 
     server = ThreadingHTTPServer(("localhost", args.port), Handler)

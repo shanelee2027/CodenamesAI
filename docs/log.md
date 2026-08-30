@@ -2406,4 +2406,109 @@ full turn). Deferred until after this round of numbers; a real next step
 now that two-team is the standing evaluation method, not an occasional
 one-off.
 
+## Two Full Game tab bugs: swapped turn colors, and a missing rarity filter
+
+Two small UI bugs, both user-reported, unrelated to each other:
+
+1. **Turn-log colors were backwards for team B.** Each turn's guess chips
+   were colored by `_turn_payload`'s reported role, which is *team-
+   relative* (team B's own words come back as Role.OWN via
+   OpponentBoardView's swap) -- but the persistent board display always
+   colors by the *physical* role (team A's real 9 words are always blue,
+   team B's real 8 are always red, regardless of whose turn it is). So a
+   correct guess on team B's turn showed blue when the same card shows
+   red on the board. Fixed by having `_turn_payload` take the real,
+   un-swapped `Board` and color every guess from `board.role_of(word)`
+   directly, ignoring the team-relative role from `TurnResult.guesses`
+   (still used correctly elsewhere for `t.reward`/`t.ended_reason`).
+
+2. **No max-rarity filter for the Full Game tab, and the Inspector's own
+   default was 90% (should be 50%).** The existing `max_rarity` filter
+   only ever applied to the Inspector tab's candidate-*listing* endpoint
+   (`build_give_clue_response`'s own post-hoc filter over an over-fetched
+   pool) -- real gameplay (`play_two_team_game` -> `play_turn` ->
+   `codemaster.give_clue()`) had no rarity knob at all. Fixed by giving
+   `LearnedCodemaster` itself an optional `max_rarity`/`rarity_percentile`
+   (class default `max_rarity=100.0` = no filtering, so arena/training
+   scripts are unaffected unless they opt in) and a `_pick_legal_clue`
+   helper mirroring the same over-fetch-then-filter pattern, falling back
+   to the unfiltered pick if nothing in the pool clears the threshold
+   (never let a UI-only setting make a real game unable to produce a
+   clue). Moved the rarity-percentile computation itself
+   (`clue_rarity_percentile`, was `_build_clue_rarity_percentile`) from
+   `scripts/web_inspector.py` into `codenames/clue_search.py` so both the
+   codemaster and the UI share one implementation. Added per-side
+   `max rarity %` inputs to the Full Game tab, wired through the same
+   `_apply_reward_overrides`-style per-request mechanism the 4 reward
+   fields already use. Web UI's own `LearnedCodemaster` instances are
+   constructed with `max_rarity=50.0` as their starting point (a UI-only
+   default, not a change to the class default); both the Inspector's
+   existing field and the new Full Game fields default to 50 in the HTML
+   too. 235 tests passing (no behavior change for anything outside the
+   web UI).
+
+## Real bug: NoisyGuesser's stateful RNG broke the backlog/bonus mechanism
+
+User report, watching a real Full Game sim: team B's clue for 2 got 1
+correct then a neutral (creating a backlog of 1 owed word). Next turn's
+clue for 2 correctly used the bonus to satisfy that backlog (3 correct
+guesses total). The turn *after that* still claimed a bonus guess, with
+no missed clue left to justify it.
+
+**Root cause**: `codenames/guessers/base.py`'s entire backlog design
+(see its own docstring) assumes "re-ranking the same clue against the
+same candidates always reproduces the same answer" -- true for every
+guesser in the pool except `NoisyGuesser`, whose noise came from one
+continuously-advancing RNG stream (`self.rng.normal(...)`, consumed
+further with every call). The same clue scored twice -- once for real
+during play, once retrospectively in `update_history`'s "did this
+backlog get satisfied" collision check -- could get different noisy
+values and therefore disagree about which word was the clue's top pick,
+so the collision-credit decrement silently failed to fire even when the
+backlog genuinely had just been satisfied. A second, related bug from
+the same root cause: `codenames/game.py::play_turn` calls
+`bonus_guesses()` and `rank_candidates()` as two separate calls, each
+independently re-deriving `HistoryAwareGuesser._merge` -- with a noisy
+base guesser, the bonus-claim decision and the actual guess order used
+in the same turn could already be based on inconsistent noise before
+update_history ever ran.
+
+**Fix**: `codenames/guessers/noisy.py` -- noise is now a deterministic
+function of `(seed, clue, word)` (`zlib.crc32`-hashed into a fresh
+per-call `np.random.default_rng` seed), not a draw from mutable
+per-instance state. Same per-word "idiosyncratic misperception" semantics
+as before, just now a pure, repeatable function like every other guesser
+in the pool -- restoring the invariant `update_history` and
+`HistoryAwareGuesser`'s baseline cache both already assumed held.
+Bonus: this also makes `scripts/run_ablation_study.py`'s noise-level
+sweep comparability guarantee *more* robust, not less -- "same seed at a
+different noise_std reuses the same underlying draw, just scaled" no
+longer depends on call order/count being identical across differently-
+generated datasets, since it's now keyed by the literal (clue, word)
+content instead of a stream position.
+
+Updated three stale comments that had documented the old (buggy)
+statefulness as an accepted fact rather than a bug: `base.py`'s own
+docstring, `history_aware.py`'s baseline-cache comment, and
+`run_ablation_study.py`'s noise-sweep comparability note.
+
+New tests (`tests/test_guessers.py`): `TestNoisyGuesser` gains a
+same-instance-repeated-call determinism check and a noise-std-
+independence check (the property the ablation sweep relies on);
+`TestHistoryAwareGuesser` gains an end-to-end regression test wrapping a
+`NoisyGuesser` specifically (a deterministic base guesser could never
+have exposed this) that reproduces the exact reported scenario: a
+backlog satisfied via bonus guess must not resurface on a later turn.
+238 tests passing.
+
+**Not yet done, on purpose** (user: "don't rerun anything yet"): every
+existing `NoisyGuesser`-based result -- every arena run, every trained
+checkpoint's training data, every two-team self-play number in this
+document and the README -- was generated under the old, buggy noise
+semantics. The noise *values* themselves change completely under the
+new deterministic scheme (same distribution, different actual numbers),
+so none of it is bit-for-bit reproducible from before this fix, though
+past directional findings likely still hold. A full regenerate-and-
+rerun is the natural next step whenever asked for.
+
 ## Human evaluation (not started)

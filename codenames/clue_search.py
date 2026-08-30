@@ -8,6 +8,7 @@ both need to turn a (n_clues,)-shaped score array into legal clue words.
 from __future__ import annotations
 
 import numpy as np
+from wordfreq import zipf_frequency
 
 from codenames.board import Board, is_legal_clue
 from codenames.similarity import SimilarityTensor
@@ -17,6 +18,39 @@ from codenames.similarity import SimilarityTensor
 # before falling back to a full scan keeps the common case fast without
 # giving up correctness in the rare case.
 _CANDIDATE_POOL = 200
+
+
+def clue_rarity_percentile(clue_words: list[str]) -> dict[str, float]:
+    """0.0 = the most common word in the clue vocabulary, ~100.0 = the
+    rarest -- lets a codemaster (or the web UI) filter out obscure clues
+    like "confectionery".
+
+    Originally derived from GloVe's own frequency-ordered file position,
+    but that was a bad proxy for "a person would recognize this word" --
+    proper nouns (city names especially) get mentioned constantly in the
+    news/web/Wikipedia text GloVe was trained on regardless of whether an
+    average speaker actually knows them, so e.g. "Stuttgart" and
+    "Helsinki" both landed in the top 10% by that measure (confirmed
+    empirically, not assumed -- see docs/log.md). `wordfreq.zipf_frequency`
+    blends subtitle/conversational-text frequency in alongside web text
+    specifically to correct for that skew (subtitle frequency is the
+    standard psycholinguistic fix for "recognizable word" vs. "frequently
+    printed word"), fully offline after install (bundled data, no network
+    calls at runtime).
+
+    Percentile is computed within the clue vocabulary itself (not all of
+    wordfreq's English vocabulary), since that's the pool an actual filter
+    choice is made over -- clue_words already skews toward moderately-
+    common words by construction (build_similarity_tensor.py's top-N +
+    intersection filtering), so a percentile against the full English
+    lexicon would make even a fairly obscure Codenames clue look
+    deceptively "common."
+    """
+    scores = np.array([zipf_frequency(w, "en") for w in clue_words])
+    order = np.argsort(-scores)  # descending: highest zipf (most common) first
+    percentile = np.empty(len(clue_words), dtype=np.float64)
+    percentile[order] = np.arange(len(clue_words)) / len(clue_words) * 100.0
+    return dict(zip(clue_words, percentile))
 
 
 def top_k_legal_clues(sims: SimilarityTensor, board: Board, scores: np.ndarray, k: int) -> list[str]:

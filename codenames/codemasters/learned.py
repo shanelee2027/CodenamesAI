@@ -36,6 +36,13 @@ from codenames.similarity import SimilarityTensor
 
 from .base import Codemaster
 
+# Over-fetch pool when a rarity filter is active: the forward pass scoring
+# the whole vocabulary already happened, so asking top_k_legal_clues to
+# walk a few hundred more already-sorted candidates (rather than just 1)
+# is close to free -- this only affects how many get checked for legality
+# + the rarity threshold before picking the first survivor.
+_RARITY_FETCH_POOL = 300
+
 
 class LearnedCodemaster(Codemaster):
     def __init__(
@@ -46,16 +53,41 @@ class LearnedCodemaster(Codemaster):
         neutral_reward: float = ROLE_REWARD[Role.NEUTRAL],
         opponent_reward: float = ROLE_REWARD[Role.OPPONENT],
         device: str = "cpu",
+        rarity_percentile: dict[str, float] | None = None,
+        max_rarity: float = 100.0,
     ):
+        """`rarity_percentile`/`max_rarity` (see codenames/clue_search.py's
+        clue_rarity_percentile): default `max_rarity=100.0` means no
+        filtering at all, so every existing caller (arena/training scripts)
+        is unaffected unless it explicitly opts in -- this is a UI-facing
+        knob (scripts/web_inspector.py sets a non-default max_rarity at
+        construction), not a change to evaluation methodology."""
         self.miss_penalty = miss_penalty
         self.own_reward = own_reward
         self.neutral_reward = neutral_reward
         self.opponent_reward = opponent_reward
         self.device = torch.device(device)
+        self.rarity_percentile = rarity_percentile
+        self.max_rarity = max_rarity
         checkpoint = torch.load(Path(checkpoint_path), map_location=self.device)
         self.model = Scorer(input_dim=checkpoint["input_dim"]).to(self.device)
         self.model.load_state_dict(checkpoint["model_state"])
         self.model.eval()
+
+    def _pick_legal_clue(self, sims: SimilarityTensor, board: Board, scores) -> str:
+        """top_legal_clue, unless a rarity filter is active and there's
+        actually a percentile table to filter against -- then fetch a
+        larger pool of legal candidates and take the best one that clears
+        the rarity threshold, falling back to the plain unfiltered pick if
+        every candidate in the pool is too rare (never let a UI-only
+        filter setting make a real game unable to produce a clue)."""
+        if self.max_rarity >= 100.0 or not self.rarity_percentile:
+            return top_legal_clue(sims, board, scores)
+        candidates = top_k_legal_clues(sims, board, scores, k=_RARITY_FETCH_POOL)
+        for clue in candidates:
+            if self.rarity_percentile.get(clue, 100.0) <= self.max_rarity:
+                return clue
+        return top_legal_clue(sims, board, scores)
 
     def _score_all_clues(self, board: Board, sims: SimilarityTensor) -> tuple:
         """(best_n, score) per clue in sims.clue_words -- shared by
@@ -78,7 +110,7 @@ class LearnedCodemaster(Codemaster):
 
     def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
         best_n, scores = self._score_all_clues(board, sims)
-        clue = top_legal_clue(sims, board, scores)
+        clue = self._pick_legal_clue(sims, board, scores)
         clue_idx = sims.clue_index[clue.lower()]
         return clue, int(best_n[clue_idx])
 

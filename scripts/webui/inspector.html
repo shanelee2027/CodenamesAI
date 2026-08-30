@@ -223,7 +223,7 @@
     <label>top</label>
     <input id="topK" type="number" min="1" max="50" value="10" style="width:60px;" title="How many candidate clues to show, best first.">
     <label>max rarity %</label>
-    <input id="maxRarity" type="number" min="0" max="100" step="5" value="90" placeholder="100 (no filter)" style="width:110px;" title="Exclude clues rarer than this percentile of the clue vocabulary (0 = only the most common words, 100 = no filtering). Screens out obscure picks like 'confectionery'. No effect on 'random' (nothing to rank).">
+    <input id="maxRarity" type="number" min="0" max="100" step="5" value="50" placeholder="100 (no filter)" style="width:110px;" title="Exclude clues rarer than this percentile of the clue vocabulary (0 = only the most common words, 100 = no filtering). Screens out obscure picks like 'confectionery'. No effect on 'random' (nothing to rank).">
     <button id="getAiClue" class="primary">Get AI clues</button>
     <span id="aiClueReadout" class="sub" style="margin:0 0 0 4px;"></span>
   </div>
@@ -315,6 +315,8 @@
       <input id="gameOpponentRewardA" type="number" step="0.5" placeholder="-1" style="width:60px;">
       <label>assassin</label>
       <input id="gameAssassinRewardA" type="number" step="0.5" placeholder="-10" style="width:60px;">
+      <label>max rarity %</label>
+      <input id="gameMaxRarityA" type="number" min="0" max="100" step="5" placeholder="50" style="width:60px;" title="Exclude clues rarer than this percentile of the clue vocabulary (100 = no filtering). Applies only to a learned:* codemaster on this side.">
     </div>
 
     <div class="controls">
@@ -331,10 +333,12 @@
       <input id="gameOpponentRewardB" type="number" step="0.5" placeholder="-1" style="width:60px;">
       <label>assassin</label>
       <input id="gameAssassinRewardB" type="number" step="0.5" placeholder="-10" style="width:60px;">
+      <label>max rarity %</label>
+      <input id="gameMaxRarityB" type="number" min="0" max="100" step="5" placeholder="50" style="width:60px;" title="Exclude clues rarer than this percentile of the clue vocabulary (100 = no filtering). Applies only to a learned:* codemaster on this side.">
     </div>
-    <div class="sub" style="margin-top:-8px;">reward values apply only to a learned:* codemaster on that side,
-      blank = default -- if both teams pick the *same* learned codemaster, they share one instance and team B's
-      overrides win for both.</div>
+    <div class="sub" style="margin-top:-8px;">reward values and max rarity apply only to a learned:* codemaster on
+      that side, blank = default (max rarity default 50) -- if both teams pick the *same* learned codemaster, they
+      share one instance and team B's overrides win for both.</div>
 
     <div id="gameMessage"></div>
 
@@ -687,6 +691,7 @@ function gameRewardParams(side) {
     [`neutral_reward_${side}`]: `gameNeutralReward${sideUpper}`,
     [`opponent_reward_${side}`]: `gameOpponentReward${sideUpper}`,
     [`risk_aversion_${side}`]: `gameAssassinReward${sideUpper}`,
+    [`max_rarity_${side}`]: `gameMaxRarity${sideUpper}`,
   };
   let params = '';
   for (const [param, elementId] of Object.entries(fields)) {
