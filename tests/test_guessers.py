@@ -11,6 +11,7 @@ from codenames.guessers.base import Guesser
 from codenames.guessers.blend import BlendGuesser
 from codenames.guessers.confidence_threshold import ConfidenceThresholdGuesser
 from codenames.guessers.history_aware import HistoryAwareGuesser
+from codenames.guessers.llm import LLMGuesser
 from codenames.guessers.noisy import NoisyGuesser
 from codenames.guessers.rank_based import RankBasedGuesser
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG, held_out_pool, load_pool, training_pool
@@ -518,3 +519,83 @@ class TestHistoryAwareGuesser:
         # survive into turn 3, and turn 3 must not claim an unearned bonus.
         assert new_history == []
         assert g.bonus_guesses("kitchen", self.WORDS, sims, number=1, history=new_history) == 0
+
+
+class _FakeTextBlock:
+    def __init__(self, text: str):
+        self.type = "text"
+        self.text = text
+
+
+class _FakeResponse:
+    def __init__(self, text: str):
+        self.content = [_FakeTextBlock(text)]
+
+
+class _FakeMessages:
+    def __init__(self, responses: list[str]):
+        self._responses = list(responses)
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return _FakeResponse(self._responses.pop(0))
+
+
+class _FakeClient:
+    def __init__(self, responses: list[str]):
+        self.messages = _FakeMessages(responses)
+
+
+class TestLLMGuesser:
+    WORDS = ["Apple", "Banana", "Car", "Doghouse"]
+
+    def test_rank_candidates_uses_the_models_ranking(self):
+        client = _FakeClient(['["Car", "Apple", "Doghouse", "Banana"]'])
+        g = LLMGuesser(client=client)
+        assert g.rank_candidates("fruit", self.WORDS, sims=None, number=2) == ["Car", "Apple", "Doghouse", "Banana"]
+
+    def test_malformed_response_falls_back_to_original_order(self):
+        client = _FakeClient(["not json at all"])
+        g = LLMGuesser(client=client)
+        assert g.rank_candidates("fruit", self.WORDS, sims=None) == self.WORDS
+
+    def test_partial_response_appends_missing_words_in_original_order(self):
+        # Model only mentions two of the four words.
+        client = _FakeClient(['["Banana", "Car"]'])
+        g = LLMGuesser(client=client)
+        ranked = g.rank_candidates("fruit", self.WORDS, sims=None)
+        assert ranked == ["Banana", "Car", "Apple", "Doghouse"]
+
+    def test_repeated_calls_with_the_same_inputs_are_cached(self):
+        client = _FakeClient(['["Apple", "Banana", "Car", "Doghouse"]'])
+        g = LLMGuesser(client=client)
+        first = g.rank_candidates("fruit", self.WORDS, sims=None, number=1)
+        second = g.rank_candidates("fruit", self.WORDS, sims=None, number=1)
+        assert first == second
+        assert len(client.messages.calls) == 1
+
+    def test_different_number_is_a_cache_miss(self):
+        client = _FakeClient(['["Apple", "Banana", "Car", "Doghouse"]', '["Banana", "Apple", "Car", "Doghouse"]'])
+        g = LLMGuesser(client=client)
+        g.rank_candidates("fruit", self.WORDS, sims=None, number=1)
+        g.rank_candidates("fruit", self.WORDS, sims=None, number=2)
+        assert len(client.messages.calls) == 2
+
+    def test_score_candidates_is_monotonic_with_the_ranking(self):
+        client = _FakeClient(['["Car", "Apple", "Doghouse", "Banana"]'])
+        g = LLMGuesser(client=client)
+        scores = g.score_candidates("fruit", self.WORDS, sims=None)
+        ranked_by_score = sorted(self.WORDS, key=lambda w: -scores[w])
+        assert ranked_by_score == ["Car", "Apple", "Doghouse", "Banana"]
+
+    def test_registry_builds_an_llm_guesser(self, tmp_path):
+        import json as json_module
+
+        from codenames.guessers.registry import load_pool
+
+        config = {"guessers": [{"name": "llm", "type": "llm", "params": {}}]}
+        path = tmp_path / "pool.json"
+        path.write_text(json_module.dumps(config))
+        entries = load_pool(path)
+        assert isinstance(entries["llm"].guesser, LLMGuesser)

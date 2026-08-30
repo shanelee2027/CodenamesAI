@@ -1,0 +1,10 @@
+{
+  "_comment": "Single-guesser evaluation-only pool: a real LLM (codenames/guessers/llm.py::LLMGuesser, Claude Haiku 4.5 by default) standing in as an external, independent listener -- never part of any training pool, only for scoring a codemaster against something that wasn't co-adapted with it. Costs real API tokens per turn; see docs/log.md.",
+  "guessers": [
+    {
+      "name": "llm",
+      "type": "llm",
+      "params": {}
+    }
+  ]
+}

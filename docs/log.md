@@ -2627,4 +2627,54 @@ methodology, 300 boards each:
 README and `docs/versions/v1.md` updated with these numbers superseding
 the single-guesser ones from the previous entries.
 
+## LLMGuesser: an external guesser for evaluation, not training
+
+User's concern, raised while discussing self-play evaluation: scoring a
+codemaster against a guesser pool it's also implicitly co-adapted to
+(the guesser pool the whole training signal is defined by) can't
+distinguish "this codemaster is genuinely good" from "this codemaster
+and this guesser just happen to share the same blind spots." There's no
+way to compare across codemaster/guesser pairs on that basis alone.
+Proposed fix: use a real LLM as an *evaluation-only* guesser -- something
+that was never part of the training loop, so a high score against it
+means something closer to "would an actual, independent listener guess
+this."
+
+Added `codenames/guessers/llm.py::LLMGuesser` (Claude Haiku 4.5 by
+default -- cheap enough for this: ranking ~20 remaining words against
+one clue is a simple task, not one that needs a larger model). One API
+call per (clue, candidate_words, number) turn, not one per candidate
+word -- the model ranks the whole remaining board at once, matching the
+shape of question a real guesser answers each turn. Responses are
+cached per exact input key: cheap (no redundant spend on repeated
+inputs) and, more importantly, this is what keeps it a pure function of
+its inputs -- real LLM sampling isn't perfectly deterministic even at
+temperature 0, and codenames/guessers/base.py's backlog mechanism (and
+the just-fixed NoisyGuesser bug) both depend on that property holding
+for every guesser that gets wrapped or re-scored.
+
+Deliberately kept out of `training_pool()`'s sampling entirely --
+`scripts/generate_training_data.py` samples millions of (board, clue,
+guesser) triples, and a real API call per example would be far too slow
+and expensive. This is an evaluation-only addition, wired in exactly
+like any other guesser (`codenames/two_team_arena.py`,
+`scripts/run_two_team_arena.py --guesser-pool-config
+configs/guesser_pool_llm.json --guesser llm`).
+
+Registered in `GUESSER_CLASSES` as `"llm"`. New
+`tests/test_guessers.py::TestLLMGuesser` (6 tests) using a fake injected
+client -- no real network calls in the test suite: ranking uses the
+model's ordering, malformed/partial responses fall back to the board's
+own order for anything not mentioned, repeated identical inputs are
+cached (verified against call count), a different `number` is a cache
+miss, `score_candidates` stays monotonic with the ranking, and the
+registry builds one from a plain config. 250 tests passing. Real
+API cost estimate (Haiku 4.5 pricing): roughly $3 for a 300-board
+two-team run (~4,000 turns, ~350 input + ~80 output tokens each) --
+cheap in dollars, though real wall-clock time (thousands of network
+round-trips) and non-determinism (needs averaging across a few runs) are
+the actual costs to weigh. Not yet run for real -- no API key configured
+in this environment; a small trial run is the natural next step once one
+is.
+
 ## Human evaluation (not started)
