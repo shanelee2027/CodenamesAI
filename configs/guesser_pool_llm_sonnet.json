@@ -1,0 +1,13 @@
+{
+  "_comment": "Same evaluation-only external-listener pool as configs/guesser_pool_llm.json, but Claude Sonnet 5 instead of the Haiku 4.5 default -- see docs/log.md for why (Sonnet was found more consistent on a spot-checked scenario). Shares the same cache/llm_store.db; keyed by model, so no collision with the Haiku entries already cached there.",
+  "guessers": [
+    {
+      "name": "llm",
+      "type": "llm",
+      "params": {
+        "model": "claude-sonnet-5",
+        "cache_path": "cache/llm_store.db"
+      }
+    }
+  ]
+}
