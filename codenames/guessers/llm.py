@@ -32,8 +32,10 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 from codenames.guessers.base import Guesser
+from codenames.llm_store import LLMResponseCache
 from codenames.similarity import SimilarityTensor
 
 DEFAULT_MODEL = "claude-haiku-4-5"
@@ -50,7 +52,13 @@ once in your answer."""
 
 
 class LLMGuesser(Guesser):
-    def __init__(self, model: str = DEFAULT_MODEL, max_tokens: int = 512, client=None):
+    def __init__(
+        self,
+        model: str = DEFAULT_MODEL,
+        max_tokens: int = 512,
+        client=None,
+        cache_path: str | Path | None = None,
+    ):
         self.model = model
         self.max_tokens = max_tokens
         # Constructed lazily (not at __init__ time) so importing/building a
@@ -59,19 +67,41 @@ class LLMGuesser(Guesser):
         # `client` never touch the real SDK at all.
         self._client = client
         self._cache: dict[tuple[str, tuple[str, ...], int | None], list[str]] = {}
+        # Disk-backed, so a query already paid for in a past run (or by a
+        # sibling worker process in this one) is never re-billed -- see
+        # codenames/llm_store.py. Opt-in via cache_path: off by default so
+        # tests with a fake client never touch the filesystem.
+        self._disk_cache = LLMResponseCache(Path(cache_path)) if cache_path is not None else None
 
     @property
     def client(self):
         if self._client is None:
+            import os
+
             import anthropic
 
-            self._client = anthropic.Anthropic()
+            # Some API keys are "identity-linked" (Console access tied to
+            # an org/SSO identity rather than a plain personal account)
+            # and are rejected with a 400 unless every request names which
+            # workspace it acts in. This is per-account setup, not
+            # something the library should hardcode -- ANTHROPIC_WORKSPACE_ID
+            # is unset (and this header omitted) for a plain personal key.
+            workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+            headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
+            self._client = anthropic.Anthropic(default_headers=headers)
         return self._client
 
     def _ranked(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:
         key = (clue, tuple(candidate_words), number)
         if key not in self._cache:
-            self._cache[key] = self._query(clue, candidate_words, number)
+            cached = self._disk_cache.get(self.model, clue, key[1], number) if self._disk_cache else None
+            if cached is not None:
+                self._cache[key] = cached
+            else:
+                ranking = self._query(clue, candidate_words, number)
+                if self._disk_cache is not None:
+                    self._disk_cache.put(self.model, clue, key[1], number, ranking)
+                self._cache[key] = ranking
         return self._cache[key]
 
     def _query(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:

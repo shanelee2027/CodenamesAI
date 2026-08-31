@@ -599,3 +599,27 @@ class TestLLMGuesser:
         path.write_text(json_module.dumps(config))
         entries = load_pool(path)
         assert isinstance(entries["llm"].guesser, LLMGuesser)
+
+    def test_disk_cache_avoids_a_second_api_call(self, tmp_path):
+        db_path = tmp_path / "store.db"
+        client = _FakeClient(['["Car", "Apple", "Doghouse", "Banana"]'])
+        g = LLMGuesser(client=client, cache_path=db_path)
+        g.rank_candidates("fruit", self.WORDS, sims=None, number=2)
+
+        # Fresh instance, same disk cache, no client at all -- must not
+        # need one, since the disk cache should answer without a query.
+        g2 = LLMGuesser(client=None, cache_path=db_path)
+        assert g2.rank_candidates("fruit", self.WORDS, sims=None, number=2) == ["Car", "Apple", "Doghouse", "Banana"]
+
+    def test_disk_cache_survives_process_restart_semantics(self, tmp_path):
+        # Simulated by two separate LLMGuesser instances against the same
+        # db file, rather than an actual subprocess -- what matters is the
+        # cache being on disk, not in either instance's memory.
+        db_path = tmp_path / "store.db"
+        client = _FakeClient(['["Apple", "Banana", "Car", "Doghouse"]'])
+        LLMGuesser(client=client, cache_path=db_path).rank_candidates("fruit", self.WORDS, sims=None, number=1)
+
+        second_client = _FakeClient(['["Doghouse", "Car", "Banana", "Apple"]'])
+        g2 = LLMGuesser(client=second_client, cache_path=db_path)
+        assert g2.rank_candidates("fruit", self.WORDS, sims=None, number=1) == ["Apple", "Banana", "Car", "Doghouse"]
+        assert len(second_client.messages.calls) == 0

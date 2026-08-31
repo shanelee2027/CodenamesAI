@@ -2677,4 +2677,41 @@ the actual costs to weigh. Not yet run for real -- no API key configured
 in this environment; a small trial run is the natural next step once one
 is.
 
+Ran a real 15-board two-team trial against Haiku after getting API
+access working (identity-linked keys need an `anthropic-workspace-id`
+header, unless the key is scoped to a workspace at creation time --
+worked around by creating a workspace-scoped key rather than plumbing
+the header). Assassin-hit rate came back dramatically worse than
+against the embedding guesser pool (~40% vs. 0-5%), which is the
+concerning signal this guesser was built to be able to surface -- a
+codemaster scored only against guessers it was co-adapted with can't
+be told apart from one that's actually good. Spot-checked one
+suspicious assassin hit ("shores" picking `England` over `Port`) by
+replaying the exact same input outside the cache: got real run-to-run
+variance (a fresh Haiku sample ranked `Port` #1 instead), and three
+fresh Sonnet 5 samples on the same input all kept the assassin out of
+the top 2 -- suggestive that Sonnet is more consistent here, though 3
+samples isn't enough to call it settled.
+
+Added `codenames/llm_store.py`: a persistent SQLite file (default
+`cache/llm_store.db`, gitignored) with two tables --
+`LLMResponseCache` (write-through cache for `LLMGuesser`'s API calls,
+keyed by the same `(model, clue, candidates, number)` tuple as its
+in-memory cache, opt-in via `cache_path=`) and `GameRecordStore` (one
+row per two-team game: board layout by role, snapshotted before any
+reveal, plus the full turn sequence). The point of both is that once a
+run has spent real API money, that spend and the resulting data should
+survive a crash, a Ctrl-C, or an accidental rerun -- not just live in
+one process's memory until it exits. WAL mode makes concurrent writes
+from the arena's multiprocessing workers safe without any extra
+locking. `scripts/run_two_team_arena.py --record-games PATH
+[--run-label NAME]` wires this into both the CPU path
+(`two_team_arena.py`'s per-process workers) and the GPU-batched path
+(`two_team_gpu_arena.py`, single process); `scripts/dump_game_records.py
+PATH [--label ...] [--seed ...]` prints the same
+board+transcript format `scripts/scratch_llm_transcripts.py` printed
+ad hoc, but from durable storage instead of a replay. Storage cost is
+negligible either way -- a few KB/game, so even a 10,000-game run is
+well under a few hundred MB.
+
 ## Human evaluation (not started)

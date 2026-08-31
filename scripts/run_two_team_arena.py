@@ -66,6 +66,15 @@ def main() -> None:
     )
     parser.add_argument("--no-gpu-batch", action="store_true", help="use the normal per-process path for --checkpoint too, instead of --gpu-batch-size")
     parser.add_argument("--sims-cache-dir", type=Path, default=DEFAULT_CACHE_DIR, help="only used by the GPU-batched --checkpoint path")
+    parser.add_argument(
+        "--record-games",
+        type=Path,
+        default=None,
+        help="persist every game's board + turn sequence to this SQLite file (codenames/llm_store.py), "
+        "so a run can be inspected later without replaying it -- see scripts/dump_game_records.py. "
+        "Most useful when --guesser costs real money per turn (e.g. 'llm').",
+    )
+    parser.add_argument("--run-label", default=None, help="label stored alongside --record-games' rows (default: '<codemaster>+<guesser>')")
     args = parser.parse_args()
 
     if (args.codemaster is None) == (args.checkpoint is None):
@@ -85,6 +94,10 @@ def main() -> None:
     kwargs = {}
     if args.max_turns is not None:
         kwargs["max_turns"] = args.max_turns
+    run_label = args.run_label if args.run_label is not None else f"{codemaster_label}+{args.guesser}"
+    if args.record_games is not None:
+        kwargs["game_record_db"] = args.record_games
+        kwargs["run_label"] = run_label
 
     seeds = list(range(args.n_boards))
     start = time.time()

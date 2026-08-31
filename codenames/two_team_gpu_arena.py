@@ -44,6 +44,7 @@ from codenames.gpu_features import build_features_batch_multi
 from codenames.guessers import load_pool
 from codenames.guessers.base import Guesser
 from codenames.guessers.registry import training_pool
+from codenames.llm_store import GameRecordStore, board_by_role
 from codenames.scorer import expected_reward_and_best_n
 from codenames.similarity import SimilarityTensor
 from codenames.two_team_arena import MIXED_GUESSER, TwoTeamSelfPlayResult, _new_stats, finalize_result, update_stats
@@ -64,6 +65,8 @@ def _play_batch_group(
     sims: SimilarityTensor,
     max_turns: int,
     device: torch.device,
+    record_store: GameRecordStore | None = None,
+    run_label: str = "",
 ) -> list[TwoTeamGameResult]:
     """Play every board in `boards` as a two-team game to completion,
     batching the codemaster's clue selection across every game still in
@@ -73,6 +76,9 @@ def _play_batch_group(
     keyed by board seed -- each game can have its own guesser (see
     MIXED_GUESSER in codenames/two_team_arena.py), since the guesser only
     matters after the batched codemaster forward pass, not during it."""
+    # Snapshotted before any word is revealed -- boards get mutated in
+    # place as the while loop below plays them out.
+    by_role_by_seed = {b.seed: board_by_role(b) for b in boards} if record_store is not None else None
     game_results = {b.seed: TwoTeamGameResult(seed=b.seed) for b in boards}
     # Per-game, per-side backlog history (see codenames/guessers/base.py)
     # -- mirrors play_two_team_game's `sides` dict, keyed by seed since
@@ -138,6 +144,10 @@ def _play_batch_group(
 
         round_index += 1
 
+    if record_store is not None:
+        for seed, result in game_results.items():
+            record_store.add_game(by_role_by_seed[seed], result, label=run_label)
+
     return list(game_results.values())
 
 
@@ -150,11 +160,17 @@ def run_two_team_self_play_gpu(
     batch_size: int = 32,
     max_turns: int = DEFAULT_MAX_TURNS,
     device: torch.device | None = None,
+    game_record_db: Path | None = None,
+    run_label: str = "",
 ) -> TwoTeamSelfPlayResult:
     """Runs `len(seeds)` two-team games, `codemaster` + the named guesser
     (or `MIXED_GUESSER` -- see codenames/two_team_arena.py) on both sides
     of each, batching clue selection across up to `batch_size`
-    simultaneous games."""
+    simultaneous games.
+
+    `game_record_db`/`run_label`: see run_two_team_self_play's matching
+    params in codenames/two_team_arena.py -- same persisted format,
+    written from this single process instead of across worker processes."""
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     codemaster.model.to(device)
     codemaster.device = device
@@ -166,12 +182,13 @@ def run_two_team_self_play_gpu(
         single_guesser = load_pool(guesser_pool_config)[guesser_name].guesser
         guesser_for_seed = lambda seed: single_guesser  # noqa: E731
     stats = _new_stats()
+    record_store = GameRecordStore(game_record_db) if game_record_db is not None else None
 
     for start in range(0, len(seeds), batch_size):
         batch_seeds = seeds[start : start + batch_size]
         boards = [Board.generate(seed=s) for s in batch_seeds]
         guessers = {s: guesser_for_seed(s) for s in batch_seeds}
-        results = _play_batch_group(codemaster, guessers, boards, sims, max_turns, device)
+        results = _play_batch_group(codemaster, guessers, boards, sims, max_turns, device, record_store, run_label)
         for result in results:
             update_stats(stats, result)
 

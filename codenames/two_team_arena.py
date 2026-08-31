@@ -37,6 +37,7 @@ from pathlib import Path
 from codenames.board import Board, Role
 from codenames.game import DEFAULT_MAX_TURNS, TwoTeamGameResult, play_two_team_game
 from codenames.guessers.registry import load_pool, training_pool
+from codenames.llm_store import GameRecordStore, board_by_role
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 # Passed as `guesser_name` to mean "don't fix one guesser -- each game
@@ -123,6 +124,8 @@ def _worker_init(
     guesser_pool_config: Path,
     guesser_name: str,
     max_turns: int,
+    game_record_db: Path | None,
+    run_label: str,
 ) -> None:
     # Constructs the codemaster fresh inside the worker (not by pickling
     # an existing instance across the process boundary) -- same reason
@@ -137,6 +140,11 @@ def _worker_init(
     else:
         _WORKER_STATE["guesser"] = load_pool(guesser_pool_config)[guesser_name].guesser
     _WORKER_STATE["max_turns"] = max_turns
+    # One WAL-mode SQLite connection per worker process (see
+    # codenames/llm_store.py) -- concurrent writers to the same file are
+    # safe, so this doesn't need any cross-process coordination.
+    _WORKER_STATE["record_store"] = GameRecordStore(game_record_db) if game_record_db is not None else None
+    _WORKER_STATE["run_label"] = run_label
 
 
 def _play_task(seed: int) -> TwoTeamGameResult:
@@ -147,7 +155,13 @@ def _play_task(seed: int) -> TwoTeamGameResult:
     else:
         guesser = state["guesser"]
     team = (state["codemaster"], guesser)
-    return play_two_team_game(board, team, team, state["sims"], max_turns=state["max_turns"])
+    # Snapshotted before any word is revealed -- play_two_team_game
+    # mutates this same Board object in place.
+    by_role = board_by_role(board) if state["record_store"] is not None else None
+    result = play_two_team_game(board, team, team, state["sims"], max_turns=state["max_turns"])
+    if state["record_store"] is not None:
+        state["record_store"].add_game(by_role, result, label=state["run_label"])
+    return result
 
 
 def run_two_team_self_play(
@@ -159,15 +173,32 @@ def run_two_team_self_play(
     sims_cache_dir: Path = DEFAULT_CACHE_DIR,
     max_turns: int = DEFAULT_MAX_TURNS,
     max_workers: int | None = None,
+    game_record_db: Path | None = None,
+    run_label: str = "",
 ) -> TwoTeamSelfPlayResult:
     """Runs `len(seeds)` two-team games, the same (codemaster, guesser)
-    pair on both sides of each, across `max_workers` processes."""
+    pair on both sides of each, across `max_workers` processes.
+
+    `game_record_db`, if given, persists every game's board layout and
+    turn sequence to that SQLite file (codenames/llm_store.py) under
+    `run_label`, so it can be inspected later without replaying (see
+    scripts/dump_game_records.py) -- most useful when `guesser_name` costs
+    real money per turn (e.g. "llm")."""
     stats = _new_stats()
     with ProcessPoolExecutor(
         max_workers=max_workers,
         mp_context=multiprocessing.get_context("spawn"),
         initializer=_worker_init,
-        initargs=(sims_cache_dir, codemaster_cls, codemaster_kwargs, guesser_pool_config, guesser_name, max_turns),
+        initargs=(
+            sims_cache_dir,
+            codemaster_cls,
+            codemaster_kwargs,
+            guesser_pool_config,
+            guesser_name,
+            max_turns,
+            game_record_db,
+            run_label,
+        ),
     ) as executor:
         for result in executor.map(_play_task, seeds):
             update_stats(stats, result)

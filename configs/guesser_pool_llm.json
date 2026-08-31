@@ -4,7 +4,9 @@
     {
       "name": "llm",
       "type": "llm",
-      "params": {}
+      "params": {
+        "cache_path": "cache/llm_store.db"
+      }
     }
   ]
 }
