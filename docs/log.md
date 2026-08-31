@@ -2737,4 +2737,30 @@ checking correctness. The CPU path (`two_team_arena.py`, used for
 baseline codemasters) was already parallel across worker processes and
 didn't need this.
 
+Ran the first real multi-checkpoint Sonnet 5 trial (`noise_0_08`, 15
+boards): assassin-hit rate 20.0%, half-turns (all) 8.60, mean clue
+number 1.91, mean correct per clue 1.43 -- meaningfully safer than the
+earlier Haiku trial (~40% assassin-hit) but still far above the ~0-5%
+this codemaster gets against its own training-time guesser pool,
+consistent with the original motivation for building `LLMGuesser` at
+all. Found mid-session that `LLMGuesser` was significantly more
+expensive than estimated: Sonnet 5 runs adaptive thinking by default
+even though nothing asked for it, and `_query()` never captured
+`response.usage`, so a token-count-based cost estimate (from stored
+prompt/response text alone) silently missed ~192 invisible thinking
+tokens per call -- real output tokens were ~294/call, not the ~136
+visible ones, roughly doubling real cost versus the estimate. A direct
+A/B on the same "shores" scenario found no quality difference between
+thinking on and off (identical top-2 picks across 3 trials each,
+if anything *more* consistent with thinking off) while cutting output
+tokens ~2.7x (294 -> 108) and latency (~5.7s -> ~3s/call) -- so
+`_query()` now passes `thinking={"type": "disabled"}` explicitly.
+Confirmed this is accepted by both Sonnet 5 and the default Haiku 4.5
+model (older models predating adaptive thinking already default to no
+thinking when the param is omitted, but explicit `disabled` was
+verified to not error on either). A `noise_0_0` trial started before
+this fix was killed partway through rather than let finish on the
+unfixed, more expensive path, given a real, small ($2.29) remaining API
+balance -- multi-checkpoint comparison resumes with the fixed guesser.
+
 ## Human evaluation (not started)

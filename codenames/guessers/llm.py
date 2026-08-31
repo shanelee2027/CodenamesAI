@@ -129,6 +129,16 @@ class LLMGuesser(Guesser):
         response = self.client.messages.create(
             model=self.model,
             max_tokens=self.max_tokens,
+            # Ranking a short word list against one clue is a single-shot
+            # associative judgment, not the multi-step reasoning extended
+            # thinking is built for -- a direct comparison on a real
+            # scenario (see docs/log.md) found identical top-ranked
+            # guesses with thinking on vs off, but ~2.7x fewer output
+            # tokens and lower latency with it off. Some models still
+            # reason inline in the visible text even with thinking
+            # disabled; _parse_ranking's regex search handles that either
+            # way by finding the JSON array wherever it appears.
+            thinking={"type": "disabled"},
             messages=[{"role": "user", "content": prompt}],
         )
         text = next((block.text for block in response.content if block.type == "text"), "")
