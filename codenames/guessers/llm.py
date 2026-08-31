@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 
 from codenames.guessers.base import Guesser
@@ -72,37 +73,55 @@ class LLMGuesser(Guesser):
         # codenames/llm_store.py. Opt-in via cache_path: off by default so
         # tests with a fake client never touch the filesystem.
         self._disk_cache = LLMResponseCache(Path(cache_path)) if cache_path is not None else None
+        # One LLMGuesser instance is shared across every game in a batch
+        # (codenames/two_team_gpu_arena.py plays them concurrently on a
+        # thread pool specifically so their network calls overlap -- see
+        # that module's docstring), so `_cache`/`_client` construction need
+        # to be safe under concurrent access. This guards only the shared
+        # dict/lazy-init, never the network call itself -- holding it
+        # across `_query` would serialize every call back onto one thread
+        # and defeat the whole point of running them concurrently.
+        self._lock = threading.Lock()
 
     @property
     def client(self):
-        if self._client is None:
-            import os
+        with self._lock:
+            if self._client is None:
+                import os
 
-            import anthropic
+                import anthropic
 
-            # Some API keys are "identity-linked" (Console access tied to
-            # an org/SSO identity rather than a plain personal account)
-            # and are rejected with a 400 unless every request names which
-            # workspace it acts in. This is per-account setup, not
-            # something the library should hardcode -- ANTHROPIC_WORKSPACE_ID
-            # is unset (and this header omitted) for a plain personal key.
-            workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
-            headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
-            self._client = anthropic.Anthropic(default_headers=headers)
-        return self._client
+                # Some API keys are "identity-linked" (Console access tied
+                # to an org/SSO identity rather than a plain personal
+                # account) and are rejected with a 400 unless every request
+                # names which workspace it acts in. This is per-account
+                # setup, not something the library should hardcode --
+                # ANTHROPIC_WORKSPACE_ID is unset (and this header omitted)
+                # for a plain personal key.
+                workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+                headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
+                self._client = anthropic.Anthropic(default_headers=headers)
+            return self._client
 
     def _ranked(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:
         key = (clue, tuple(candidate_words), number)
-        if key not in self._cache:
-            cached = self._disk_cache.get(self.model, clue, key[1], number) if self._disk_cache else None
-            if cached is not None:
-                self._cache[key] = cached
-            else:
-                ranking = self._query(clue, candidate_words, number)
-                if self._disk_cache is not None:
-                    self._disk_cache.put(self.model, clue, key[1], number, ranking)
-                self._cache[key] = ranking
-        return self._cache[key]
+        with self._lock:
+            cached = self._cache.get(key)
+        if cached is not None:
+            return cached
+
+        # Neither lock is held past this point while the disk read/API
+        # call happens -- both are what let many games' calls actually run
+        # concurrently instead of one at a time (see __init__'s note).
+        cached = self._disk_cache.get(self.model, clue, key[1], number) if self._disk_cache else None
+        if cached is None:
+            cached = self._query(clue, candidate_words, number)
+            if self._disk_cache is not None:
+                self._disk_cache.put(self.model, clue, key[1], number, cached)
+
+        with self._lock:
+            self._cache[key] = cached
+        return cached
 
     def _query(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:
         count_note = f" for {number} word(s)" if number else ""

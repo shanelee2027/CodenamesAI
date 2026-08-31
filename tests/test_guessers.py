@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 
 import numpy as np
 import pytest
@@ -547,6 +549,26 @@ class _FakeClient:
         self.messages = _FakeMessages(responses)
 
 
+class _SlowFakeMessages:
+    """Ignores the input entirely and just sleeps -- for proving many
+    calls run concurrently rather than one at a time, not for checking
+    ranking content."""
+
+    def __init__(self, delay: float):
+        self.delay = delay
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        time.sleep(self.delay)
+        return _FakeResponse("[]")
+
+
+class _SlowFakeClient:
+    def __init__(self, delay: float):
+        self.messages = _SlowFakeMessages(delay)
+
+
 class TestLLMGuesser:
     WORDS = ["Apple", "Banana", "Car", "Doghouse"]
 
@@ -623,3 +645,29 @@ class TestLLMGuesser:
         g2 = LLMGuesser(client=second_client, cache_path=db_path)
         assert g2.rank_candidates("fruit", self.WORDS, sims=None, number=1) == ["Apple", "Banana", "Car", "Doghouse"]
         assert len(second_client.messages.calls) == 0
+
+    def test_concurrent_calls_overlap_instead_of_serializing(self):
+        # codenames/two_team_gpu_arena.py shares one LLMGuesser across many
+        # games' threads specifically so their network calls overlap --
+        # this proves the locking added for that doesn't accidentally
+        # serialize the calls themselves back onto one thread.
+        n, delay = 5, 0.2
+        client = _SlowFakeClient(delay=delay)
+        g = LLMGuesser(client=client)
+
+        start = time.monotonic()
+        threads = [
+            threading.Thread(target=g.rank_candidates, args=(f"clue{i}", self.WORDS), kwargs={"sims": None, "number": 1})
+            for i in range(n)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        elapsed = time.monotonic() - start
+
+        assert len(client.messages.calls) == n
+        # Serialized, this would take n * delay; concurrent, it should be
+        # close to one delay. The midpoint is a generous margin against
+        # scheduling noise while still failing if calls are serialized.
+        assert elapsed < n * delay / 2

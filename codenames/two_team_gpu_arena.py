@@ -26,11 +26,24 @@ Reuses codenames/two_team_arena.py's stats bookkeeping
 (_new_stats/update_stats/finalize_result) unchanged -- only clue
 *selection* is batched here, nothing about how a turn plays out or how
 results are summarized once a clue is chosen.
+
+The guesser call for each active game (`_play_turn`, inside
+`_play_batch_group`) runs on a thread pool, not sequentially: clue
+selection above is CPU/numpy work that benefits from GPU batching, but
+the guesser step doesn't -- and when the guesser is `LLMGuesser`, it's a
+blocking network call, so running `batch_size` games' calls one at a
+time would leave every one of them idle waiting on the one in front of
+it. Threads (not another process pool) are enough here since the work
+is I/O-bound, not CPU-bound -- see codenames/guessers/llm.py and
+codenames/llm_store.py for the locking that makes one LLMGuesser
+instance safe to call from many threads at once without serializing the
+network calls themselves.
 """
 
 from __future__ import annotations
 
 import random
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
@@ -38,7 +51,7 @@ import torch
 from codenames.board import Board, OpponentBoardView, Role
 from codenames.clue_search import top_legal_clue
 from codenames.codemasters.learned import LearnedCodemaster
-from codenames.game import DEFAULT_MAX_TURNS, TwoTeamGameResult, TwoTeamTurnResult
+from codenames.game import DEFAULT_MAX_TURNS, TurnResult, TwoTeamGameResult, TwoTeamTurnResult
 from codenames.game import play_turn as _play_turn
 from codenames.gpu_features import build_features_batch_multi
 from codenames.guessers import load_pool
@@ -88,61 +101,96 @@ def _play_batch_group(
     turn_order = ["A", "B"]
     round_index = 0
 
-    while active:
-        if round_index >= max_turns * 2:
-            for seed in active:
-                game_results[seed].outcome = "timeout"
-            break
+    # Sized to the whole batch (its largest possible round) and reused
+    # across every round in this batch group, rather than spun up fresh
+    # each time -- there can be dozens of rounds per game, and thread
+    # creation isn't free even though it's cheap next to a network
+    # round-trip.
+    guesser_pool = ThreadPoolExecutor(max_workers=len(boards))
+    try:
+        while active:
+            if round_index >= max_turns * 2:
+                for seed in active:
+                    game_results[seed].outcome = "timeout"
+                break
 
-        # Every active game shares this round's team -- see module
-        # docstring for why that invariant holds.
-        team = turn_order[round_index % 2]
-        current_seeds = list(active.keys())
-        views = [active[s] if team == "A" else OpponentBoardView(active[s]) for s in current_seeds]
-        turn_indices = [len(v.revealed) for v in views]
+            # Every active game shares this round's team -- see module
+            # docstring for why that invariant holds.
+            team = turn_order[round_index % 2]
+            current_seeds = list(active.keys())
+            views = [active[s] if team == "A" else OpponentBoardView(active[s]) for s in current_seeds]
+            turn_indices = [len(v.revealed) for v in views]
 
-        features = build_features_batch_multi(sims, views, turn_indices, device)  # (n, n_clues, dim)
-        n_active, n_clues, dim = features.shape
-        with torch.no_grad():
-            probs = codemaster.model.predict_proba(features.reshape(n_active * n_clues, dim).to(codemaster.device))
-        probs = probs.cpu().numpy().reshape(n_active, n_clues, -1)
+            features = build_features_batch_multi(sims, views, turn_indices, device)  # (n, n_clues, dim)
+            n_active, n_clues, dim = features.shape
+            with torch.no_grad():
+                probs = codemaster.model.predict_proba(features.reshape(n_active * n_clues, dim).to(codemaster.device))
+            probs = probs.cpu().numpy().reshape(n_active, n_clues, -1)
 
-        for i, seed in enumerate(current_seeds):
-            board = active[seed]
-            view = views[i]
-            best_n, scores = expected_reward_and_best_n(
-                probs[i],
-                own_reward=codemaster.own_reward,
-                neutral_reward=codemaster.neutral_reward,
-                opponent_reward=codemaster.opponent_reward,
-                assassin_reward=codemaster.miss_penalty,
-            )
-            clue = top_legal_clue(sims, view, scores)
-            number = int(best_n[sims.clue_index[clue.lower()]])
+            # Clue selection is pure CPU/numpy work (cheap) -- computed
+            # up front, sequentially, so phase 2 below has nothing left to
+            # do per game except the guesser call.
+            clue_and_number: dict[int, tuple[str, int]] = {}
+            view_by_seed: dict[int, Board | OpponentBoardView] = {}
+            for i, seed in enumerate(current_seeds):
+                view = views[i]
+                view_by_seed[seed] = view
+                best_n, scores = expected_reward_and_best_n(
+                    probs[i],
+                    own_reward=codemaster.own_reward,
+                    neutral_reward=codemaster.neutral_reward,
+                    opponent_reward=codemaster.opponent_reward,
+                    assassin_reward=codemaster.miss_penalty,
+                )
+                clue = top_legal_clue(sims, view, scores)
+                number = int(best_n[sims.clue_index[clue.lower()]])
+                clue_and_number[seed] = (clue, number)
 
-            guesser = guessers[seed]
-            candidates_before_turn = [w for w in view.words if not view.is_revealed(w)]
-            side_history = history_by_seed[seed][team]
-            turn = _play_turn(view, codemaster, guesser, sims, clue_and_number=(clue, number), history=side_history)
-            result = game_results[seed]
-            result.turns.append(TwoTeamTurnResult(team=team, turn=turn))
-            result.total_reward[team] += turn.reward
-            history_by_seed[seed][team] = guesser.update_history(
-                side_history, clue, number, turn, candidates_before_turn, sims
-            )
+            # The guesser call is where a real LLMGuesser blocks on a
+            # network round-trip -- run every active game's turn on the
+            # thread pool so those round-trips overlap instead of
+            # happening one game at a time (see this module's docstring
+            # and codenames/guessers/llm.py for the thread-safety this
+            # relies on). Each game's Board/history is independent, so
+            # there's no shared mutable state across threads here besides
+            # the guesser instance(s) themselves.
+            def _play_one(seed: int) -> tuple[TurnResult, list[str]]:
+                view = view_by_seed[seed]
+                candidates_before_turn = [w for w in view.words if not view.is_revealed(w)]
+                turn = _play_turn(
+                    view, codemaster, guessers[seed], sims, clue_and_number=clue_and_number[seed], history=history_by_seed[seed][team]
+                )
+                return turn, candidates_before_turn
 
-            if turn.ended_reason == "assassin":
-                result.outcome = "loss"
-                result.winner = "B" if team == "A" else "A"
-                del active[seed]
-                continue
-            winner = _winner_if_any(board)
-            if winner is not None:
-                result.outcome = "win"
-                result.winner = winner
-                del active[seed]
+            turn_by_seed = dict(zip(current_seeds, guesser_pool.map(_play_one, current_seeds)))
 
-        round_index += 1
+            for seed in current_seeds:
+                turn, candidates_before_turn = turn_by_seed[seed]
+                clue, number = clue_and_number[seed]
+                guesser = guessers[seed]
+                side_history = history_by_seed[seed][team]
+                board = active[seed]
+                result = game_results[seed]
+                result.turns.append(TwoTeamTurnResult(team=team, turn=turn))
+                result.total_reward[team] += turn.reward
+                history_by_seed[seed][team] = guesser.update_history(
+                    side_history, clue, number, turn, candidates_before_turn, sims
+                )
+
+                if turn.ended_reason == "assassin":
+                    result.outcome = "loss"
+                    result.winner = "B" if team == "A" else "A"
+                    del active[seed]
+                    continue
+                winner = _winner_if_any(board)
+                if winner is not None:
+                    result.outcome = "win"
+                    result.winner = winner
+                    del active[seed]
+
+            round_index += 1
+    finally:
+        guesser_pool.shutdown()
 
     if record_store is not None:
         for seed, result in game_results.items():

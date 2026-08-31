@@ -2714,4 +2714,27 @@ ad hoc, but from durable storage instead of a replay. Storage cost is
 negligible either way -- a few KB/game, so even a 10,000-game run is
 well under a few hundred MB.
 
+Found and fixed a real parallelization gap ahead of a larger Sonnet 5
+run: `codenames/two_team_gpu_arena.py::_play_batch_group` batches the
+codemaster's GPU forward pass across every active game in a round, but
+the guesser call right after it was a plain sequential `for` loop -- one
+blocking network round-trip at a time. With a learned codemaster (the
+only case that routes through this GPU path), that loop, not the
+codemaster batching, was the real bottleneck whenever the guesser is
+`LLMGuesser`. Fixed by running each round's per-game guesser calls on a
+`ThreadPoolExecutor` (sized to the batch, created once per batch group
+and reused across rounds rather than per round) instead of a sequential
+loop -- threads, not another process pool, since the work is I/O-bound
+network waiting, not CPU-bound. Required making `LLMGuesser` and
+`LLMResponseCache` safe under concurrent calls from one shared instance
+(a `threading.Lock` around each's own mutable state -- `_cache`/lazy
+`_client` construction, and the sqlite connection respectively) without
+serializing the network calls themselves, which would have defeated the
+whole point. New tests prove the calls actually overlap (elapsed time
+for N concurrent slow fake calls stays well under N * delay, at both the
+`LLMGuesser` level and the `_play_batch_group` level) rather than just
+checking correctness. The CPU path (`two_team_arena.py`, used for
+baseline codemasters) was already parallel across worker processes and
+didn't need this.
+
 ## Human evaluation (not started)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import numpy as np
 import pytest
@@ -8,13 +9,27 @@ import torch
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU-batched two-team arena needs CUDA")
 
+from codenames.board import Board, load_wordlist  # noqa: E402
 from codenames.codemasters.learned import LearnedCodemaster  # noqa: E402
 from codenames.features import feature_dim  # noqa: E402
-from codenames.board import load_wordlist  # noqa: E402
+from codenames.guessers.base import Guesser  # noqa: E402
 from codenames.scorer import Scorer  # noqa: E402
 from codenames.similarity import SimilarityTensor  # noqa: E402
 from codenames.two_team_arena import MIXED_GUESSER, run_two_team_self_play  # noqa: E402
-from codenames.two_team_gpu_arena import run_two_team_self_play_gpu  # noqa: E402
+from codenames.two_team_gpu_arena import _play_batch_group, run_two_team_self_play_gpu  # noqa: E402
+
+
+class _SlowGuesser(Guesser):
+    """Ignores similarity entirely and just sleeps -- for proving
+    _play_batch_group's per-game guesser calls overlap instead of running
+    one at a time (see codenames/two_team_gpu_arena.py's docstring)."""
+
+    def __init__(self, delay: float):
+        self.delay = delay
+
+    def score_candidates(self, clue, candidate_words, sims):
+        time.sleep(self.delay)
+        return {w: 0.0 for w in candidate_words}
 
 CLUE_WORDS = ["clueone", "cluetwo", "cluethree", "cluefour"]
 SPACES = ["a"]
@@ -158,3 +173,24 @@ class TestRunTwoTeamSelfPlayGpu:
         assert gpu_result.assassin_rate == pytest.approx(cpu_result.assassin_rate)
         assert gpu_result.mean_clue_number == pytest.approx(cpu_result.mean_clue_number)
         assert gpu_result.mean_correct_per_clue == pytest.approx(cpu_result.mean_correct_per_clue)
+
+    def test_batch_guesser_calls_overlap_instead_of_serializing(self, sims_cache_dir, checkpoint_path):
+        sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
+        codemaster = LearnedCodemaster(checkpoint_path, device="cpu")
+        device = torch.device("cuda")
+        codemaster.model.to(device)
+        codemaster.device = device
+
+        n_games, delay = 6, 0.2
+        boards = [Board.generate(seed=s) for s in range(n_games)]
+        guesser = _SlowGuesser(delay=delay)
+        guessers = {b.seed: guesser for b in boards}
+
+        start = time.monotonic()
+        _play_batch_group(codemaster, guessers, boards, sims, max_turns=1, device=device)
+        elapsed = time.monotonic() - start
+
+        # Serialized, even a single half-turn round would take
+        # n_games * delay; concurrent, the whole two-round game (max_turns=1
+        # is 2 half-turns) should stay well under that.
+        assert elapsed < n_games * delay

@@ -9,14 +9,19 @@ Both live in the same on-disk file (default cache/llm_store.db,
 gitignored like the rest of cache/) so the arena's multiprocessing
 workers only need one WAL-mode SQLite connection each, rather than two
 separate storage mechanisms to reason about. WAL mode is what makes
-concurrent writers from those worker processes safe without any extra
-locking here.
+concurrent writers *across processes* (the CPU arena's workers) safe
+without any extra locking here. Within one process, a single
+sqlite3.Connection isn't safe to use from multiple threads at once (the
+GPU-batched arena now plays many games' LLMGuesser calls concurrently on
+a thread pool -- see two_team_gpu_arena.py) -- LLMResponseCache guards
+that with its own lock.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,7 +41,11 @@ DEFAULT_DB_PATH = Path("cache/llm_store.db")
 
 def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path, timeout=30.0)
+    # check_same_thread=False: callers that touch this connection from more
+    # than one thread (LLMResponseCache, from LLMGuesser instances shared
+    # across a GPU-batched arena's thread pool) are responsible for their
+    # own locking around it -- see LLMResponseCache's `_lock`.
+    conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         """CREATE TABLE IF NOT EXISTS responses (
@@ -78,6 +87,7 @@ class LLMResponseCache:
 
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self._conn = _connect(db_path)
+        self._lock = threading.Lock()
 
     @staticmethod
     def _key(model: str, clue: str, candidates: tuple[str, ...], number: int | None) -> str:
@@ -85,17 +95,19 @@ class LLMResponseCache:
 
     def get(self, model: str, clue: str, candidates: tuple[str, ...], number: int | None) -> list[str] | None:
         key = self._key(model, clue, candidates, number)
-        row = self._conn.execute("SELECT ranking FROM responses WHERE cache_key = ?", (key,)).fetchone()
+        with self._lock:
+            row = self._conn.execute("SELECT ranking FROM responses WHERE cache_key = ?", (key,)).fetchone()
         return json.loads(row[0]) if row else None
 
     def put(self, model: str, clue: str, candidates: tuple[str, ...], number: int | None, ranking: list[str]) -> None:
         key = self._key(model, clue, candidates, number)
-        self._conn.execute(
-            "INSERT OR REPLACE INTO responses (cache_key, model, clue, candidates, number, ranking) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (key, model, clue, json.dumps(list(candidates)), number, json.dumps(ranking)),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO responses (cache_key, model, clue, candidates, number, ranking) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (key, model, clue, json.dumps(list(candidates)), number, json.dumps(ranking)),
+            )
+            self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
