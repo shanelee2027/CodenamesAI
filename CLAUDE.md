@@ -18,7 +18,6 @@ one.
 ## Conventions
 
 - Python 3.11+, type hints on public functions, pytest for tests.
-- No notebooks in VCS.
 - One module at a time — do not build several at once on a fresh codebase.
 - Commit at every meaningful step. Keep `docs/log.md` updated as work
   proceeds, recording what was expected and what actually happened —
