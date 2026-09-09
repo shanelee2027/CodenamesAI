@@ -3185,4 +3185,77 @@ pointer to `docs/iteration-architecture.md`, and an explicit warning that
 `v1`/`v1.1` are not comparable against models trained under the 150-word
 holdout. 310 tests pass.
 
+## Clean slate before the next model
+
+Cleared out what the restructuring had left behind, before starting a new
+baseline.
+
+**The big one: `SCOPE.md` did not exist.** It was the project's original
+spec, was never tracked in git, and yet 99 references to it survived in
+docstrings and docs, along with 76 milestone tags (M0-M9) -- despite
+`CLAUDE.md` stating the project is no longer organized around milestones.
+Every citation pointed at nothing, which for an orally-defended project is
+a liability ("what's SCOPE.md?" / "it doesn't exist"). All of them are now
+gone outside `docs/log.md`, each rewritten to keep whatever information it
+carried rather than blank-deleted, and repointed at documents that do exist
+where one applied.
+
+`docs/log.md` was deliberately excluded: it records what was true when each
+entry was written. Rewriting it would falsify the record, which is the
+opposite of what a log is for.
+
+Verification worth keeping: after the sweep, every modified `.py` file's
+AST -- with docstrings stripped -- was compared against the previous commit.
+Four files showed real differences, all of them display strings that
+themselves contained SCOPE references (a `print`, a report header, a `note=`
+field). Nothing executable changed. That check is the only reason I can
+state that confidently across ~25 files.
+
+**Retired:** `docs/versions/v1.md` and `v1.1.md`, the two superseded LLM
+pool configs (Haiku and Sonnet, replaced by Opus), and
+`scratch_llm_transcripts.py`. The README's per-model result tables are gone
+too; no model holds published results now, since the earlier ones were
+trained against the 60-word holdout and aren't comparable with anything
+trained under the 150-word split.
+
+**Kept, against a broader reset, with reasons:**
+
+- The ablation machinery. `docs/design-decisions.md` cites it in three
+  places as standing rationale, and `run_ablation_study.py` is the only
+  generator for the `noise_*` checkpoints `web_inspector.py` offers.
+  Deleting it would have orphaned three citations -- the same failure being
+  cleaned up here.
+- The blend and history-aware pool configs. `web_inspector.py` loads them
+  at import and tests assert on them; rewiring them inline instead would
+  contradict `design-decisions.md`'s rule that pool composition lives in a
+  config file, not code.
+- **All 7 trained checkpoints.** This one nearly went wrong. The plan was
+  to delete `cache/m9/`, estimated at ~25MB of superseded run data. It is
+  actually 514MB, and it contains the six `noise_*` checkpoints plus
+  `blend_pool`'s -- the only trained models in the project, loaded by the
+  web UI. Worse, they can no longer be reproduced: the board holdout went
+  from 60 to 150 words, so the training vocabulary is different and a rerun
+  would not recreate these weights. Deleting 3.5MB of irreplaceable
+  artifacts to reclaim disk, while breaking a working tool, would have been
+  a bad trade. Deleted the regenerable bulk instead -- training-data shards
+  and superseded arena/sanity databases -- freeing 617MB (880MB -> 263MB)
+  and keeping every checkpoint.
+
+`cache/llm_store.db` was backed up first, to
+`~/CodenamesAI-backups/`, and verified on both copies: integrity ok, 1230
+cached responses, 105 game records. It is the only record of paid LLM calls
+and, since LLM output isn't deterministic even at temperature 0, the only
+thing making past evaluations reproducible.
+
+**Process note.** Two delegated agents ran concurrently on the same working
+tree by mistake, and both were killed mid-run (a machine sleep, then a rate
+limit). One of them, while recovering, restored the deleted files from a
+pre-deletion commit -- so the deletions had to be redone. The lesson is the
+one already known and ignored here: concurrent agents belong in separate
+worktrees. Nothing was lost, because the partial work had been committed
+first, but the check that caught it was reading `git status` rather than
+trusting the agents' reports.
+
+314 tests pass.
+
 ## Human evaluation (not started)
