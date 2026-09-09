@@ -1,7 +1,7 @@
 """Wraps a base guesser and adds Gaussian noise to its scores, modeling
-human inconsistency (SCOPE.md §3: "one with Gaussian noise on
-similarities"). Deliberately just one guesser among several structurally
-different ones -- SCOPE.md §3 warns explicitly that a pool built as one
+human inconsistency -- the pool's guesser with Gaussian noise on
+similarities. Deliberately just one guesser among several structurally
+different ones -- see docs/design-decisions.md's explicit warning that a pool built as one
 base guesser plus several noise levels would defeat the project's own
 goal (a knowledge-blind scorer can't learn to trust rare/niche clues if
 every guesser shares GloVe's blind spots).

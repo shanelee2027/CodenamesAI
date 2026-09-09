@@ -1,7 +1,7 @@
-"""One guesser per embedding space (SCOPE.md §3): scores candidates by
+"""One guesser per embedding space: scores candidates by
 raw similarity in exactly one space, so it only "knows" what that space
 knows -- a GloVe guesser has no opinion at all on a word absent from
-GloVe, which is the whole point (SCOPE.md §3's Technoblade example)."""
+GloVe, which is the whole point (see docs/design-decisions.md's Technoblade example)."""
 
 from __future__ import annotations
 

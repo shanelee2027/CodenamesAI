@@ -1,6 +1,6 @@
 """Wraps a base guesser and stops guessing once the next-best candidate's
-score falls below a threshold (SCOPE.md §3: "one with a confidence
-threshold that stops early"). The only guesser type that actually
+score falls below a threshold -- the pool's guesser with a confidence
+threshold that stops early. The only guesser type that actually
 truncates its own ranking rather than just reordering the full candidate
 list -- see the early-stop note in Guesser.rank_candidates()."""
 

@@ -1,10 +1,10 @@
-"""Board state, role assignment, and clue legality (SCOPE.md §M1).
+"""Board state, role assignment, and clue legality.
 
 Design notes for the two non-obvious calls made here:
 
 Role partition is fixed at own=9, opponent=8, neutral=7, assassin=1 (25
 total) -- the standard Codenames starting-team split, matching the feature
-vector layout in SCOPE.md §2. Every `Card`'s role is fixed at board
+vector layout in codenames/features.py. Every `Card`'s role is fixed at board
 generation from one team's perspective -- spymasters, guessers, and the
 scorer are all written against that single perspective, never a
 parameter. Real two-team play (codenames/game.py::play_two_team_game) is
@@ -22,8 +22,7 @@ suffix ("happy"/"happier", "city"/"cities"). _stem_variants() adds exactly
 that one variant per word. This will NOT catch irregular forms (mouse/mice,
 go/went) -- a full lemmatizer would, at the cost of a new dependency and
 much less predictable/testable behavior for a rule where false negatives
-(illegal clues let through) silently corrupt every downstream score. Given
-SCOPE's own note that "bugs here silently inflate every downstream score,"
+(illegal clues let through) silently inflate every downstream score --
 predictable and testable beats broad coverage.
 """
 
@@ -55,9 +54,9 @@ ROLE_COUNTS: dict[Role, int] = {
 }
 BOARD_SIZE = sum(ROLE_COUNTS.values())
 
-# The learned scorer (M8) outputs a distribution over k in 0..4 -- "the
-# number of own-words the guesser will reveal before stopping" (SCOPE §2).
-# Baseline spymasters (M6) cap their chosen number at the same bound so
+# The learned scorer outputs a distribution over k in 0..4 -- the
+# number of own-words the guesser will reveal before stopping.
+# Baseline spymasters cap their chosen number at the same bound so
 # every spymaster's outputs stay comparable in the arena. Lives here (not
 # in spymasters/base.py, where it conceptually belongs) so both
 # spymasters/ and scorer.py can import it without a circular dependency --

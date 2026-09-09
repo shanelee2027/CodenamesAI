@@ -1,15 +1,15 @@
-"""Cross-play evaluation (SCOPE.md §M6): every spymaster x every guesser,
+"""Cross-play evaluation: every spymaster x every guesser,
 over a fixed set of seeded boards.
 
-"Off-diagonal results are the ones that matter" (SCOPE §M6) -- a spymaster
+Off-diagonal results are the ones that matter -- a spymaster
 that only does well against guessers it was implicitly tuned around has
 overfit, which is why this always plays the *full* guesser pool (including
 the held-out members), not just the training-visible ones. The held-out
 flag is carried through into the results/DB purely as a label for later
-filtering, once M8's learned spymaster makes the training/held-out split
+filtering, once the learned spymaster makes the training/held-out split
 actually matter for who gets trained against what.
 
-Multiprocessing note (SCOPE §7's memory design note): each worker process
+Multiprocessing note (see docs/design-decisions.md's memory design note): each worker process
 opens its own read-only mmap over the same similarity_tensor.npy via
 SimilarityTensor.load() -- the OS page cache shares the underlying physical
 pages across processes, so the ~1-2GB tensor itself is not duplicated per

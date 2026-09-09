@@ -1,8 +1,9 @@
-"""Guesser pool registry (SCOPE.md §M5).
+"""Guesser pool registry.
 
 Pool composition lives in configs/guesser_pool.json, not in code, per
-SCOPE.md §3: "Pool composition lives in a config file... Results are
-reported as 'under pool configuration X, we observe Y.'" This module only
+docs/design-decisions.md: "make the composition explicit in a config file,
+not code... report results as 'under pool configuration X, we observe Y.'"
+This module only
 knows how to build guessers *from* a config; it has no opinion on what the
 pool should contain.
 
@@ -105,11 +106,11 @@ def load_pool(config: Path | dict = DEFAULT_POOL_CONFIG) -> dict[str, GuesserEnt
 
 def training_pool(config_path: Path = DEFAULT_POOL_CONFIG) -> dict[str, Guesser]:
     """Guessers training code is allowed to use. Never includes held-out
-    guessers -- see SCOPE.md §3: "Training code must never touch them.\""""
+    guessers -- training code must never touch them."""
     return {name: e.guesser for name, e in load_pool(config_path).items() if not e.held_out}
 
 
 def held_out_pool(config_path: Path = DEFAULT_POOL_CONFIG) -> dict[str, Guesser]:
     """The evaluation-only guessers. Off-diagonal results against these
-    are what actually matter per SCOPE.md §6's arena note."""
+    are what actually matter -- see codenames/arena.py's module docstring."""
     return {name: e.guesser for name, e in load_pool(config_path).items() if e.held_out}

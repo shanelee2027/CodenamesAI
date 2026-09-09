@@ -1,5 +1,5 @@
 """Aggregates each space's RANK of the candidates rather than raw scores
-(SCOPE.md §3: "one rank-based rather than score-based"). Structurally
+-- rank-based rather than score-based. Structurally
 different from BlendGuesser: converting to rank first normalizes away
 each space's own similarity scale/distribution, so a space that happens
 to produce generally higher or lower magnitudes doesn't dominate a

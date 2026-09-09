@@ -1,4 +1,4 @@
-"""Game loop (SCOPE.md §M6, §8 directory layout).
+"""Game loop.
 
 `play_game` is single-team: "opponent" and "neutral" words just sit on
 the board as pure distractors, nobody actively pursuing them -- most of
@@ -10,7 +10,7 @@ guesser, or the scorer -- see its own docstring and `OpponentBoardView`
 in board.py for how. In both, a turn ends the moment a non-own word is
 revealed or the spymaster's attempts run out.
 
-Reward per SCOPE §2 (play-time scoring): +1 per own word, -0.2 and stop
+Reward for play-time scoring: +1 per own word, -0.2 and stop
 on neutral, -1 and stop on opponent, -10 and stop on assassin. Neutral
 being non-zero (rather than a true no-op) is deliberate: it still costs a
 turn and reveals no information toward winning, so it should be mildly

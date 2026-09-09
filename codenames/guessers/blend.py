@@ -1,5 +1,5 @@
-"""Blends similarity across multiple spaces via a weighted average
-(SCOPE.md §3: "one or two blending several spaces"). Supports arbitrary
+"""Blends similarity across multiple spaces via a weighted average --
+one or two guessers in the pool blend several spaces this way. Supports arbitrary
 weight configs so the pool config file can define several blend variants
 from this one class (e.g. uniform vs. one space weighted heavier)."""
 

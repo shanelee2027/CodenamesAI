@@ -1,23 +1,23 @@
-"""Board + clue -> feature vector (SCOPE.md §2, §M7).
+"""Board + clue -> feature vector.
 
-This is the only thing the model ever sees -- "the model never sees words,
-only numbers" (§2) -- so a bug here is silent and poisons everything built
+This is the only thing the model ever sees -- the model never sees words,
+only numbers -- so a bug here is silent and poisons everything built
 on top of it. That's also why this file exists before generate_training_data
-or the scorer: SCOPE explicitly calls for permutation-invariance and masking
-tests *before* anything is built on top of it (§5 M7).
+or the scorer: permutation-invariance and masking need their own
+tests *before* anything is built on top of it.
 
 Layout, for `n = len(sims.spaces)` spaces (currently 3 -- GloVe, Numberbatch,
-Wikipedia2Vec; fastText joins once M4's remaining half exists, and nothing
+Wikipedia2Vec; fastText joins once its remaining training work exists, and nothing
 here is hardcoded to a specific space count):
 
     [space_0's 25 role-sorted values] ... [space_{n-1}'s 25 role-sorted values]
     [25-slot validity mask]
     [own_remaining, turn_index, score_differential]
 
-Total width = 25*n + 25 + 3. SCOPE's own worked example (~115) assumes all
-4 planned spaces exist (25*4 + 25 + 3 = 128); with the 3 spaces built so far
-it's 25*3 + 25 + 3 = 103. Both are "~115" in the sense SCOPE meant --
-approximate, not a hard target to match exactly.
+Total width = 25*n + 25 + 3. With all
+4 planned spaces that's 25*4 + 25 + 3 = 128; with the 3 spaces built so far
+it's 25*3 + 25 + 3 = 103 -- both are "~115" in the sense of a rough
+target, not a hard number to match exactly.
 
 A third thing made explicit here: **the feature vector's per-role slot
 widths are a separate concept from the real board's per-role card counts**
@@ -35,11 +35,11 @@ win condition changes either. See docs/log.md for the two-team-play bug
 this replaced (a same-instance ROLE_COUNTS reuse that either crashed or,
 before that, silently overflowed).
 
-Two design decisions SCOPE leaves implicit, made explicit here because they
+Two design decisions made explicit here because they
 affect the model's input shape and can't be casually changed later:
 
-1. **Per role-group, values are sorted independently per space** (§2 step 3
-   is explicit about this), which means "slot k" can be a *different*
+1. **Per role-group, values are sorted independently per space**,
+   which means "slot k" can be a *different*
    underlying board word in different spaces. A slot's validity therefore
    cannot be represented per-space without either breaking the independent
    per-space sort or emitting one mask per space (4x the mask width for
@@ -61,8 +61,8 @@ affect the model's input shape and can't be casually changed later:
    confusing "missing" with "confirmed zero/unrelated" (see similarity.py).
    That reasoning doesn't carry over here: NaN can't be fed into an MLP
    (it propagates and corrupts every downstream computation), so a *model
-   input* needs a fixed real-valued placeholder no matter what -- SCOPE's
-   own spec pairs the -1 sentinel with an explicit validity mask for
+   input* needs a fixed real-valued placeholder no matter what -- pairing
+   the -1 sentinel with an explicit validity mask handles that for
    exactly this reason. The two conventions serve different layers
    (on-disk analysis data vs. a tensor about to hit a forward pass) and
    are not in tension.
@@ -111,7 +111,7 @@ def feature_dim(n_spaces: int) -> int:
 @dataclass(frozen=True)
 class FeatureLayout:
     """Named slices into a feature vector built with `n_spaces` spaces --
-    lets §6 baseline 4 (a linear model over this vector) report which
+    lets the linear-scorer baseline (a linear model over this vector) report which
     spaces/positions carry weight, without hunting for magic offsets."""
 
     spaces: list[str]
@@ -134,7 +134,7 @@ class FeatureLayout:
         return feature_dim(len(self.spaces))
 
     def describe(self, index: int) -> str:
-        """Label a raw feature index for interpretability (SCOPE §9's linear
+        """Label a raw feature index for interpretability (the linear
         baseline needs to report "which spaces and rank positions carry
         weight", not just raw indices)."""
         n = len(self.spaces)
@@ -197,7 +197,7 @@ def _sorted_padded_values(sims: SimilarityTensor, clue: str, words: list[str], s
 def _unsorted_padded_values(sims: SimilarityTensor, clue: str, words: list[str], space: str, pad_to: int) -> np.ndarray:
     """Like _sorted_padded_values, but keeps each word's value at its own
     natural (words_by_role order) position instead of sorting descending --
-    used only by build_features_unsorted (SCOPE §9's sort ablation)."""
+    used only by build_features_unsorted (the sort ablation)."""
     _check_capacity(len(words), pad_to)
     out = np.full(pad_to, SENTINEL, dtype=np.float32)
     if not words:
@@ -255,11 +255,11 @@ def build_features(board: Board, clue: str, sims: SimilarityTensor, turn_index: 
 
 
 def build_features_unsorted(board: Board, clue: str, sims: SimilarityTensor, turn_index: int) -> np.ndarray:
-    """SCOPE §9's sort ablation: identical layout and width to
+    """The sort ablation: identical layout and width to
     build_features(), but each role group's values keep their natural
     (unrevealed, board-order) position instead of being sorted descending.
     Deliberately reintroduces the position-carries-no-information problem
-    §2 sorts specifically to avoid, as a controlled comparison."""
+    the descending sort exists specifically to avoid, as a controlled comparison."""
     role_words = {role: board.words_by_role(role, unrevealed_only=True) for role in ROLE_ORDER}
 
     space_blocks = []
@@ -308,8 +308,8 @@ def _sorted_padded_values_batch(sims: SimilarityTensor, words: list[str], space:
 def build_features_batch(board: Board, sims: SimilarityTensor, turn_index: int) -> np.ndarray:
     """Feature vectors for *every* clue in the vocabulary at once, against
     one board state -- shape (n_clues, feature_dim). This is what play-time
-    scoring needs: SCOPE §2 requires scoring all ~250k+ candidates via "one
-    gather plus one small forward pass," which rules out calling
+    scoring needs: play-time scoring must handle all ~250k+ candidates via one
+    gather plus one small forward pass, which rules out calling
     build_features() once per clue in a Python loop. The mask and scalar
     blocks don't depend on the clue at all, so they're computed once and
     broadcast across every row; only the per-space value blocks vary per
