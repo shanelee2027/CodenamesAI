@@ -77,6 +77,53 @@ fired on these full, unrevealed boards -- they're exercised by
 would be expected to fire more often on partially-revealed boards later
 in a real game.
 
+## Measured: safe for a listener that shares its space, dangerous otherwise
+
+Real two-team self-play, 100 boards per row, synthetic guessers (no API
+cost). This is the finding that matters most about this baseline:
+
+| listener | assassin-hit | half-turns | mean clue number | correct/clue | own% |
+|---|---|---|---|---|---|
+| `noisy_numberbatch` (its own space) | **0.0%** | 5.27 | 3.14 | 2.91 | 94.2% |
+| `noisy_glove` | **29.0%** | 6.73 | 3.10 | 1.62 | 69.6% |
+| `noisy_wikipedia2vec` | **38.0%** | 6.75 | 3.18 | 1.49 | 65.9% |
+
+Against a guesser using the same embedding space it selects on, this
+baseline is excellent -- 0% assassin, 94% own-word rate, and it finishes
+games in 5.3 half-turns. Against a guesser whose knowledge comes from a
+*different* space it is worse than the centroid baseline was.
+
+**The cause is structural, not a tuning problem.** The thresholds
+guarantee the assassin is outside the top 30% *in numberbatch*, and
+nothing constrains where it sits anywhere else. Measured over 40 boards,
+for the clue actually chosen:
+
+| space | assassin above z=0.52 | above z=1.28 |
+|---|---|---|
+| numberbatch (selected on) | 0.0% | 0.0% |
+| glove | 25.0% | 7.5% |
+| wikipedia2vec | 20.0% | 5.0% |
+
+30% of boards put the assassin in the top 30% of a space the spymaster
+never consulted, which lines up with the 29% assassin rate measured
+against the glove listener. Concretely, seed 9 picks `counter` with the
+assassin at z=-0.05 in numberbatch but **+1.79 in glove and +1.77 in
+wikipedia2vec**.
+
+This is `docs/design-decisions.md`'s "diversity must be in knowledge, not
+noise" principle seen from the spymaster's side: a single-space spymaster
+is only safe for a listener that happens to share its space. It matters
+directly for the intended use as a fixed opponent, and for evaluation
+against the LLM guesser, which is not a cosine ranker in any space and so
+should be expected to behave more like the cross-space rows than the
+first one.
+
+The fix under consideration is to keep selecting on one space (the
+positive signal stays simple) while requiring the *safety* thresholds --
+assassin especially -- to hold in **every** built space. `ClueStats`
+already carries mean/std for all three, so this is a filter change, not
+an architectural one.
+
 ## Open for the next model
 
 - `own_top`/`MAX_CLUE_NUMBER` interact in a way that makes "announce 4"
