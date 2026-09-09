@@ -40,6 +40,38 @@ class TestHoldoutWordlist:
     def test_training_set_is_large_enough_to_build_a_board_from_alone(self):
         assert len(load_training_wordlist()) >= BOARD_SIZE
 
+    def test_holdout_is_exactly_150_words(self):
+        # docs/iteration-architecture.md step 5: raised from 60 to 150.
+        assert len(load_holdout_wordlist()) == 150
+
+    def test_original_60_word_holdout_is_still_present(self):
+        # The pre-step-5 holdout must be a strict subset of the new one
+        # (random.Random(42).sample(VOCAB, 60) -- see docs/log.md), so a
+        # model trained under the old split is evaluated against a
+        # superset of what it was told to avoid.
+        import random
+
+        original_60 = set(random.Random(42).sample(sorted(VOCAB), 60))
+        assert original_60 <= set(load_holdout_wordlist())
+
+    def test_holdout_selection_is_reproducible_from_the_recorded_snippet(self):
+        # Regenerates codenames/assets/board_words_holdout.txt byte for
+        # byte from the exact snippet recorded in docs/log.md.
+        import random
+
+        vocab = sorted(VOCAB)
+        original_60 = set(random.Random(42).sample(vocab, 60))
+        remaining = [w for w in vocab if w not in original_60]
+        assert len(remaining) == 340
+        new_90 = random.Random(43).sample(remaining, 90)
+        regenerated = sorted(original_60 | set(new_90))
+
+        from codenames.board import ASSET_HOLDOUT_WORDLIST_PATH
+
+        committed_bytes = ASSET_HOLDOUT_WORDLIST_PATH.read_bytes()
+        regenerated_bytes = ("\n".join(regenerated) + "\n").encode()
+        assert regenerated_bytes == committed_bytes
+
 
 class TestBoardGeneration:
     def test_deterministic_for_same_seed(self):

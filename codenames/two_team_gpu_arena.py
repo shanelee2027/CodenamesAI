@@ -80,6 +80,8 @@ def _play_batch_group(
     device: torch.device,
     record_store: GameRecordStore | None = None,
     run_label: str = "",
+    spymaster_id: str | None = None,
+    suite_id: str | None = None,
 ) -> list[TwoTeamGameResult]:
     """Play every board in `boards` as a two-team game to completion,
     batching the spymaster's clue selection across every game still in
@@ -88,7 +90,13 @@ def _play_batch_group(
     docstring for why batching across games is valid here. `guessers` is
     keyed by board seed -- each game can have its own guesser (see
     MIXED_GUESSER in codenames/two_team_arena.py), since the guesser only
-    matters after the batched spymaster forward pass, not during it."""
+    matters after the batched spymaster forward pass, not during it.
+
+    `spymaster_id`/`suite_id`, if given, are forwarded to
+    `record_store.add_game` (docs/iteration-architecture.md step 6) --
+    what makes a frozen-eval-suite run's rows resumable/idempotent
+    instead of just an inspectable transcript keyed by free-text
+    `run_label`."""
     # Snapshotted before any word is revealed -- boards get mutated in
     # place as the while loop below plays them out.
     by_role_by_seed = {b.seed: board_by_role(b) for b in boards} if record_store is not None else None
@@ -183,7 +191,9 @@ def _play_batch_group(
 
     if record_store is not None:
         for seed, result in game_results.items():
-            record_store.add_game(by_role_by_seed[seed], result, label=run_label)
+            record_store.add_game(
+                by_role_by_seed[seed], result, label=run_label, spymaster_id=spymaster_id, suite_id=suite_id
+            )
 
     return list(game_results.values())
 
@@ -199,6 +209,9 @@ def run_two_team_self_play_gpu(
     device: torch.device | None = None,
     game_record_db: Path | None = None,
     run_label: str = "",
+    vocabulary: list[str] | None = None,
+    spymaster_id: str | None = None,
+    suite_id: str | None = None,
 ) -> TwoTeamSelfPlayResult:
     """Runs `len(seeds)` two-team games, `spymaster` + the named guesser
     (or `MIXED_GUESSER` -- see codenames/two_team_arena.py) on both sides
@@ -207,7 +220,14 @@ def run_two_team_self_play_gpu(
 
     `game_record_db`/`run_label`: see run_two_team_self_play's matching
     params in codenames/two_team_arena.py -- same persisted format,
-    written from this single process instead of across worker processes."""
+    written from this single process instead of across worker processes.
+
+    `vocabulary`, if given, is forwarded to `Board.generate` instead of
+    its own default (the full 400-word list) -- the frozen eval suite
+    (codenames/eval_suite.py) passes `load_holdout_wordlist()` so eval
+    boards are built entirely from words no model has trained on (see
+    docs/design-decisions.md's held-out-board-words note). `spymaster_id`
+    /`suite_id`: see `_play_batch_group`."""
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     spymaster.to_device(device)
 
@@ -222,9 +242,20 @@ def run_two_team_self_play_gpu(
 
     for start in range(0, len(seeds), batch_size):
         batch_seeds = seeds[start : start + batch_size]
-        boards = [Board.generate(seed=s) for s in batch_seeds]
+        boards = [Board.generate(seed=s, vocabulary=vocabulary) for s in batch_seeds]
         guessers = {s: guesser_for_seed(s) for s in batch_seeds}
-        results = _play_batch_group(spymaster, guessers, boards, sims, max_turns, device, record_store, run_label)
+        results = _play_batch_group(
+            spymaster,
+            guessers,
+            boards,
+            sims,
+            max_turns,
+            device,
+            record_store,
+            run_label,
+            spymaster_id=spymaster_id,
+            suite_id=suite_id,
+        )
         for result in results:
             update_stats(stats, result)
 
