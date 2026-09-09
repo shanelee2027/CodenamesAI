@@ -198,10 +198,22 @@ def load_wordlist(path: Path = ASSET_WORDLIST_PATH) -> list[str]:
 def load_holdout_wordlist(path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]:
     """The board words training data must never be sampled from (first-pass
     generalization check in place of held-out guessers -- see docs/log.md).
-    60 of the 400 board words, chosen via
-    `random.Random(42).sample(load_wordlist(), 60)` -- fixed and committed
-    (codenames/assets/board_words_holdout.txt) rather than resampled at
-    runtime, so the split is transparent and inspectable."""
+    150 of the 400 board words (raised from 60 -- see
+    docs/iteration-architecture.md step 5 -- so two "independent" eval
+    boards share fewer words: ~4.2 of 25 at H=150 versus ~10.4 at H=60).
+    The original 60 (`random.Random(42).sample(load_wordlist(), 60)`) are
+    kept as an exact subset, never reshuffled, so a model trained under
+    the old 60-word split is still evaluated against a superset of what
+    it was told to avoid (though see that doc's contamination warning:
+    such a model still trained on 90 words that are now held out). The
+    additional 90 were drawn uniformly (no stratification) from the
+    remaining 340 words via `random.Random(43).sample(remaining, 90)`,
+    where `remaining` is `load_wordlist()` filtered to exclude the
+    original 60, in file order -- see docs/log.md for the exact
+    reproducing snippet. Fixed and committed
+    (codenames/assets/board_words_holdout.txt), sorted alphabetically for
+    a stable diff, rather than resampled at runtime, so the split is
+    transparent and inspectable."""
     return [line.strip() for line in path.read_text().splitlines() if line.strip()]
 
 

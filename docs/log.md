@@ -2933,4 +2933,143 @@ runnable") gets checked against the letter of each numbered step, not
 against the requirement. Worth stating the acceptance test, not just the
 task.
 
+## Iteration architecture steps 5-6: frozen eval suite, eval store
+
+Implemented steps 5 and 6 of `docs/iteration-architecture.md` (step 7,
+naming/layout, deliberately left for later per the assigned scope; steps
+1-4's files -- `scripts/generate_training_data.py`,
+`scripts/train_scorer.py`, `codenames/features.py`,
+`codenames/gpu_features.py` -- were treated as read-only since another
+workstream was editing them concurrently).
+
+**Step 5 (frozen eval suite).**
+
+Raised `codenames/assets/board_words_holdout.txt` from 60 to 150 words,
+keeping the original 60 as an exact subset (per the doc's math: two
+25-word boards drawn from an H=60 pool share ~10.4 words; H=150 brings
+that down to ~4.2). Reproducing snippet (also in
+`codenames/board.py::load_holdout_wordlist`'s docstring and exercised
+byte-for-byte by `tests/test_board.py::test_holdout_selection_is_reproducible_from_the_recorded_snippet`):
+
+```python
+import random
+from codenames.board import load_wordlist
+
+vocab = load_wordlist()  # already alphabetically sorted, 400 words
+original_60 = set(random.Random(42).sample(vocab, 60))  # the pre-existing holdout
+remaining = [w for w in vocab if w not in original_60]  # 340 words
+assert len(remaining) == 340
+new_90 = random.Random(43).sample(remaining, 90)  # uniform, no stratification
+holdout_150 = sorted(original_60 | set(new_90))
+# written to codenames/assets/board_words_holdout.txt, one word per line,
+# alphabetically sorted (matching the existing file's convention) so a
+# diff against the old 60-word file stays readable.
+```
+
+Seed 43 was picked with no special reasoning beyond "a fresh, explicitly
+recorded seed adjacent to the existing 42" -- the doc only requires that
+it be recorded and reproducible, not that it be meaningful.
+
+Added `configs/eval_suite.json`: a fixed list of 100 board seeds (0-99,
+not just a count -- extending it later means appending more entries, not
+changing the meaning of the existing ones), pointing at
+`configs/guesser_pool_llm_sonnet.json` / `"llm"` as the fixed evaluation
+guesser, with `"llm_model": "claude-sonnet-5"` recorded explicitly
+alongside it (duplicating what the guesser config already implies)
+because the doc calls out the LLM model id specifically as part of suite
+identity -- see `EvalSuite.suite_id` below.
+
+Judgment call: the doc's step-5 bullets talk about the *holdout word
+list*, but design-decisions.md's "First-pass simplifications" section is
+explicit that the entire point of that holdout mechanism is "a later
+evaluation pass can build boards entirely from unseen words," and flags
+that this "has never actually been run against a trained model." Read
+together, the frozen eval suite is that pass -- so
+`codenames/eval_suite.py::run_eval_suite` builds every eval board via
+`Board.generate(seed=s, vocabulary=load_holdout_wordlist())`, not the
+default full 400-word vocabulary. This required adding a `vocabulary`
+parameter to `codenames/two_team_gpu_arena.py::run_two_team_self_play_gpu`
+(threaded through to `Board.generate`, default `None` so every existing
+caller is unaffected). Flagging this explicitly since it's an inference
+from two docs read together, not a literal instruction in either one --
+if held-out-vocabulary boards weren't intended for this suite, that one
+parameter is the line to revert.
+
+**Step 6 (eval store).**
+
+`codenames/llm_store.py::GameRecordStore` gained `spymaster_id` and
+`suite_id` columns (migrated onto an existing db file via `ALTER TABLE`
+if missing, so a live `cache/llm_store.db` isn't invalidated) and a
+`UNIQUE INDEX` on `(spymaster_id, suite_id, seed)`. `add_game` now takes
+optional `spymaster_id`/`suite_id` kwargs and always issues `INSERT OR
+REPLACE` -- SQLite treats NULL as distinct from every other value
+(including another NULL) in a unique index, so every pre-existing caller
+that only passes `label` (e.g. `scripts/run_two_team_arena.py`-style
+training diagnostics) is completely unaffected and keeps appending rather
+than colliding. Two new query methods, `recorded_seeds` and
+`games_for_suite`, are what an eval runner checks *before* deciding to
+simulate anything.
+
+Added `codenames/eval_suite.py`:
+- `EvalSuite`/`load_eval_suite`: parses `configs/eval_suite.json`.
+  `suite_id` hashes `(name, llm_model, guesser_name, guesser_pool_config's
+  file *content*)` -- deliberately **not** `board_seeds`, so extending a
+  suite from 100 to 300 boards doesn't invalidate the 100 games already
+  paid for. Hashing the guesser config's content rather than its path
+  also means an edit to that file (a different noise seed, a changed
+  prompt parameter) invalidates the suite instead of silently reusing
+  stale results under an unchanged path -- a stricter reading of "the LLM
+  model id is part of the suite identity" than the doc technically asks
+  for, but consistent with its reasoning.
+- `spymaster_identity`/`checkpoint_content_hash`: a trained model's
+  identity is `f"{name}:{sha256(checkpoint_bytes)[:16]}"`, not its path,
+  directly per the doc's `scorer_best.pt`-gets-overwritten warning.
+  Baselines (no checkpoint) are identified by name alone.
+- `run_eval_suite`: filters `suite.board_seeds` down to what
+  `store.recorded_seeds(spymaster_id, suite.suite_id)` doesn't already
+  have *before* calling `run_two_team_self_play_gpu` at all -- so a fully
+  cached rerun never enters the simulation/LLM-call path, not just
+  cache-hits inside it.
+
+Judgment call: reused `run_two_team_self_play_gpu` (GPU-batched two-team
+self-play, same spymaster on both sides) as the simulation engine rather
+than writing a new one, since it already does exactly what evaluation
+needs (batches an LLM guesser's network calls across simultaneous games
+on a thread pool) and duplicating that logic would violate "one scoring/
+simulation implementation" as much as step 3's original motivation. Only
+`two_team_gpu_arena.py` was touched, not the CPU-parallel
+`two_team_arena.py::run_two_team_self_play` -- the eval suite doesn't
+need a CPU fallback path today, and adding the same parameters there
+unused would be speculative.
+
+Judgment call: 100 board seeds for `configs/eval_suite.json`'s default is
+an arbitrary but explicit choice, not derived from anything in either
+doc -- picked as a plausible frozen-suite size to start from
+(considerably fewer than the "100 to 300" example the doc uses in
+passing). This number should be revisited before the suite is actually
+run for real money.
+
+Tests added: `tests/test_board.py` (3 new: exact count, original-60
+subset, byte-for-byte reproducibility), `tests/test_eval_suite.py` (15
+new: suite-id stability/dependence on each identity component,
+checkpoint-hash-based spymaster identity including the same-path
+different-checkpoint case, `GameRecordStore` key scoping and
+idempotency, and `run_eval_suite`'s skip-if-cached and
+extend-only-simulates-new-seeds behavior via a monkeypatched simulation
+function so no real LLM calls or CUDA are needed to test the caching
+logic itself). `tests/test_llm_store.py` and
+`tests/test_two_team_gpu_arena.py` (pre-existing) still pass unchanged,
+confirming the new columns/parameters are additive. 295 tests pass
+total (280 pre-existing + 15 new; the pre-existing count itself grew
+from 277 to 280 as the concurrent step-4 workstream landed its own
+tests).
+
+Not done, flagged rather than silently skipped: no script was added
+under `scripts/` to actually invoke `run_eval_suite` end-to-end against
+a real trained checkpoint and real Sonnet-5 API calls -- that would spend
+real money and touches territory close to step 7's "naming and layout"
+reorganization, which was explicitly out of scope for this pass. The
+plumbing (`codenames/eval_suite.py`) is complete and unit-tested, but has
+not been run against a live LLM.
+
 ## Human evaluation (not started)

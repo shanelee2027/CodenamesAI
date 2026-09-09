@@ -62,12 +62,32 @@ def _connect(db_path: Path) -> sqlite3.Connection:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             seed INTEGER NOT NULL,
             label TEXT,
+            spymaster_id TEXT,
+            suite_id TEXT,
             board TEXT NOT NULL,
             turns TEXT NOT NULL,
             outcome TEXT NOT NULL,
             winner TEXT,
             total_reward TEXT NOT NULL
         )"""
+    )
+    # Migration for a db file created before spymaster_id/suite_id
+    # existed (docs/iteration-architecture.md step 6) -- CREATE TABLE IF
+    # NOT EXISTS above is a no-op against an already-existing table, so
+    # an old cache/llm_store.db needs these columns added explicitly.
+    existing_columns = {row[1] for row in conn.execute("PRAGMA table_info(game_records)").fetchall()}
+    for column in ("spymaster_id", "suite_id"):
+        if column not in existing_columns:
+            conn.execute(f"ALTER TABLE game_records ADD COLUMN {column} TEXT")
+    # Rows without both spymaster_id and suite_id (every pre-step-6 row,
+    # and any caller still using `label` alone) are exempt from this --
+    # SQLite treats NULL as distinct from every other value, including
+    # another NULL, in a UNIQUE index, so they never collide with each
+    # other regardless of duplicate seeds. Only rows with both keys set
+    # are deduplicated -- exactly the (spymaster_id, suite_id, board_seed)
+    # key docs/iteration-architecture.md step 6 asks for.
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_game_records_key ON game_records(spymaster_id, suite_id, seed)"
     )
     conn.commit()
     return conn
@@ -124,7 +144,24 @@ class GameRecordStore:
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self._conn = _connect(db_path)
 
-    def add_game(self, by_role: dict[Role, list[str]], result: TwoTeamGameResult, label: str = "") -> None:
+    def add_game(
+        self,
+        by_role: dict[Role, list[str]],
+        result: TwoTeamGameResult,
+        label: str = "",
+        spymaster_id: str | None = None,
+        suite_id: str | None = None,
+    ) -> None:
+        """`spymaster_id`/`suite_id` (docs/iteration-architecture.md step
+        6): when both are given, this row is keyed by
+        (spymaster_id, suite_id, result.seed) -- INSERT OR REPLACE means
+        re-running an already-recorded (spymaster, suite, board) game
+        overwrites its old row instead of duplicating it, which is what
+        makes a rerun idempotent. `label` alone (the pre-step-6 calling
+        convention, still used by scripts/run_two_team_arena.py-style
+        training diagnostics) never collides with anything -- see
+        `_connect`'s note on NULL uniqueness -- so existing callers that
+        don't pass these two keep appending exactly as before."""
         board_json = json.dumps({role.value: words for role, words in by_role.items()})
         turns_json = json.dumps(
             [
@@ -139,11 +176,14 @@ class GameRecordStore:
             ]
         )
         self._conn.execute(
-            "INSERT INTO game_records (seed, label, board, turns, outcome, winner, total_reward) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO game_records "
+            "(seed, label, spymaster_id, suite_id, board, turns, outcome, winner, total_reward) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 result.seed,
                 label,
+                spymaster_id,
+                suite_id,
                 board_json,
                 turns_json,
                 result.outcome,
@@ -159,6 +199,29 @@ class GameRecordStore:
             rows = self._conn.execute("SELECT * FROM game_records ORDER BY id").fetchall()
         else:
             rows = self._conn.execute("SELECT * FROM game_records WHERE label = ? ORDER BY id", (label,)).fetchall()
+        self._conn.row_factory = None
+        return rows
+
+    def recorded_seeds(self, spymaster_id: str, suite_id: str) -> set[int]:
+        """Which board seeds already have a game recorded for this exact
+        (spymaster, suite) pair -- what an eval runner filters
+        `suite.board_seeds` against so a rerun (or a suite extended with
+        more seeds) only plays the boards that are actually missing."""
+        rows = self._conn.execute(
+            "SELECT seed FROM game_records WHERE spymaster_id = ? AND suite_id = ?",
+            (spymaster_id, suite_id),
+        ).fetchall()
+        return {row[0] for row in rows}
+
+    def games_for_suite(self, spymaster_id: str, suite_id: str) -> list[sqlite3.Row]:
+        """Every recorded game for this (spymaster, suite) pair, old and
+        newly-played alike -- what an eval runner aggregates stats over
+        after topping up any missing boards."""
+        self._conn.row_factory = sqlite3.Row
+        rows = self._conn.execute(
+            "SELECT * FROM game_records WHERE spymaster_id = ? AND suite_id = ? ORDER BY id",
+            (spymaster_id, suite_id),
+        ).fetchall()
         self._conn.row_factory = None
         return rows
 
