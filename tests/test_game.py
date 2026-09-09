@@ -22,8 +22,8 @@ class FixedSpymaster(Spymaster):
         self.clue = clue
         self.number = number
 
-    def give_clue(self, board, sims):
-        return self.clue, self.number
+    def top_clues(self, ctx, sims, k):
+        return [(self.clue, self.number, 0.0)]
 
 
 class ScriptedGuesser(Guesser):
@@ -125,10 +125,10 @@ class SequencedSpymaster(Spymaster):
         self.plan = list(plan)
         self.calls = 0
 
-    def give_clue(self, board, sims):
-        clue_and_number = self.plan[self.calls]
+    def top_clues(self, ctx, sims, k):
+        clue, number = self.plan[self.calls]
         self.calls += 1
-        return clue_and_number
+        return [(clue, number, 0.0)]
 
 
 class AlwaysBonusGuesser(ScriptedGuesser):

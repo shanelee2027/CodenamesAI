@@ -22,10 +22,10 @@ from __future__ import annotations
 import numpy as np
 
 from codenames.board import Board, Role
-from codenames.clue_search import top_k_legal_clues, top_legal_clue
+from codenames.clue_search import top_k_legal_clues
 from codenames.similarity import SimilarityTensor
 
-from .base import Spymaster
+from .base import Spymaster, TurnContext
 
 
 class OracleSpymaster(Spymaster):
@@ -61,19 +61,14 @@ class OracleSpymaster(Spymaster):
         combined = run_length.astype(np.float32) * 1000.0 + mean_top
         return run_length, combined
 
-    def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
+    def top_clues(self, ctx: TurnContext, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
         # number = the intended word count directly (matches
         # spymasters/_util.py::natural_number's convention) -- announcing
         # n grants exactly n guesses (codenames.game.play_turn), no bonus
-        # attempt. Floored at 1, same as every other spymaster here: a run length
-        # of 0 (this space's single best-ranked word isn't even own) still
-        # has to be announced as *something*.
-        run_length, combined = self._score_all_clues(board, sims)
-        clue = top_legal_clue(sims, board, combined)
-        clue_idx = sims.clue_index[clue.lower()]
-        return clue, max(1, int(run_length[clue_idx]))
-
-    def top_k_clues(self, board: Board, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
+        # attempt. Floored at 1, same as every other spymaster here: a run
+        # length of 0 (this space's single best-ranked word isn't even
+        # own) still has to be announced as *something*.
+        board = ctx.board
         run_length, combined = self._score_all_clues(board, sims)
         clues = top_k_legal_clues(sims, board, combined, k)
         return [

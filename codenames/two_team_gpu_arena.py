@@ -1,8 +1,10 @@
-"""GPU-batched two-team self-play arena for LearnedSpymaster specifically
--- plays many simultaneous two-team games in lockstep on one GPU process,
-mirroring codenames/gpu_arena.py's single-team batching (see that
-module's docstring for the underlying "batch the forward pass across
-many boards" idea and its measured speedup) but doubled for two sides.
+"""GPU-batched two-team self-play arena for a BatchScoringSpymaster
+(currently only LearnedSpymaster) -- plays many simultaneous two-team
+games in lockstep on one GPU process, mirroring codenames/gpu_arena.py's
+single-team batching (see that module's docstring for the underlying
+"batch the forward pass across many boards" idea, its measured speedup,
+and the BatchScoringSpymaster protocol this module is written against
+instead of a specific spymaster class) but doubled for two sides.
 
 Why batching across *games* still works here even though a two-team game
 alternates turns internally: every active game advances by exactly one
@@ -50,15 +52,13 @@ import torch
 
 from codenames.board import Board, OpponentBoardView, Role
 from codenames.clue_search import top_legal_clue
-from codenames.spymasters.learned import LearnedSpymaster
+from codenames.spymasters.base import BatchScoringSpymaster, TurnContext
 from codenames.game import DEFAULT_MAX_TURNS, TurnResult, TwoTeamGameResult, TwoTeamTurnResult
 from codenames.game import play_turn as _play_turn
-from codenames.gpu_features import build_features_batch_multi
 from codenames.guessers import load_pool
 from codenames.guessers.base import Guesser
 from codenames.guessers.registry import training_pool
 from codenames.llm_store import GameRecordStore, board_by_role
-from codenames.scorer import expected_reward_and_best_n
 from codenames.similarity import SimilarityTensor
 from codenames.two_team_arena import MIXED_GUESSER, TwoTeamSelfPlayResult, _new_stats, finalize_result, update_stats
 
@@ -72,7 +72,7 @@ def _winner_if_any(board: Board) -> str | None:
 
 
 def _play_batch_group(
-    spymaster: LearnedSpymaster,
+    spymaster: BatchScoringSpymaster,
     guessers: dict[int, Guesser],
     boards: list[Board],
     sims: SimilarityTensor,
@@ -119,13 +119,8 @@ def _play_batch_group(
             team = turn_order[round_index % 2]
             current_seeds = list(active.keys())
             views = [active[s] if team == "A" else OpponentBoardView(active[s]) for s in current_seeds]
-            turn_indices = [len(v.revealed) for v in views]
-
-            features = build_features_batch_multi(sims, views, turn_indices, device)  # (n, n_clues, dim)
-            n_active, n_clues, dim = features.shape
-            with torch.no_grad():
-                probs = spymaster.model.predict_proba(features.reshape(n_active * n_clues, dim).to(spymaster.device))
-            probs = probs.cpu().numpy().reshape(n_active, n_clues, -1)
+            contexts = [TurnContext(board=v, turn_index=len(v.revealed)) for v in views]
+            scored = spymaster.score_batch(sims, contexts)
 
             # Clue selection is pure CPU/numpy work (cheap) -- computed
             # up front, sequentially, so phase 2 below has nothing left to
@@ -135,13 +130,7 @@ def _play_batch_group(
             for i, seed in enumerate(current_seeds):
                 view = views[i]
                 view_by_seed[seed] = view
-                best_n, scores = expected_reward_and_best_n(
-                    probs[i],
-                    own_reward=spymaster.own_reward,
-                    neutral_reward=spymaster.neutral_reward,
-                    opponent_reward=spymaster.opponent_reward,
-                    assassin_reward=spymaster.miss_penalty,
-                )
+                best_n, scores = scored[i]
                 clue = top_legal_clue(sims, view, scores)
                 number = int(best_n[sims.clue_index[clue.lower()]])
                 clue_and_number[seed] = (clue, number)
@@ -200,7 +189,7 @@ def _play_batch_group(
 
 
 def run_two_team_self_play_gpu(
-    spymaster: LearnedSpymaster,
+    spymaster: BatchScoringSpymaster,
     guesser_pool_config: Path,
     guesser_name: str,
     seeds: list[int],
@@ -220,8 +209,7 @@ def run_two_team_self_play_gpu(
     params in codenames/two_team_arena.py -- same persisted format,
     written from this single process instead of across worker processes."""
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    spymaster.model.to(device)
-    spymaster.device = device
+    spymaster.to_device(device)
 
     if guesser_name == MIXED_GUESSER:
         pool = list(training_pool(guesser_pool_config).values())

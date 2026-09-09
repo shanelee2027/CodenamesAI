@@ -2,7 +2,7 @@
 trained Scorer, with four runtime reward parameters.
 
 Scores every candidate clue in one batched forward pass, per SCOPE §2:
-`build_features_batch` gathers+sorts the whole clue vocabulary against the
+feature construction gathers+sorts the whole clue vocabulary against the
 current board in one vectorized pass (no per-clue Python loop), the model
 scores all of them in one forward pass, and `expected_reward_and_best_n`
 (see codenames/scorer.py) turns that into a (best_n, score) pair per clue
@@ -14,27 +14,56 @@ particular reward value, only against the empirical (k, cause) outcome.
 the one meant to double as SCOPE's "risk aversion" knob and the existing
 web UI field already calls it that.
 
-`turn_index` isn't part of the Spymaster interface (`give_clue(board,
-sims)` -- no turn counter is threaded through the arena/game loop). Uses
-the same proxy `generate_training_data.py` used to label training examples
-(count of currently-revealed words) -- using a different proxy at play time
-than at training time would be a silent train/serve skew.
+`score_batch` (docs/iteration-architecture.md step 3) is the one place
+this class does feature construction + forward pass + expected-reward --
+`top_clues`/`give_clue` call it with a one-element context list, and
+codenames/gpu_arena.py and codenames/two_team_gpu_arena.py call it with
+many contexts at once (many simultaneous boards' turns) instead of
+reaching into `.model`/`.own_reward`/`.miss_penalty` and calling
+`expected_reward_and_best_n` themselves -- one scoring implementation
+instead of two that can drift apart.
+
+Feature construction inside `score_batch` branches on device: on CUDA it
+uses `codenames.gpu_features.build_features_batch_multi`, which
+materializes the whole similarity tensor on-device once per process (fast
+-- see that module's docstring for the measured speedup) -- fine for the
+GPU arena's one dedicated process per run. On CPU it instead loops
+`codenames.features.build_features_batch` per context, which only ever
+reads the handful of tensor columns a given board actually needs off the
+mmap. That matters concretely for scripts/run_arena.py's --no-gpu-batch
+fallback, which constructs a LearnedSpymaster fresh inside each of N
+spawned CPU worker processes (codenames/arena.py) -- materializing a
+private full-tensor copy in every one of them is exactly the RSS blowup
+docs/design-decisions.md's memory design note (and
+codenames/spymasters/linear_scorer.py's docstring) warns about, so the CPU
+path deliberately keeps the mmap-friendly per-board reads instead of
+routing through the GPU-oriented batched gather.
+
+`turn_index` comes from the caller's `TurnContext` (see
+codenames/spymasters/base.py) -- previously this class reconstructed it
+internally as `len(board.revealed)`, the same proxy
+`generate_training_data.py` uses to label training examples, but recomputing
+it here risked a silent train/serve skew if the two ever diverged. Now the
+game loop (codenames/game.py::play_turn) computes it once, the same way,
+and threads it through explicitly.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
+import numpy as np
 import torch
 
-from codenames.board import Board, Role
+from codenames.board import Board, OpponentBoardView, Role
 from codenames.clue_search import top_k_legal_clues, top_legal_clue
 from codenames.features import build_features_batch
 from codenames.game import ROLE_REWARD
+from codenames.gpu_features import build_features_batch_multi
 from codenames.scorer import DEFAULT_MISS_PENALTY, OWN_REWARD, Scorer, expected_reward_and_best_n
 from codenames.similarity import SimilarityTensor
 
-from .base import Spymaster
+from pathlib import Path
+
+from .base import Spymaster, TurnContext
 
 # Over-fetch pool when a rarity filter is active: the forward pass scoring
 # the whole vocabulary already happened, so asking top_k_legal_clues to
@@ -74,7 +103,15 @@ class LearnedSpymaster(Spymaster):
         self.model.load_state_dict(checkpoint["model_state"])
         self.model.eval()
 
-    def _pick_legal_clue(self, sims: SimilarityTensor, board: Board, scores) -> str:
+    def to_device(self, device: torch.device | str) -> None:
+        """Moves the model (and every future score_batch call) onto
+        `device` -- replaces an arena reaching in to set
+        `spymaster.model.to(device)`/`spymaster.device` directly (see
+        codenames/gpu_arena.py, codenames/two_team_gpu_arena.py)."""
+        self.device = device if isinstance(device, torch.device) else torch.device(device)
+        self.model.to(self.device)
+
+    def _pick_legal_clue(self, sims: SimilarityTensor, board: Board | OpponentBoardView, scores) -> str:
         """top_legal_clue, unless a rarity filter is active and there's
         actually a percentile table to filter against -- then fetch a
         larger pool of legal candidates and take the best one that clears
@@ -89,35 +126,49 @@ class LearnedSpymaster(Spymaster):
                 return clue
         return top_legal_clue(sims, board, scores)
 
-    def _score_all_clues(self, board: Board, sims: SimilarityTensor) -> tuple:
-        """(best_n, score) per clue in sims.clue_words -- shared by
-        give_clue() and top_k_clues() so both use the exact same forward
-        pass and the exact same current reward settings."""
-        turn_index = len(board.revealed)
-        features = build_features_batch(board, sims, turn_index)
+    def score_batch(self, sims: SimilarityTensor, contexts: list[TurnContext]) -> list[tuple[np.ndarray, np.ndarray]]:
+        """(best_n, scores) per context, indexed by sims.clue_words --
+        the only place this class builds features, runs the model, and
+        turns probabilities into expected reward. See the module
+        docstring for why feature construction branches on device."""
+        if self.device.type == "cuda":
+            boards = [ctx.board for ctx in contexts]
+            turn_indices = [ctx.turn_index for ctx in contexts]
+            features = build_features_batch_multi(sims, boards, turn_indices, self.device)  # (n, n_clues, dim)
+        else:
+            stacked = np.stack([build_features_batch(ctx.board, sims, ctx.turn_index) for ctx in contexts])
+            features = torch.from_numpy(stacked).to(self.device)
 
+        n, n_clues, dim = features.shape
         with torch.no_grad():
-            x = torch.from_numpy(features).to(self.device)
-            probs = self.model.predict_proba(x).cpu().numpy()
+            probs = self.model.predict_proba(features.reshape(n * n_clues, dim)).cpu().numpy()
+        probs = probs.reshape(n, n_clues, -1)
 
-        return expected_reward_and_best_n(
-            probs,
-            own_reward=self.own_reward,
-            neutral_reward=self.neutral_reward,
-            opponent_reward=self.opponent_reward,
-            assassin_reward=self.miss_penalty,
-        )
+        return [
+            expected_reward_and_best_n(
+                probs[i],
+                own_reward=self.own_reward,
+                neutral_reward=self.neutral_reward,
+                opponent_reward=self.opponent_reward,
+                assassin_reward=self.miss_penalty,
+            )
+            for i in range(n)
+        ]
 
-    def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
-        best_n, scores = self._score_all_clues(board, sims)
-        clue = self._pick_legal_clue(sims, board, scores)
-        clue_idx = sims.clue_index[clue.lower()]
-        return clue, int(best_n[clue_idx])
-
-    def top_k_clues(self, board: Board, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
+    def top_clues(self, ctx: TurnContext, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
         """Up to k best legal (clue, number, score) triples, best first --
         for inspecting what the model likes rather than just its single
-        pick (scripts/web_inspector.py)."""
-        best_n, scores = self._score_all_clues(board, sims)
+        pick (scripts/web_inspector.py). k==1 (give_clue's own case) goes
+        through `_pick_legal_clue` so a rarity filter, if active, applies
+        the same way it always did for a single pick; k>1 does not apply
+        the rarity filter (unchanged from before this method existed --
+        scripts/web_inspector.py applies its own post-hoc filter over a
+        larger fetched pool in that case)."""
+        board = ctx.board
+        best_n, scores = self.score_batch(sims, [ctx])[0]
+        if k == 1:
+            clue = self._pick_legal_clue(sims, board, scores)
+            idx = sims.clue_index[clue.lower()]
+            return [(clue, int(best_n[idx]), float(scores[idx]))]
         clues = top_k_legal_clues(sims, board, scores, k)
         return [(clue, int(best_n[sims.clue_index[clue.lower()]]), float(scores[sims.clue_index[clue.lower()]])) for clue in clues]

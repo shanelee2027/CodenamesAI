@@ -27,18 +27,17 @@ from pathlib import Path
 
 import torch
 
-from codenames.spymasters import CentroidSpymaster, LearnedSpymaster, LinearScorerSpymaster, OracleSpymaster, RandomSpymaster
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
+from codenames.spymasters.registry import load_spymasters, spymaster_spec
 from codenames.two_team_arena import run_two_team_self_play
 from codenames.two_team_gpu_arena import run_two_team_self_play_gpu
 
-BASE_SPYMASTER_SPECS: dict[str, tuple[type, dict]] = {
-    "random": (RandomSpymaster, {"seed": 0}),
-    "centroid": (CentroidSpymaster, {"seed": 0}),
-    "linear_scorer": (LinearScorerSpymaster, {}),
-    "oracle": (OracleSpymaster, {}),
-}
+# This script's baseline set (unchanged from before the registry existed).
+# Names into configs/spymasters.json; "learned" is built separately since
+# it needs a --checkpoint, supplied per invocation rather than fixed in
+# that config.
+BASE_SPYMASTER_NAMES = ["random", "centroid", "linear_scorer", "oracle"]
 
 
 def main() -> None:
@@ -52,7 +51,7 @@ def main() -> None:
         "independently draws a guesser uniformly from the whole pool, matching the distribution the "
         "spymaster was actually trained against (see codenames/two_team_arena.py::MIXED_GUESSER)",
     )
-    parser.add_argument("--spymaster", choices=list(BASE_SPYMASTER_SPECS), default=None, help="a baseline spymaster")
+    parser.add_argument("--spymaster", choices=BASE_SPYMASTER_NAMES, default=None, help="a baseline spymaster")
     parser.add_argument("--checkpoint", type=Path, default=None, help="a learned scorer checkpoint instead of a baseline spymaster")
     parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for a learned spymaster (default: -10.0)")
     parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS (per team)")
@@ -83,12 +82,13 @@ def main() -> None:
     use_gpu_batch = args.checkpoint is not None and not args.no_gpu_batch
 
     if args.checkpoint is not None:
-        spymaster_cls, spymaster_kwargs = LearnedSpymaster, {"checkpoint_path": args.checkpoint}
+        overrides = {"checkpoint_path": args.checkpoint}
         if args.risk_aversion is not None:
-            spymaster_kwargs["miss_penalty"] = args.risk_aversion
+            overrides["miss_penalty"] = args.risk_aversion
+        spymaster_cls, spymaster_kwargs = spymaster_spec("learned", **overrides)
         spymaster_label = f"learned:{args.checkpoint.parent.name}"
     else:
-        spymaster_cls, spymaster_kwargs = BASE_SPYMASTER_SPECS[args.spymaster]
+        spymaster_cls, spymaster_kwargs = load_spymasters()[args.spymaster].spec
         spymaster_label = args.spymaster
 
     kwargs = {}

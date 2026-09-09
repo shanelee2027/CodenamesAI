@@ -50,12 +50,13 @@ import numpy as np
 
 from codenames.board import Board, Role, is_legal_clue
 from codenames.clue_search import clue_rarity_percentile
-from codenames.spymasters import CentroidSpymaster, LearnedSpymaster, OracleSpymaster, RandomSpymaster
 from codenames.game import DEFAULT_MAX_TURNS, ROLE_REWARD, play_two_team_game
 from codenames.guessers import load_pool
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.scorer import DEFAULT_MISS_PENALTY, OWN_REWARD
 from codenames.similarity import SimilarityTensor
+from codenames.spymasters.base import TurnContext
+from codenames.spymasters.registry import load_spymasters, spymaster_spec
 from inspector import BASELINE_ROLE_WEIGHTS, ROLE_LABELS, baseline_score
 
 HTML_PATH = Path(__file__).parent / "webui" / "inspector.html"
@@ -154,12 +155,13 @@ def _load_learned_spymasters() -> dict:
             # rarity_percentile/max_rarity: UI-only defaults (arena/training
             # scripts construct LearnedSpymaster with the class default of
             # 100.0 = no filtering, unaffected by this). See
-            # codenames/spymasters/learned.py's give_clue for how this is
+            # codenames/spymasters/learned.py's top_clues for how this is
             # used, and _apply_reward_overrides below for how a request can
             # override it per call.
-            learned[f"learned:{label}"] = LearnedSpymaster(
-                path, rarity_percentile=CLUE_RARITY_PERCENTILE, max_rarity=_DEFAULT_UI_MAX_RARITY
+            cls, kwargs = spymaster_spec(
+                "learned", checkpoint_path=path, rarity_percentile=CLUE_RARITY_PERCENTILE, max_rarity=_DEFAULT_UI_MAX_RARITY
             )
+            learned[f"learned:{label}"] = cls(**kwargs)
         except Exception as e:
             # e.g. linear_baseline's checkpoint holds a LinearScorer, whose
             # state dict doesn't match Scorer's architecture -- skip rather
@@ -168,14 +170,19 @@ def _load_learned_spymasters() -> dict:
     return learned
 
 
-# SPYMASTERS is finalized before the server starts serving (main() may add
-# an explicit --checkpoint on top of whatever auto-discovery found).
+# configs/spymasters.json's baseline entries (codenames/spymasters/registry.py)
+# -- this UI's own naming/gating on top: "oracle:numberbatch" (not just
+# "oracle") to name the fixed space it's built with, and only offered at
+# all if that space actually exists in this SIMS build. SPYMASTERS is
+# finalized before the server starts serving (main() may add an explicit
+# --checkpoint on top of whatever auto-discovery found).
+_SPYMASTER_ENTRIES = load_spymasters()
 SPYMASTERS: dict = {
-    "random": RandomSpymaster(seed=0),
-    "centroid": CentroidSpymaster(seed=0),
+    "random": _SPYMASTER_ENTRIES["random"].build(),
+    "centroid": _SPYMASTER_ENTRIES["centroid"].build(),
 }
 if "numberbatch" in SIMS.spaces:
-    SPYMASTERS["oracle:numberbatch"] = OracleSpymaster(space="numberbatch")
+    SPYMASTERS["oracle:numberbatch"] = _SPYMASTER_ENTRIES["oracle"].build()
 SPYMASTERS.update(_load_learned_spymasters())
 
 
@@ -289,12 +296,12 @@ def _apply_reward_overrides(spymaster, overrides: dict[str, str]) -> None:
             setattr(spymaster, attr, float(value))
 
 
-# Over-fetch pool when a rarity filter is active: top_k_clues' own
-# candidate pool (clue_search._CANDIDATE_POOL) already defaults to 200,
-# so asking for a few hundred more is close to free computationally (the
-# forward pass scoring the whole vocabulary already happened; this only
-# affects how many of clue_search's already-sorted candidates get walked
-# for legality + the rarity check).
+# Over-fetch pool when a rarity filter is active: top_clues' own candidate
+# pool (clue_search._CANDIDATE_POOL) already defaults to 200, so asking
+# for a few hundred more is close to free computationally (the forward
+# pass scoring the whole vocabulary already happened for a scoring model;
+# this only affects how many of clue_search's already-sorted candidates
+# get walked for legality + the rarity check).
 _RARITY_FETCH_POOL = 300
 
 
@@ -310,21 +317,26 @@ def build_give_clue_response(
     filtering"; pass 100 for that) excludes clues above that
     CLUE_RARITY_PERCENTILE -- e.g. max_rarity=50 keeps only
     the more-common half of the clue vocabulary, screening out obscure
-    picks like "confectionery". Only applies to spymasters exposing
-    top_k_clues (i.e. not RandomSpymaster, which has no ranking to
-    filter); may return fewer than top_k if the over-fetch pool doesn't
-    contain that many eligible clues, same as top_k_legal_clues' own
-    "fewer than k" case."""
+    picks like "confectionery". Every Spymaster implements top_clues (see
+    codenames/spymasters/base.py), so filtering applies uniformly now --
+    including RandomSpymaster, whose "top k" is just k independent random
+    legal draws rather than a real ranking (see
+    codenames/spymasters/random_clue.py), so filtering there just means
+    "keep drawing until enough of them clear the rarity threshold." May
+    return fewer than top_k if the over-fetch pool doesn't contain that
+    many eligible clues, same as top_k_legal_clues' own "fewer than k"
+    case."""
     if spymaster_name not in SPYMASTERS:
         return {"error": f"unknown spymaster {spymaster_name!r}, choices: {list(SPYMASTERS)}"}
     spymaster = SPYMASTERS[spymaster_name]
     _apply_reward_overrides(spymaster, reward_overrides or {})
     board = _make_board(seed, reveal)
+    ctx = TurnContext(board=board, turn_index=len(board.revealed))
 
-    filtering = max_rarity < 100.0 and hasattr(spymaster, "top_k_clues")
-    if (top_k > 1 or filtering) and hasattr(spymaster, "top_k_clues"):
+    filtering = max_rarity < 100.0
+    if top_k > 1 or filtering:
         fetch_k = max(top_k, _RARITY_FETCH_POOL) if filtering else top_k
-        candidates = spymaster.top_k_clues(board, SIMS, fetch_k)
+        candidates = spymaster.top_clues(ctx, SIMS, fetch_k)
         if filtering:
             candidates = [c for c in candidates if CLUE_RARITY_PERCENTILE.get(c[0], 100.0) <= max_rarity]
         clues = [
@@ -332,7 +344,7 @@ def build_give_clue_response(
             for c, n, s in candidates[:top_k]
         ]
     else:
-        clue, number = spymaster.give_clue(board, SIMS)
+        clue, number = spymaster.give_clue(ctx, SIMS)
         clues = [{"clue": clue, "number": number, "score": None, "rarity_percentile": CLUE_RARITY_PERCENTILE.get(clue)}]
 
     return {"spymaster": spymaster_name, "clues": clues}
@@ -582,9 +594,10 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.checkpoint is not None:
-        SPYMASTERS["learned"] = LearnedSpymaster(
-            args.checkpoint, rarity_percentile=CLUE_RARITY_PERCENTILE, max_rarity=_DEFAULT_UI_MAX_RARITY
+        cls, kwargs = spymaster_spec(
+            "learned", checkpoint_path=args.checkpoint, rarity_percentile=CLUE_RARITY_PERCENTILE, max_rarity=_DEFAULT_UI_MAX_RARITY
         )
+        SPYMASTERS["learned"] = cls(**kwargs)
         print(f"loaded learned spymaster from {args.checkpoint}")
 
     server = ThreadingHTTPServer(("localhost", args.port), Handler)

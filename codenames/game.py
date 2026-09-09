@@ -39,11 +39,17 @@ from codenames.similarity import SimilarityTensor
 
 if TYPE_CHECKING:
     # Deferred: spymasters/learned.py depends on scorer.py, which depends
-    # on this module (for ROLE_REWARD) -- importing Spymaster at runtime
-    # here would close that into a circular import. `from __future__ import
-    # annotations` (above) already makes every annotation in this file a
-    # lazy string, so this is only ever needed by type checkers.
-    from codenames.spymasters.base import Spymaster
+    # on this module (for ROLE_REWARD) -- importing Spymaster (or
+    # TurnContext) at module level here would close that into a circular
+    # import. `from __future__ import annotations` (above) already makes
+    # every annotation in this file a lazy string, so Spymaster itself is
+    # only ever needed by type checkers. `TurnContext` is also
+    # constructed at runtime (not just referenced in an annotation), so
+    # `play_turn` imports it locally instead -- by the time play_turn is
+    # actually called, whatever constructed the `spymaster` argument has
+    # already fully imported codenames.spymasters, so the cycle above
+    # can't actually happen at that point.
+    from codenames.spymasters.base import Spymaster, TurnContext
 
 ROLE_REWARD: dict[Role, float] = {
     Role.OWN: 1.0,
@@ -98,7 +104,15 @@ def play_turn(
     claim a bonus guess beyond `number` if it has a real reason to
     (default: 0, i.e. every guesser that doesn't override `bonus_guesses`
     plays exactly as it always has)."""
-    clue, number = clue_and_number if clue_and_number is not None else spymaster.give_clue(board, sims)
+    if clue_and_number is not None:
+        clue, number = clue_and_number
+    else:
+        # Local import: see the module-level TYPE_CHECKING comment above
+        # for why TurnContext can't be imported at module scope here.
+        from codenames.spymasters.base import TurnContext
+
+        ctx = TurnContext(board=board, turn_index=len(board.revealed))
+        clue, number = spymaster.give_clue(ctx, sims)
     candidates = [w for w in board.words if not board.is_revealed(w)]
     bonus = guesser.bonus_guesses(clue, candidates, sims, number, history=history)
     ranked = guesser.rank_candidates(clue, candidates, sims, number=number, history=history)

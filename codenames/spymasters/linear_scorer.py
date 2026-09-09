@@ -27,11 +27,11 @@ from __future__ import annotations
 import numpy as np
 
 from codenames.board import Board, Role
-from codenames.clue_search import top_k_legal_clues, top_legal_clue
+from codenames.clue_search import top_k_legal_clues
 from codenames.similarity import SimilarityTensor
 
 from ._util import natural_number
-from .base import MAX_CLUE_NUMBER, Spymaster
+from .base import MAX_CLUE_NUMBER, Spymaster, TurnContext
 
 DEFAULT_WEIGHTS: dict[Role, float] = {
     Role.OWN: 1.0,
@@ -58,13 +58,8 @@ class LinearScorerSpymaster(Spymaster):
             total += weight * np.nan_to_num(role_mean, nan=0.0)
         return total
 
-    def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
-        total = self._score_all_clues(board, sims)
-        clue = top_legal_clue(sims, board, total)
-        number = natural_number(sims, board, clue, MAX_CLUE_NUMBER)
-        return clue, number
-
-    def top_k_clues(self, board: Board, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
+    def top_clues(self, ctx: TurnContext, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
+        board = ctx.board
         total = self._score_all_clues(board, sims)
         clues = top_k_legal_clues(sims, board, total, k)
         return [(clue, natural_number(sims, board, clue, MAX_CLUE_NUMBER), float(total[sims.clue_index[clue.lower()]])) for clue in clues]

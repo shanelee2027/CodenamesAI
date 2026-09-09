@@ -16,11 +16,11 @@ is not what we want here).
 from __future__ import annotations
 
 from codenames.board import Board, Role
-from codenames.clue_search import mean_similarity_to_words, top_k_legal_clues, top_legal_clue
+from codenames.clue_search import mean_similarity_to_words, top_k_legal_clues
 from codenames.similarity import SimilarityTensor
 
 from ._util import natural_number, state_rng
-from .base import MAX_CLUE_NUMBER, Spymaster
+from .base import MAX_CLUE_NUMBER, Spymaster, TurnContext
 
 
 class CentroidSpymaster(Spymaster):
@@ -34,15 +34,11 @@ class CentroidSpymaster(Spymaster):
         subset = rng.sample(own_unrevealed, k=subset_size)
         return mean_similarity_to_words(sims, subset)
 
-    def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
-        scores = self._score_all_clues(board, sims)
-        clue = top_legal_clue(sims, board, scores)
-        number = natural_number(sims, board, clue, MAX_CLUE_NUMBER)
-        return clue, number
-
-    def top_k_clues(self, board: Board, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
+    def top_clues(self, ctx: TurnContext, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
         """Uses the same (deterministic, state_rng-seeded) own-word subset
-        as give_clue() would for this exact board state."""
+        for every clue in this call -- give_clue() (k=1) and a k>1 request
+        against the same board state agree on which subset was used."""
+        board = ctx.board
         scores = self._score_all_clues(board, sims)
         clues = top_k_legal_clues(sims, board, scores, k)
         return [(clue, natural_number(sims, board, clue, MAX_CLUE_NUMBER), float(scores[sims.clue_index[clue.lower()]])) for clue in clues]

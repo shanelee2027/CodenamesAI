@@ -2791,4 +2791,104 @@ have left the docs disagreeing with the code about what the role is
 called, which seemed worse for a project that has to be read and
 defended as a whole.
 
+## Iteration architecture steps 1-3: TurnContext, spymaster registry, batched-scoring protocol
+
+Implemented the first three steps of `docs/iteration-architecture.md`
+(steps 4-7 deliberately left for later, per that doc's own scoping).
+
+**Step 1 (TurnContext + top-k interface).** `Spymaster.give_clue(board,
+sims)` became `Spymaster.top_clues(ctx, sims, k)` as the one abstract
+method, with `give_clue` now a concrete one-line wrapper
+(`top_clues(ctx, sims, 1)[0]`). All six spymasters and every caller
+(`codenames/game.py::play_turn`, `codenames/gpu_arena.py`,
+`codenames/two_team_gpu_arena.py`, `scripts/web_inspector.py`) updated.
+`play_turn` builds the `TurnContext` (`turn_index=len(board.revealed)`,
+the same proxy `LearnedSpymaster` used to reconstruct internally) so
+`LearnedSpymaster` no longer recomputes it itself -- closes the
+train/serve-skew risk its own docstring used to flag.
+
+Judgment call: `RandomSpymaster` never had a `top_k_clues` method before
+(there's no real "ranking" for a uniform random pick) -- `top_clues` now
+returns k independent, distinct, legal random draws with score 0.0, and
+the k=1 case reproduces the exact old `rng.choice`/`rng.randint` draw
+sequence so `give_clue`'s behavior is byte-for-byte unchanged. One
+consequence: `scripts/web_inspector.py`'s rarity filter, which previously
+silently no-op'd for Random (it had no `top_k_clues` to hasattr-gate on),
+now actually filters Random's draws too. This only affects the UI
+exploration tool, not evaluation.
+
+Judgment call: `LearnedSpymaster` used to have two independent
+clue-selection paths -- `give_clue` (via `_pick_legal_clue`, which applies
+a rarity filter when one is configured) and `top_k_clues` (via
+`top_k_legal_clues`, which never filtered). Unifying them behind one
+`top_clues` while preserving both existing behaviors exactly meant
+branching on `k` inside `top_clues` (k==1 keeps the rarity-aware pick,
+k>1 keeps the unfiltered top-k) rather than generalizing the filter to
+every k -- generalizing would have either silently started returning
+fewer-than-requested candidates in a new way or silently started padding
+results to k, both of which are behavior changes a "pure refactor" step
+shouldn't introduce on its own judgment.
+
+**Step 2 (spymaster registry).** Added `codenames/spymasters/registry.py`
++ `configs/spymasters.json`, mirroring `codenames/guessers/registry.py`'s
+structure (`SPYMASTER_CLASSES`, `load_spymasters`, a `SpymasterEntry` with
+a picklable `.spec` and a `.build()`). Deleted the three duplicated
+hardcoded baseline tables in `scripts/run_arena.py`,
+`scripts/run_two_team_arena.py`, and `scripts/web_inspector.py`.
+
+Judgment call: `run_arena.py`'s baseline set (`random`/`centroid`/
+`linear_scorer`) and `run_two_team_arena.py`'s (those three plus
+`oracle`) were never the same set, so a single shared config listing all
+four baselines could not just be consumed wholesale by both scripts
+without silently adding `oracle` to `run_arena.py`'s cross-play matrix (a
+real output/behavior change, not just a refactor). Each script instead
+keeps its own short list of *names* into the shared config
+(`BASE_SPYMASTER_NAMES`), preserving each script's exact existing
+baseline set while still eliminating the duplicated `(class, kwargs)`
+literals. `learned` isn't buildable straight from the config (no fixed
+checkpoint path belongs in a static file) -- `registry.spymaster_spec(name,
+**overrides)` merges a caller-supplied `checkpoint_path` (and any reward
+overrides) into that entry's params at call time.
+
+**Step 3 (batched-scoring protocol).** Added `TurnContext`-based
+`BatchScoringSpymaster` protocol (`score_batch`/`to_device`) to
+`codenames/spymasters/base.py`. `codenames/gpu_arena.py` and
+`codenames/two_team_gpu_arena.py` no longer import `LearnedSpymaster` or
+touch `.model`/`.own_reward`/`.miss_penalty`/`expected_reward_and_best_n`
+-- they gather `TurnContext`s and call `score_batch`/`to_device`, then
+still do `clue_search.top_legal_clue` themselves (legality stays in the
+arena, per the doc). `LearnedSpymaster.top_clues`/`give_clue` now route
+through `score_batch` with a one-element context list, so there is one
+scoring implementation, not two.
+
+Judgment call (flagged rather than silently resolved): `score_batch`'s
+feature-construction step branches on `self.device.type`. On CUDA it uses
+`codenames/gpu_features.py`'s torch-batched gather (which materializes
+the whole similarity tensor on-device once per process -- already true of
+the GPU arena before this refactor). On CPU it instead loops
+`codenames/features.py::build_features_batch` per context, which only
+reads the handful of tensor columns a board actually needs off the mmap.
+Using the GPU-oriented path unconditionally would have been simpler (one
+literal code path instead of a branch), but `scripts/run_arena.py
+--checkpoint --no-gpu-batch` constructs a `LearnedSpymaster` fresh inside
+each of N spawned CPU worker processes (`codenames/arena.py`), and
+materializing a private full-tensor copy in every one of them is exactly
+the RSS blowup `docs/design-decisions.md`'s memory design note (and
+`spymasters/linear_scorer.py`'s docstring) warns against. Verified by
+running that `--no-gpu-batch` path (fake checkpoint, real similarity
+tensor) and confirming per-worker peak RSS only grew ~240MB over the
+baselines-only run, not by the tensor's full size -- and separately
+confirmed the CPU and CUDA branches produce numerically identical
+results (`run_arena.py --checkpoint` with and without `--no-gpu-batch`,
+and `run_two_team_arena.py` likewise, all matched exactly; this machine
+actually has CUDA available, so `tests/test_gpu_arena.py` and
+`tests/test_two_team_gpu_arena.py` ran for real rather than being
+skipped).
+
+All 277 tests pass (263 original + 14 new: a spymaster-registry test
+class, a `RandomSpymaster.top_clues` test, a `score_batch` batching test,
+and an abstractness test for the new `top_clues` requirement). Steps 4-7
+(rollout caching, frozen eval suite, eval store, naming/layout) are
+untouched, per the assigned scope.
+
 ## Human evaluation (not started)

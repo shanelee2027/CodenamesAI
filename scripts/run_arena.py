@@ -27,16 +27,17 @@ from pathlib import Path
 import torch
 
 from codenames.arena import run_arena
-from codenames.spymasters import CentroidSpymaster, LearnedSpymaster, LinearScorerSpymaster, RandomSpymaster
 from codenames.gpu_arena import run_arena_gpu
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
+from codenames.spymasters.registry import load_spymasters, spymaster_spec
 
-BASE_SPYMASTER_SPECS = {
-    "random": (RandomSpymaster, {"seed": 0}),
-    "centroid": (CentroidSpymaster, {"seed": 0}),
-    "linear_scorer": (LinearScorerSpymaster, {}),
-}
+# This script's baseline set (unchanged from before the registry existed --
+# "oracle" is a scripts/run_two_team_arena.py-only exploration tool, not
+# part of this cross-play diagnostic). Names into configs/spymasters.json;
+# "learned" is built separately since it needs a --checkpoint, supplied per
+# invocation rather than fixed in that config.
+BASE_SPYMASTER_NAMES = ["random", "centroid", "linear_scorer"]
 
 
 def main() -> None:
@@ -69,14 +70,16 @@ def main() -> None:
     seeds = list(range(args.n_boards))
     use_gpu_batch = args.checkpoint is not None and not args.no_gpu_batch
 
-    spymaster_specs = dict(BASE_SPYMASTER_SPECS)
-    learned_kwargs = {}
+    all_entries = load_spymasters()
+    spymaster_specs = {name: all_entries[name].spec for name in BASE_SPYMASTER_NAMES}
+    learned_cls, learned_kwargs = None, {}
     if args.checkpoint is not None:
-        learned_kwargs = {"checkpoint_path": args.checkpoint}
+        overrides = {"checkpoint_path": args.checkpoint}
         if args.risk_aversion is not None:
-            learned_kwargs["miss_penalty"] = args.risk_aversion
+            overrides["miss_penalty"] = args.risk_aversion
+        learned_cls, learned_kwargs = spymaster_spec("learned", **overrides)
         if not use_gpu_batch:
-            spymaster_specs["learned"] = (LearnedSpymaster, learned_kwargs)
+            spymaster_specs["learned"] = (learned_cls, learned_kwargs)
 
     kwargs = {}
     if args.max_turns is not None:
@@ -94,7 +97,7 @@ def main() -> None:
 
     if use_gpu_batch:
         sims = SimilarityTensor.load(args.sims_cache_dir)
-        learned_spymaster = LearnedSpymaster(**learned_kwargs)
+        learned_spymaster = learned_cls(**learned_kwargs)
         gpu_results = run_arena_gpu(
             spymaster=learned_spymaster,
             spymaster_name="learned",
