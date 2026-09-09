@@ -124,6 +124,65 @@ assassin especially -- to hold in **every** built space. `ClueStats`
 already carries mean/std for all three, so this is a filter change, not
 an architectural one.
 
+## Tightened defaults: `own_top=0.02`, `assassin_outside=0.60`
+
+The original defaults announced 4 on essentially every fresh board (mean
+3.93 at turn 0; the pooled 3.14 was diluted by late-game turns with fewer
+own words left, not by any judgment). Swept `own_top` and the assassin bar
+over 100 games each:
+
+| own_top | assassin_outside | listener | mean n | corr/clue | own% | assassin% |
+|---|---|---|---|---|---|---|
+| 0.10 | 0.30 | numberbatch | 3.14 | 2.91 | 94.2 | 0.0 |
+| 0.10 | 0.30 | glove | 3.10 | 1.62 | 69.6 | 29.0 |
+| 0.05 | 0.30 | glove | 2.58 | 1.60 | 73.9 | 21.0 |
+| 0.03 | 0.30 | glove | 2.35 | 1.52 | 75.0 | 22.0 |
+| 0.03 | 0.50 | glove | 2.22 | 1.45 | 75.5 | 17.0 |
+| **0.02** | **0.60** | glove | 1.96 | 1.42 | 79.0 | **11.0** |
+
+Two things the sweep settles. Tightening `own_top` alone drives the clue
+number down but **plateaus on the cross-space assassin problem** at ~22% --
+a stricter own-word bar cannot constrain where the assassin sits in a space
+never consulted. The assassin threshold is the lever that moves it
+(30% -> 50% -> 60% gives 22% -> 17% -> 11%). The cost of tightening is game
+length: 5.3 -> 8.2 half-turns.
+
+Current defaults, 100 games per listener:
+
+| listener | mean n | corr/clue | own% | assassin% |
+|---|---|---|---|---|
+| `noisy_numberbatch` | 1.94 | 1.92 | 99.0 | 0.0 |
+| `noisy_glove` | 1.96 | 1.42 | 79.0 | 11.0 |
+| `noisy_wikipedia2vec` | 1.99 | 1.38 | 76.3 | 26.0 |
+
+## The expected-reward term is currently inert
+
+Worth stating plainly, because the code's shape suggests otherwise.
+`score = k - risk` is computed every turn, but at the default
+`guesser_noise_std=0.03` it changes nothing. Driving the risk term to zero
+(`guesser_noise_std=0.0001`, which sends every flip probability to 0 and
+makes `score = k` exactly) gives a mean clue number of 1.95 against 1.94
+with it on -- the same games, effectively.
+
+| `guesser_noise_std` | mean n | corr/clue | own% |
+|---|---|---|---|
+| 0.0001 (risk off) | 1.95 | 1.93 | 99.2 |
+| 0.03 (default) | 1.94 | 1.92 | 99.0 |
+| 0.15 (amplified) | 1.12 | 1.12 | 99.9 |
+
+The cause is structural: the role thresholds already reject every clue with
+a nearby distractor, so among surviving candidates all flip probabilities
+are ~0 and `score = k - risk` collapses to `score = k`. **What this model
+actually does is maximize k, breaking ties by margin.** The risk term only
+becomes live at `guesser_noise_std=0.15`, where it dominates and drives the
+clue number to 1.12.
+
+That is not necessarily wrong for a baseline -- a threshold-and-count rule
+is easy to explain and defend -- but it should be described as what it is,
+not as an expected-reward model. Making it genuinely load-bearing would
+mean loosening the pre-filter so risk actually varies across candidates,
+which is a design change, not a tuning one.
+
 ## Open for the next model
 
 - `own_top`/`MAX_CLUE_NUMBER` interact in a way that makes "announce 4"

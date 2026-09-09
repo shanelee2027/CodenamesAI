@@ -53,7 +53,10 @@
     {
       "name": "z_threshold",
       "type": "z_threshold",
-      "params": {},
+      "params": {
+        "own_top": 0.02,
+        "assassin_outside": 0.6
+      },
       "trained": false,
       "roles": [
         "baseline"
