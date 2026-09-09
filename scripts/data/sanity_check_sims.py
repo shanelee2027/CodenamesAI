@@ -1,8 +1,9 @@
-"""Print top-20 nearest clues for sample board words (SCOPE.md §M2/§M4).
+"""Print top-20 nearest clues for sample board words.
 
-Do not proceed past M2 (or after extending the tensor in M4) without
-eyeballing this output. If the tensor indexing is wrong, everything
-downstream is wrong and it will not be obvious from unit tests alone.
+Do not proceed past building the similarity tensor (or after extending it
+with another space) without eyeballing this output. If the tensor indexing
+is wrong, everything downstream is wrong and it will not be obvious from
+unit tests alone.
 
 Prints one block per space found in the loaded tensor, so a newly added
 space (via scripts/data/extend_similarity_tensor.py) gets checked automatically

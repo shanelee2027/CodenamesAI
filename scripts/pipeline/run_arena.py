@@ -1,4 +1,4 @@
-"""Run the cross-play arena (SCOPE.md §M6): every spymaster x every
+"""Run the cross-play arena: every spymaster x every
 guesser (held-out included -- see codenames/arena.py's module docstring for
 why), over a fixed set of seeded boards. Prints the win-rate / assassin-rate
 / mean-turns / mean-own-words-per-clue matrix and per-worker peak RSS.

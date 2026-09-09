@@ -1,4 +1,4 @@
-"""Baseline 1 (SCOPE.md §6): a uniformly random legal clue."""
+"""Baseline 1: a uniformly random legal clue."""
 
 from __future__ import annotations
 

@@ -1,10 +1,10 @@
-# Candidate Fandom wikis for M0 corpus collection (SCOPE.md §M0).
+# Candidate Fandom wikis for corpus collection.
 # One subdomain per line (the part before ".fandom.com"). Lines starting
 # with # are ignored. This is a draft candidate list across
-# gaming/anime/film/TV per SCOPE's "breadth beats depth" guidance -- edit
+# gaming/anime/film/TV, on the guidance that breadth beats depth -- edit
 # freely. scripts/check_fandom_dumps.py verifies each entry empirically
-# (subdomain guesses can be wrong: renamed, migrated off Fandom per the
-# Minecraft note in SCOPE.md, or never had a dump requested).
+# (subdomain guesses can be wrong: renamed, migrated off Fandom -- e.g.
+# Minecraft's wiki -- or never had a dump requested).
 
 # --- Gaming ---
 minecraft

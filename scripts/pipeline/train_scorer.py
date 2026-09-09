@@ -1,9 +1,9 @@
-"""Train the learned scorer (SCOPE.md §M8) on M7's generated training data.
+"""Train the learned scorer on the generated training data.
 
-Board-seed splitting (SCOPE §4): "the same board appears in many training
-examples [if a board is reused across several sampled clues]. Row-wise
-splits leak boards across train/val and inflate validation numbers." Split
-here is a deterministic hash of each example's board seed
+Board-seed splitting (see docs/design-decisions.md): the same board appears in many
+training examples if a board is reused across several sampled clues, and
+row-wise splits leak boards across train/val and inflate validation
+numbers. Split here is a deterministic hash of each example's board seed
 (`seed % 1000 < val_fraction * 1000`), not a random row-wise split -- every
 example generated from a given board lands in the same partition no matter
 which shard file or position it's in, and the split is stable across
@@ -16,7 +16,7 @@ Outputs to `--output-dir` (default cache/checkpoints/, gitignored):
   and val accuracy.
 - `reliability_diagrams.png`: one panel per k in 0..MAX_K, predicted
   probability of that class vs. its observed frequency, binned -- the
-  calibration check SCOPE asks for.
+  calibration check this is meant to support.
 
 Usage:
     python scripts/pipeline/train_scorer.py --data-dir cache/training_data
@@ -42,7 +42,7 @@ from codenames.scorer import N_OUTCOME_CLASSES, Scorer, decode_outcome_class
 
 
 class ShardedTrainingData(Dataset):
-    """Reads M7's sharded (features, outcome, seed) .npy triples, keeping
+    """Reads the sharded (features, outcome, seed) .npy triples, keeping
     only rows whose board seed passes `seed_predicate`. Feature shards
     stay memory-mapped (read-only); only the small outcome/seed arrays
     are loaded fully, since filtering needs to inspect every row's seed
@@ -180,7 +180,7 @@ def train(
     model_factory: Callable[[int], nn.Module] = Scorer,
     num_workers: int = 4,
 ) -> Path:
-    """`model_factory` exists for SCOPE §9's linear baseline
+    """`model_factory` exists for the linear-baseline ablation
     (scripts/pipeline/run_ablation_study.py passes `LinearScorer`) -- everything
     else here (splitting, early stopping, checkpointing, curves,
     reliability diagrams) is architecture-agnostic.

@@ -1,4 +1,4 @@
-"""Check M0 corpus-collection status for a list of Fandom wikis.
+"""Check Fandom-corpus collection status for a list of Fandom wikis.
 
 For each wiki subdomain, queries the wiki's MediaWiki API for its page count
 and internal dbname (the API is not behind Fandom's Cloudflare bot check,
@@ -8,7 +8,7 @@ deterministic path derived from that dbname.
 
 This only *checks* status -- it never requests a new dump. Requesting a
 dump requires an autoconfirmed-or-higher Fandom account on that specific
-wiki (see SCOPE.md §M0), which isn't something a script can do on your
+wiki, which isn't something a script can do on your
 behalf. For any wiki reported as "no dump", request one by logging into
 Fandom and visiting:
 

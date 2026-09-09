@@ -1,8 +1,8 @@
-"""Spymaster interface (SCOPE.md §M6/§M8, docs/iteration-architecture.md
+"""Spymaster interface (docs/iteration-architecture.md
 step 1).
 
 A spymaster picks a (clue, number) pair for the current board state. The
-learned scorer (M8) and every baseline (§6) implement this same interface so
+learned scorer and every baseline implement this same interface so
 the arena can play any spymaster against any guesser without special-casing.
 
 `TurnContext` bundles the board state with a turn counter instead of

@@ -1,4 +1,4 @@
-"""Build the similarity tensor's clue vocabulary and GloVe slice (SCOPE.md §M2).
+"""Build the similarity tensor's clue vocabulary and GloVe slice.
 
 **Revision (first-pass simplification, see docs/log.md):** clue vocabulary
 is now the INTERSECTION of all three downloaded spaces' own vocabularies,
@@ -8,14 +8,15 @@ ever being a candidate clue (the "Technoblade" problem); that was fixed by
 switching to a union. The union in turn reintroduced a related problem one
 level up: a clue could still be one only *some* guessers know, so a
 guesser's failure to guess it might reflect a real vocabulary gap rather
-than a genuinely bad clue -- exactly the effect SCOPE's diverse guesser
-pool (§3) is designed to average out across many guessers, but which
+than a genuinely bad clue -- exactly the effect a diverse guesser
+pool is designed to average out across many guessers, but which
 becomes a real problem for a deliberately small first-pass pool. The
 intersection sidesteps it directly: every legal clue has a real vector in
 every space that's currently built, so no guesser in the pool is
 structurally disadvantaged by coverage gaps. This is a divergence from
-SCOPE.md's original union approach -- documented here and in docs/SCOPE.md
-and docs/log.md, not silently reverted.
+the original union approach -- documented here and in
+docs/design-decisions.md's first-pass-simplifications note and
+docs/log.md, not silently reverted.
 
 Per-space vocabulary contribution (unchanged from the union version):
   - GloVe and Wikipedia2Vec are both frequency-descending ordered in their

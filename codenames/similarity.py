@@ -1,9 +1,9 @@
-"""Memory-mapped similarity tensor loader (SCOPE.md §M2).
+"""Memory-mapped similarity tensor loader.
 
 The tensor is built by scripts/data/build_similarity_tensor.py and lives in
 cache/ (gitignored -- regenerate it locally, it's not checked in). Shape is
-(n_clues, n_board_words, n_spaces) fp16, matching SCOPE.md §2's exact
-axis order so M4 can append additional space-slices without changing this
+(n_clues, n_board_words, n_spaces) fp16, matching the feature vector's exact
+axis order so fastText can append additional space-slices without changing this
 loader's interface.
 """
 

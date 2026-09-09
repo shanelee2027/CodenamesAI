@@ -1,11 +1,11 @@
-"""Baseline 3 (SCOPE.md §6): the 8-constant linear design -- unweighted
+"""Baseline 3: the 8-constant linear design -- unweighted
 average across spaces per (clue, board word), then a weighted sum across
-roles. Uses SCOPE's own example constants (own +1, opponent -1, neutral
+roles. Uses illustrative example constants (own +1, opponent -1, neutral
 -0.3, assassin -10) unweighted across spaces, same convention as
-scripts/tools/inspector.py's untuned preview. §4 calls for these constants to be
-CMA-ES/grid-search tuned against the guesser pool -- that tuning needs the
-arena this milestone builds, so it's deferred to a follow-up script rather
-than done here; this class takes `weights` as a constructor arg specifically
+scripts/tools/inspector.py's untuned preview. These constants should be
+CMA-ES/grid-search tuned against the guesser pool (see
+docs/design-decisions.md) -- that tuning needs the arena, so it's deferred
+to a follow-up script rather than done here; this class takes `weights` as a constructor arg specifically
 so a tuning script can plug in fitted values later without touching this
 file.
 
@@ -13,7 +13,7 @@ Deliberately does NOT cache a materialized copy of the tensor: an earlier
 version cached np.nanmean(tensor, axis=2) once per instance (n_clues x
 n_board_words, ~850MB as float32) to avoid rescanning per turn, but the
 arena runs one instance per worker process, and the mmapped-tensor sharing
-that SCOPE §7's memory design note relies on only works for the read-only
+that docs/design-decisions.md's memory design note relies on only works for the read-only
 mmap itself -- a materialized derived array is a private copy per process.
 At even a handful of workers that cache alone was pushing worker RSS past
 9GB. Instead every call reads only the board-word columns it actually needs

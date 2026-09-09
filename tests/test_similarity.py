@@ -110,7 +110,7 @@ class TestTopClues:
 
 
 class TestTopCluesWithMissingVectors:
-    """M4 extends spaces onto a fixed vocabulary, so a clue or board word
+    """Spaces are extended onto a fixed vocabulary, so a clue or board word
     absent from a given space's source vectors gets NaN rather than being
     silently dropped from the vocab (see scripts/data/extend_similarity_tensor.py).
     top_clues() must exclude those from ranking, not let them corrupt it."""

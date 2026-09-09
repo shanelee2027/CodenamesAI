@@ -1,11 +1,11 @@
-"""Pre-fetch the raw pretrained embedding files for M2/M4 (SCOPE.md §2, §5).
+"""Pre-fetch the raw pretrained embedding files.
 
 Downloads GloVe, ConceptNet Numberbatch, and Wikipedia2Vec into
 data/embeddings/raw/. This only stages the raw files -- it does not build
-the similarity tensor (that's M2/M4 code, built after M1 per SCOPE.md's
-milestone order). Staging now is justified the same way M0 is: these are
-large, latency-bound downloads with no code dependency, not a shortcut
-around "one module at a time."
+the similarity tensor, which is built later, after the board/clue
+machinery exists. Staging now is justified the same way the Fandom corpus
+collection is: these are large, latency-bound downloads with no code
+dependency, not a shortcut around "one module at a time."
 
 None of these hosts publish an official checksum, so "checksum
 verification" here means: record a sha256 after every successful download
@@ -14,7 +14,7 @@ request) to detect a truncated / corrupt local copy on re-run, not to
 verify against a canonical hash.
 
 fastText (the fourth embedding space) is trained locally on the Fandom
-corpus per SCOPE.md §M4 and is not downloaded here.
+corpus and is not downloaded here.
 
 Usage:
     python scripts/data/download_embeddings.py
@@ -47,7 +47,7 @@ SOURCES = [
         name="glove",
         url="https://downloads.cs.stanford.edu/nlp/data/glove.6B.zip",
         filename="glove.6B.zip",
-        note="6B-300d per SCOPE.md M2 (fast iteration first; 840B tested later)",
+        note="6B-300d for fast iteration first; 840B tested later",
     ),
     EmbeddingSource(
         name="numberbatch",

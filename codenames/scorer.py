@@ -1,10 +1,10 @@
-"""The learned scorer (SCOPE.md §2, §M8): an MLP predicting a distribution
+"""The learned scorer: an MLP predicting a distribution
 over (k, cause) -- how many own-words a guesser will reveal for a clue
 before stopping, AND what stopped it (neutral / opponent / assassin, or
 nothing -- it ran out of budget clean) -- plus the play-time scoring
 formula that turns that distribution into a (clue, number) choice.
 
-**Resolving a gap in §2's play-time formula.** An earlier version of this
+**Resolving a gap in the play-time scoring formula.** An earlier version of this
 model predicted only P(k|clue) -- it said nothing about *why* a stop
 happened (neutral, opponent, or assassin all collapsed into "not own"),
 so every stop had to be charged the same flat worst-case `miss_penalty`
@@ -36,9 +36,9 @@ see scripts/pipeline/generate_training_data.py):
 
 `reward_of(cause)` is `neutral_reward`/`opponent_reward`/`assassin_reward`
 depending on which role stopped the rollout. `assassin_reward` (default
--10, matching `DEFAULT_MISS_PENALTY`) is the one meant to double as a
-"risk aversion" knob per SCOPE's own "the assassin penalty is the
-risk-aversion parameter" -- the other three default to the real game's
+-10, matching `DEFAULT_MISS_PENALTY`) is the one meant to double as the
+risk-aversion knob (see docs/design-decisions.md's risk-aversion reward
+parameters) -- the other three default to the real game's
 `ROLE_REWARD` values (own +1, neutral -0.2, opponent -1), not baseline-3's
 separate untuned -0.3-for-neutral constant (`spymasters/linear_scorer.py`),
 since this is the reward the model is actually meant to optimize, not an
@@ -72,7 +72,7 @@ from codenames.board import Role
 from codenames.game import ROLE_REWARD
 
 OWN_REWARD = ROLE_REWARD[Role.OWN]
-DEFAULT_MISS_PENALTY = ROLE_REWARD[Role.ASSASSIN]  # -10.0, per SCOPE §2/§6
+DEFAULT_MISS_PENALTY = ROLE_REWARD[Role.ASSASSIN]  # -10.0, the real-game assassin penalty
 
 # Fixed order -- index into this list is how a cause is packed into a
 # class id. Only the three "you stopped on something that isn't your own
@@ -110,7 +110,7 @@ def decode_outcome_class(cls: int) -> tuple[int, Role | None]:
 
 
 class Scorer(nn.Module):
-    """MLP per SCOPE §2: input_dim -> (256, 256, 128) -> N_OUTCOME_CLASSES
+    """MLP: input_dim -> (256, 256, 128) -> N_OUTCOME_CLASSES
     logits. Returns raw logits (not softmaxed) -- use torch.softmax(...)
     or predict_proba() for an actual probability distribution; training
     uses the logits directly with nn.CrossEntropyLoss."""
@@ -137,13 +137,13 @@ class Scorer(nn.Module):
 
 
 class LinearScorer(nn.Module):
-    """SCOPE §6 baseline 4: a linear model over the exact same feature
+    """Baseline 4: a linear model over the exact same feature
     vector the MLP uses, no hidden layers. Same interface as Scorer so it's
     a drop-in alternative for scripts/pipeline/train_scorer.py's model_factory --
-    the gap between this and Scorer is the project's headline result (§6:
-    "baselines 3 and 4 are the informative pair ... the gap between 3 and 5
-    is the project's headline result"). Its weight matrix is also what
-    makes the model interpretable: see codenames.features.FeatureLayout.describe."""
+    baselines 3 and 4 are the informative pair, and
+    the gap between this and Scorer is the project's headline result. Its weight
+    matrix is also what makes the model interpretable: see
+    codenames.features.FeatureLayout.describe."""
 
     def __init__(self, input_dim: int):
         super().__init__()
@@ -201,10 +201,10 @@ def expected_reward_and_best_n(
     """probs: (batch, N_OUTCOME_CLASSES) distribution over (k, cause) for
     each candidate clue. Returns (best_n, score), each shape (batch,): the
     number maximizing expected reward, and the expected reward at that
-    number -- SCOPE §2's `best_n = argmax_n E[reward|clue,n]` and
+    number -- `best_n = argmax_n E[reward|clue,n]` and
     `score(clue) = E[reward|clue,best_n]`, vectorized over every candidate
-    clue at once (the "one gather plus one small forward pass" §2 asks
-    for).
+    clue at once (one gather plus one small forward pass, as play-time
+    scoring requires).
 
     `min_n=1` excludes n=0 from consideration: reward_matrix's formula
     treats n=0 as a legitimate (if useless -- 0 attempts, reward always 0)

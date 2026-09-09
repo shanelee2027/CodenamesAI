@@ -62,7 +62,7 @@ class TestRewardMatrix:
     def test_defaults_are_the_true_game_reward_table_not_baseline_3s(self):
         # neutral defaults to -0.2 (the real §2 reward -- a neutral guess
         # still burns a turn for no progress, so it's mildly penalized,
-        # not free), not SCOPE baseline-3's separate untuned -0.3 constant.
+        # not free), not the linear baseline's separate untuned -0.3 constant.
         m = reward_matrix()
         cls = outcome_class(0, Role.NEUTRAL)
         assert m[cls, 1] == pytest.approx(-0.2)

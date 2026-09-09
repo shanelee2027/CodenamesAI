@@ -1,4 +1,4 @@
-"""Local web UI wrapping the inspector (SCOPE.md §M3) in a browser.
+"""Local web UI wrapping the inspector in a browser.
 
 Same data as scripts/tools/inspector.py -- same Board, same SimilarityTensor, same
 guesser pool -- just served over a tiny local HTTP server (stdlib only, no
@@ -273,7 +273,8 @@ def _parse_reveal(query: dict) -> list[str]:
 # Query-param name -> LearnedSpymaster attribute. "risk_aversion" keeps
 # its established name (-> miss_penalty, the assassin value) rather than
 # being renamed "assassin_reward" everywhere, since that's the field the
-# UI has always called it and matches SCOPE's own "risk aversion" framing.
+# UI has always called it, and "risk aversion" is how the reward params
+# are framed in docs/design-decisions.md.
 # max_rarity lives here too (not just a reward, but the same "per-request
 # override of a plain LearnedSpymaster attribute" mechanism applies).
 _REWARD_PARAMS = {

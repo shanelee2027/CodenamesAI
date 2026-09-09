@@ -1,4 +1,4 @@
-"""Run the M9 evaluation/ablation study (SCOPE.md §9), moderate real scale.
+"""Run the evaluation/ablation study, moderate real scale.
 
 Generates a base dataset plus what each ablation axis actually needs (see
 module docstrings on codenames/features.py, codenames/ablation.py, and
@@ -18,7 +18,7 @@ Variants trained:
   datasets sharing the same board/clue sample sequence (same seed) but
   different guesser-selection weights.
 - linear_baseline: the base dataset, trained with LinearScorer instead of
-  Scorer (SCOPE §6 baseline 4).
+  Scorer (baseline 4).
 - noise_<value> (opt-in via --noise-levels): fresh datasets, one per
   requested noise_std, each generated from a temporary copy of the
   guesser pool config with every guesser's noise_std overridden to that
@@ -188,7 +188,7 @@ def _linear_feature_importance(checkpoint_dir: Path, layout: FeatureLayout, top_
 
 
 def _write_report(path: Path, results: dict[str, dict], importances: list[tuple[str, float]] | None) -> None:
-    lines = ["# M9 ablation study report\n", "| variant | n_examples | val_loss | val_accuracy |", "|---|---|---|---|"]
+    lines = ["# Ablation study report\n", "| variant | n_examples | val_loss | val_accuracy |", "|---|---|---|---|"]
     for name, m in sorted(results.items(), key=lambda kv: kv[1]["val_loss"]):
         lines.append(f"| {name} | {m['n_examples']} | {m['val_loss']:.4f} | {m['val_accuracy']:.4f} |")
     if importances is not None:

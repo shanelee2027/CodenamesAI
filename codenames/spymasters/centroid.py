@@ -1,9 +1,9 @@
-"""Baseline 2 (SCOPE.md §6): clue nearest the "centroid" of a random
+"""Baseline 2: clue nearest the "centroid" of a random
 own-word subset.
 
 There's no raw embedding vector available to average -- only the
-precomputed similarity tensor (SCOPE §2's build-time/train-time split means
-embedding models are never loaded again after M2/M4). Standard proxy: a
+precomputed similarity tensor (the build-time/train-time split means
+embedding models are never loaded again once the similarity tensor is built). Standard proxy: a
 candidate clue's mean cosine similarity to a set of points approximates its
 similarity to their mean. So "nearest the centroid of the subset" is
 computed here as the candidate clue with the highest mean similarity to the

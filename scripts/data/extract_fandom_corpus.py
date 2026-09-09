@@ -1,4 +1,4 @@
-"""Extract plaintext from downloaded Fandom dumps (SCOPE.md §M0).
+"""Extract plaintext from downloaded Fandom dumps.
 
 For each <wiki>_pages_current.xml.7z in data/fandom_dumps/:
   1. Decompress with `7z` (requires p7zip-full: `sudo apt-get install p7zip-full`).
@@ -8,7 +8,7 @@ For each <wiki>_pages_current.xml.7z in data/fandom_dumps/:
      holding both the compressed and uncompressed copies on disk at once.
 
 Reports total plaintext size across all wikis at the end, to track against
-the 1-5GB target in SCOPE.md §M0.
+the 1-5GB corpus-size target.
 
 Usage:
     python scripts/data/extract_fandom_corpus.py
@@ -95,7 +95,7 @@ def main() -> None:
         print(f"{wiki}: {size_mb:.1f} MB of plaintext")
 
     total_gb = dir_size_bytes(args.text_dir) / 1e9
-    print(f"\nTotal extracted plaintext: {total_gb:.3f} GB (target: 1-5 GB per SCOPE.md §M0)")
+    print(f"\nTotal extracted plaintext: {total_gb:.3f} GB (target: 1-5 GB)")
 
 
 if __name__ == "__main__":

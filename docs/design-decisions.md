@@ -139,7 +139,7 @@ baselines section.
 **Optimization of any small, fixed parameter set** (e.g. tuning
 `spymasters/linear_scorer.py`'s baseline weights) should use CMA-ES,
 Bayesian optimization, or grid search — not policy gradients. Not yet done
-for that baseline; its weights are still SCOPE's original illustrative
+for that baseline; its weights are still the original illustrative
 constants, untuned.
 
 **Split by board seed, not by row.** The same board appears in many

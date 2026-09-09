@@ -1,20 +1,22 @@
-"""The inspector (SCOPE.md §M3): given a board and a typed clue, show what
-every embedding space thinks, whether the clue is legal, what each guesser
+"""The inspector: given a board and a typed clue, show what every
+embedding space thinks, whether the clue is legal, what each guesser
 would pick, and a baseline score. This tool is meant to stay useful for
 the entire project -- it's where you go to sanity-check "why did the
 model like/dislike this clue?"
 
-One piece of what SCOPE.md asks for is still a placeholder, since this
-was built out of milestone order (M3 before M8 per SCOPE, not after):
-"a baseline score" is shown as an UNTUNED preview of SCOPE.md §6's own
-baseline-3 formula (own +1, opponent -1, neutral -0.3, assassin -10,
-averaged unweighted across the available spaces) -- not the real
-baseline, which needs CMA-ES tuning against the guesser pool (M8).
-Labeled as such in the output.
+One piece is still a placeholder, because this tool was built before the
+learned scorer existed: "a baseline score" is an UNTUNED preview of the
+hand-coded baseline formula (own +1, opponent -1, neutral -0.3, assassin
+-10, averaged unweighted across the available spaces) -- not the real
+baseline, whose weights still need tuning against the guesser pool (see
+docs/design-decisions.md's note that a small fixed parameter set should
+be tuned with CMA-ES or similar, not policy gradients). Labeled as such
+in the output.
 
 "What each guesser would pick" only shows each guesser's own preference
 ranking, not a full simulated turn -- the number attempt cap and
-turn-ending-on-a-miss rule are game-loop concerns (M6), not built yet.
+turn-ending-on-a-miss rule are game-loop concerns, handled by
+codenames/game.py::play_turn rather than here.
 
 Usage:
     python scripts/tools/inspector.py --seed 42 --clue king
@@ -86,10 +88,11 @@ def print_guesser_predictions(sims: SimilarityTensor, board: Board, clue: str, t
 
 
 def baseline_score(sims: SimilarityTensor, board: Board, clue: str) -> tuple[float, dict[Role, float]]:
-    """Untuned preview of SCOPE.md §6 baseline 3: weighted average across
-    spaces, then weighted sum across roles. Real baseline 3 requires
-    CMA-ES-tuned constants against the guesser pool (M6/M8) -- this uses
-    SCOPE's stated example constants directly, unweighted across spaces."""
+    """Untuned preview of the hand-coded linear baseline: weighted average
+    across spaces, then weighted sum across roles. The real version
+    (codenames/spymasters/linear_scorer.py) needs its constants tuned
+    against the guesser pool -- this uses the original illustrative
+    constants directly, unweighted across spaces."""
     role_means: dict[Role, float] = {}
     for role in Role:
         words = board.words_by_role(role, unrevealed_only=True)
@@ -141,7 +144,7 @@ def main() -> None:
     print("\n=== what each guesser would pick (own preference ranking, not a full simulated turn) ===")
     print_guesser_predictions(sims, board, args.clue, args.guesser_top)
 
-    print("\n=== baseline score (UNTUNED preview of SCOPE.md §6 baseline 3, not the real tuned baseline) ===")
+    print("\n=== baseline score (UNTUNED preview of the linear baseline, not the real tuned one) ===")
     total, role_means = baseline_score(sims, board, args.clue)
     for role in Role:
         print(f"  {ROLE_LABELS[role]:10s} mean similarity (unrevealed): {role_means[role]:.3f}  x weight {BASELINE_ROLE_WEIGHTS[role]:+.1f}")

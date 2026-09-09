@@ -1,9 +1,9 @@
-"""Shared helpers for the baseline spymasters (SCOPE.md §6, items 1-3).
+"""Shared helpers for the baseline spymasters.
 
 Kept separate from base.py to avoid duplicating "how many words does this
 clue safely cover" logic across random_clue.py, centroid.py, and
 linear_scorer.py. "Find the best legal clue" lives in codenames/clue_search.py
-instead, since M7's training-data generation needs that too and isn't a
+instead, since the training-data generation script needs that too and isn't a
 spymaster.
 """
 
@@ -40,6 +40,6 @@ def state_rng(seed: int | None, board: Board) -> random.Random:
     """A Random seeded deterministically from (instance seed, board seed,
     revealed-set) so results are reproducible regardless of process or call
     order -- important once the arena runs spymasters across worker
-    processes (SCOPE §5 M6)."""
+    processes."""
     key = repr((seed, board.seed, tuple(sorted(board.revealed))))
     return random.Random(key)

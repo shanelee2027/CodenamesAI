@@ -1,7 +1,7 @@
-"""The learned spymaster (SCOPE.md §M8): play-time scoring built on the
+"""The learned spymaster: play-time scoring built on the
 trained Scorer, with four runtime reward parameters.
 
-Scores every candidate clue in one batched forward pass, per SCOPE §2:
+Scores every candidate clue in one batched forward pass:
 feature construction gathers+sorts the whole clue vocabulary against the
 current board in one vectorized pass (no per-clue Python loop), the model
 scores all of them in one forward pass, and `expected_reward_and_best_n`
@@ -11,7 +11,7 @@ using the current `own_reward`/`neutral_reward`/`opponent_reward`/
 retraining, since the model itself was never trained against any
 particular reward value, only against the empirical (k, cause) outcome.
 `miss_penalty` keeps that name (rather than `assassin_reward`) since it's
-the one meant to double as SCOPE's "risk aversion" knob and the existing
+the one meant to double as the risk-aversion knob and the existing
 web UI field already calls it that.
 
 `score_batch` (docs/iteration-architecture.md step 3) is the one place

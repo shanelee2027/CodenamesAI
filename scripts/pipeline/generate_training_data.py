@@ -1,4 +1,4 @@
-"""Generate training examples for M8's scorer (SCOPE.md §M7).
+"""Generate training examples for the learned scorer.
 
 Each example is a *rollout*: one (sampled board state, sampled clue,
 sampled training-pool guesser) triple and what the guesser did with it.
@@ -10,8 +10,8 @@ stored rollout set into a training dataset.
 
 - **outcome**: `codenames.scorer.outcome_class(k, cause)`, packing two
   things about this guesser's rollout into one training label: `k`, how
-  many own-words it revealed before stopping (capped at MAX_K, matching
-  §2's k in 0..4), and `cause`, which role (neutral/opponent/assassin)
+  many own-words it revealed before stopping (capped at MAX_K, k in 0..4),
+  and `cause`, which role (neutral/opponent/assassin)
   actually stopped it -- `None` iff k==MAX_K (hit the cap clean, no miss).
   Computed as a side-effect-free rollout over the guesser's own ranking --
   it peeks at `board.role_of()` and never calls `board.reveal()`, so many
@@ -30,12 +30,12 @@ stored rollout set into a training dataset.
   diagnostic only in any case; scripts/pipeline/train_scorer.py trains against
   `outcome` alone.
 
-Guesser sampling still goes through `training_pool()` (SCOPE §3/§5's
+Guesser sampling still goes through `training_pool()` (docs/design-decisions.md's
 mechanism for "training code must never touch held-out guessers"), though
 the first-pass pool (configs/guesser_pool.json) currently has none held out
--- see docs/log.md's post-M8 design-revision entry for why.
+-- see docs/log.md's design-revision entry for why.
 
-**Clue sampling mix** (SCOPE §5 M7): ~60% top-k neighbors of a random
+**Clue sampling mix**: ~60% top-k neighbors of a random
 own-word subset, ~30% top-k neighbors of one random board word of *any*
 role (this is where dangerous assassin-adjacent clues come from -- the
 model must see them), ~10% uniformly random legal clues. "Top-k neighbors"
@@ -43,7 +43,7 @@ means: sample among the K best-scoring legal clues, not always the single
 best, since always taking the argmax would make 60%+30% of the dataset
 degenerate to a handful of the objectively-closest words per board.
 
-**Board sampling** includes partially-revealed states (SCOPE §5 M7): each
+**Board sampling** includes partially-revealed states: each
 sampled board reveals a random number of own/opponent/neutral words (never
 the assassin, and always leaving >=1 own word unrevealed -- a state where
 the game has already ended isn't a useful training example). `turn_index`
@@ -79,10 +79,10 @@ cache/rollouts/, gitignored): the columns listed in
 `codenames.rollouts.RolloutBatch` as `<column>_NNNNN.npy`, plus a
 `manifest.json` recording the board vocabulary, clue-vocabulary
 fingerprint, and guesser pool the set was written against -- each column
-independently mmap-loadable. `board_seed` exists specifically so M8's
-training script can split by board seed rather than by row (SCOPE §4: "the same
-board appears in many training examples [if reused]; row-wise splits leak
-boards across train/val"). This is the concrete meaning of "appendable
+independently mmap-loadable. `board_seed` exists specifically so the
+training script can split by board seed rather than by row (docs/design-decisions.md:
+"the same board appears in many training examples"; row-wise splits leak
+boards across train/val). This is the concrete meaning of "appendable
 mmapped output" here: re-running this script adds new shards after
 whatever already exists in the output directory, rather than needing to
 know the eventual total size up front or resizing an existing file.
@@ -337,7 +337,7 @@ def generate(
     use_gpu_batch: bool = True,
     swap_perspective_prob: float = SWAP_PERSPECTIVE_PROB,
 ) -> int:
-    """`guesser_weights` exists for SCOPE §9's pool-sensitivity
+    """`guesser_weights` exists for the pool-sensitivity
     ablations (scripts/pipeline/run_ablation_study.py), not as a CLI flag.
 
     `feature_builder` used to live here too; it doesn't any more, because
