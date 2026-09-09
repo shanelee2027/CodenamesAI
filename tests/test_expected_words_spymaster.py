@@ -95,25 +95,46 @@ class TestGainAndPenaltyFormula:
     """Direct tests of the pure metric, bypassing the board/ClueStats
     machinery entirely -- one candidate, K_max=2, one non-own word."""
 
-    def test_matches_hand_computed_values(self):
-        a = np.array([[3.0, 1.0]])  # a_1=3.0, a_2=1.0
-        b = np.array([[0.5]])  # one distractor at z=0.5
-        costs = np.array([1.0])
-        tau_gain, tau_pen = 2.5, 0.7
+    def test_matches_a_monte_carlo_of_the_guesser_model(self):
+        """The metric claims to be an exact expectation under 'the guesser
+        perceives z_i + eps_i, eps ~ N(0, sigma), and works down its own
+        order'. Simulate that guesser directly and check the claim, rather
+        than re-encoding the formula as its own expected value -- which
+        would only prove the code matches itself. The previous version of
+        this test did exactly that, and locked in an independence
+        approximation that was low by 0.37 expected words."""
+        rng = np.random.default_rng(0)
+        a = np.array([[3.0, 1.0]])
+        b = np.array([[0.5, -0.4, 1.2]])
+        costs = np.array([1.0, 0.2, 10.0])
+        sigma = 1.8
 
-        gain, penalty = gain_and_penalty(a, b, costs, tau_gain, tau_pen)
+        gain, penalty = gain_and_penalty(a, b, costs, sigma)
 
-        q1_gain = _PHI((0.5 - 3.0) / tau_gain)
-        q2_gain = _PHI((0.5 - 1.0) / tau_gain)
-        s1 = 1 - q1_gain
-        s2 = 1 - q2_gain
-        expected_gain = np.array([[s1, s1 + s1 * s2]])
-        np.testing.assert_allclose(gain, expected_gain, atol=1e-6)
-
-        q1_pen = _PHI((0.5 - 3.0) / tau_pen)
-        q2_pen = _PHI((0.5 - 1.0) / tau_pen)
-        expected_penalty = np.array([[q1_pen, q2_pen]])
-        np.testing.assert_allclose(penalty, expected_penalty, atol=1e-6)
+        # Tolerance is derived from the estimator's own standard error
+        # rather than a fixed atol: the penalty estimator takes values up
+        # to the assassin's cost of 10, so its variance is far higher than
+        # the gain's, and a single hardcoded tolerance either flakes on one
+        # or is vacuous for the other.
+        n = 1_500_000
+        own = a[0][None, :] + rng.normal(0, sigma, (n, a.shape[1]))
+        dis = b[0][None, :] + rng.normal(0, sigma, (n, b.shape[1]))
+        worst = dis.argmax(axis=1)
+        D = dis.max(axis=1)
+        for k in (1, 2):
+            survives = own[:, :k].min(axis=1) > D
+            # gain(k) = expected own words revealed = sum over j<=k of
+            # P(the top j intended words all outrank every distractor).
+            per_j = [(own[:, :j].min(axis=1) > D) for j in range(1, k + 1)]
+            expected_gain = sum(x.mean() for x in per_j)
+            gain_se = np.sqrt(sum(x.std() ** 2 for x in per_j) / n)
+            assert abs(gain[0, k - 1] - expected_gain) < 5 * gain_se + 1e-3
+            # A miss costs whatever the guesser actually picks, which is
+            # the strongest distractor -- not every distractor that could
+            # have broken through.
+            miss_cost = costs[worst] * ~survives
+            pen_se = miss_cost.std() / np.sqrt(n)
+            assert abs(penalty[0, k - 1] - miss_cost.mean()) < 5 * pen_se + 1e-3
 
     def test_gain_is_sub_linear_in_k_when_a_distractor_is_nearby(self):
         # a_2's marginal contribution to gain is s_1 * s_2 <= s_1 <= 1,
@@ -125,7 +146,7 @@ class TestGainAndPenaltyFormula:
         a = np.array([[3.0, 1.0]])
         b = np.array([[0.5]])
         costs = np.array([1.0])
-        gain, _ = gain_and_penalty(a, b, costs, tau_gain=2.5, tau_pen=0.7)
+        gain, _ = gain_and_penalty(a, b, costs, sigma=1.8)
         marginal_second_word = gain[0, 1] - gain[0, 0]
         assert 0 < marginal_second_word < 1.0
 
@@ -137,7 +158,7 @@ class TestGainAndPenaltyFormula:
         a = np.array([[3.0, 1.0]])
         b = np.array([[-20.0]])
         costs = np.array([1.0])
-        gain, penalty = gain_and_penalty(a, b, costs, tau_gain=2.5, tau_pen=0.7)
+        gain, penalty = gain_and_penalty(a, b, costs, sigma=1.8)
         np.testing.assert_allclose(gain, [[1.0, 2.0]], atol=1e-4)
         np.testing.assert_allclose(penalty, [[0.0, 0.0]], atol=1e-4)
 
@@ -150,8 +171,8 @@ class TestGainAndPenaltyFormula:
         far = np.array([[-20.0]])
         costs = np.array([1.0])
 
-        _, penalty_near = gain_and_penalty(a, near, costs, tau_gain=2.5, tau_pen=0.7)
-        _, penalty_far = gain_and_penalty(a, far, costs, tau_gain=2.5, tau_pen=0.7)
+        _, penalty_near = gain_and_penalty(a, near, costs, sigma=1.8)
+        _, penalty_far = gain_and_penalty(a, far, costs, sigma=1.8)
         assert penalty_far[0, 1] < 1e-6
         assert penalty_near[0, 1] > penalty_far[0, 1] + 1e-3
 
@@ -163,8 +184,8 @@ class TestGainAndPenaltyFormula:
         a = np.array([[1.0]])
         b = np.array([[0.5]])
         cost_ratio = abs(ROLE_REWARD[Role.ASSASSIN]) / abs(ROLE_REWARD[Role.OPPONENT])
-        _, penalty_assassin = gain_and_penalty(a, b, np.array([abs(ROLE_REWARD[Role.ASSASSIN])]), 2.5, 0.7)
-        _, penalty_opponent = gain_and_penalty(a, b, np.array([abs(ROLE_REWARD[Role.OPPONENT])]), 2.5, 0.7)
+        _, penalty_assassin = gain_and_penalty(a, b, np.array([abs(ROLE_REWARD[Role.ASSASSIN])]), sigma=1.8)
+        _, penalty_opponent = gain_and_penalty(a, b, np.array([abs(ROLE_REWARD[Role.OPPONENT])]), sigma=1.8)
         assert penalty_assassin[0, 0] / penalty_opponent[0, 0] == pytest.approx(cost_ratio)
         assert cost_ratio == pytest.approx(10.0)
 
@@ -176,8 +197,8 @@ class TestGainAndPenaltyFormula:
         a = np.array([[1.0]])
         b = np.array([[0.5]])
         cost_ratio = abs(ROLE_REWARD[Role.ASSASSIN]) / abs(ROLE_REWARD[Role.NEUTRAL])
-        _, penalty_assassin = gain_and_penalty(a, b, np.array([abs(ROLE_REWARD[Role.ASSASSIN])]), 2.5, 0.7)
-        _, penalty_neutral = gain_and_penalty(a, b, np.array([abs(ROLE_REWARD[Role.NEUTRAL])]), 2.5, 0.7)
+        _, penalty_assassin = gain_and_penalty(a, b, np.array([abs(ROLE_REWARD[Role.ASSASSIN])]), sigma=1.8)
+        _, penalty_neutral = gain_and_penalty(a, b, np.array([abs(ROLE_REWARD[Role.NEUTRAL])]), sigma=1.8)
         assert penalty_assassin[0, 0] / penalty_neutral[0, 0] == pytest.approx(cost_ratio)
         assert cost_ratio == pytest.approx(50.0)
 

@@ -10,38 +10,49 @@ had nothing left to discriminate on. This model has no thresholds and no
 fallback chain: every candidate `(clue, k)` pair gets a finite score, so
 `argmax` always has an answer.
 
-**The metric.** For a clue with `a_1 >= a_2 >= ...` the descending
-z-scores against unrevealed own words, and `b_w` the z-score against each
-unrevealed non-own word `w` (cost `c_w = abs(ROLE_REWARD[role(w)])`,
+**Notation.** For a clue, `a_1 >= a_2 >= ...` are the descending z-scores
+against unrevealed own words, and `b_w` the z-score against each
+unrevealed non-own word `w`, costing `c_w = abs(ROLE_REWARD[role(w)])` --
 imported rather than hardcoded so a future reward retune doesn't silently
-desync this file):
+desync this file.
 
-    q_w(x, tau) = Phi((b_w - x) / tau)          # torch.special.ndtr
-    s_j     = prod_w (1 - q_w(a_j, tau_gain))     for j = 1..k
-    gain(k) = sum_{j=1..k} prod_{i<=j} s_i
-    penalty(k) = sum_w c_w * q_w(a_k, tau_pen)
+**The guesser model.** One assumption, one parameter. The guesser
+perceives word `i` as `z_i + eps_i` with `eps ~ N(0, sigma)` drawn
+independently per word, then works down its own perceived order until it
+picks a non-own word. `sigma` is therefore "how far off the guesser's read
+of any single word is," in z units -- a statement about a listener, which
+can be judged by watching clues, rather than a free-floating shape
+constant.
+
+Everything follows from conditioning on `D`, the perceived score of the
+strongest distractor:
+
+    F(d)   = prod_w Phi((d - b_w) / sigma)      # exact CDF of D
+    P(all of 1..j survive | D = d) = prod_{i<=j} Phi((a_i - d) / sigma)
+    gain(k)    = INT F'(d) * sum_{j<=k} prod_{i<=j} Phi((a_i - d)/sigma) dd
+    penalty(k) = INT F'(d) * (1 - prod_{i<=k} Phi((a_i - d)/sigma)) * cbar(d) dd
     score(clue, k) = gain(k) - penalty(k)
 
-`s_j` depends only on `j`, never on the outer `k` -- it is "how likely is
-the guesser to still be on an own word by the time they reach the j-th
-one," a survival probability. `gain(k)` sums those survival-weighted
-increments for j=1..k, which is deliberately *sub-linear* in k: the k-th
-word's marginal contribution is `prod_{i<=k} s_i <= 1`, so announcing a
-larger number only helps if the words involved are actually distinct
-enough (in z-score) from the distractors to keep that product near 1. A
-plain `k - penalty` was tried and always picked k=4 (see
-`docs/log.md`'s "expected-reward term is currently
-inert" section for the analogous failure in the old model, and this
-file's own version doc for the linear variant's fixed measurement) --
-this is why that shortcut is refused here.
+Given `d` the intended words are independent, which is the entire reason
+for conditioning on it: the obvious formulation -- multiply each word's
+survival probability together -- is wrong twice over, since comparisons
+against one intended word share that word's `eps`, and all intended words
+face the same distractor draws. Both dependencies are positive, so the
+naive product *understates* survival, measured at 0.37 expected words too
+low at sigma=1.8. See `gain_and_penalty` and the version doc.
 
-`penalty(k)` uses only `a_k`, the *weakest* of the intended k words: it
-asks, for each non-own word, how likely a guesser who has correctly
-reached the k-th intended word would then also drift onto that
-distractor. Both terms use the same `diff = b_w - a` tensor, just with
-different `tau` (`tau_gain` for the survival term, `tau_pen` for the risk
-term) -- kept as one tensor rather than two so the two views of "how close
-is this distractor to this own-word z" can't silently drift apart.
+`gain(k)` is deliberately *sub-linear* in k: the k-th word's marginal
+contribution is `P(all of 1..k survive) <= 1`, so claiming more only helps
+when the words involved are far enough clear of the distractors to keep
+that probability near 1. A plain `k - penalty` was tried and always picked
+k=4 -- see the version doc -- which is why that shortcut is refused here.
+
+`penalty(k)` charges the cost of the word the guesser would *actually*
+pick on a miss. Since it works down its own order, that word is by
+definition the strongest distractor, so `cbar(d)` is the expected cost
+given the max landed at `d`, obtained by splitting the max's mass across
+which word achieved it. Summing `c_w` over every distractor that might
+have broken through would count several misses that cannot all happen.
 
 **Selection is joint, not per-clue-then-per-k.** For a fixed clue, `s_j`
 doesn't depend on k, so per clue the best k is unambiguous (whichever
@@ -56,8 +67,11 @@ is chosen by the same objective that ranks clues against each other.
 
 **No thresholds, no fallback chain.** `t`, `neutral_outside`,
 `opponent_outside`, `assassin_outside`, and `guesser_noise_std` from the
-old model don't exist here; every candidate has a finite score, so there
-is no "no valid clue" state to fall back out of. The only remaining guard
+old model don't exist here. Neither does the earlier `tau_gain`/`tau_pen`
+pair: two widths implied two different guessers, and after conditioning on
+D the algebra is written in `sigma` throughout, so no `tau` survives to
+name. Every candidate has a finite score, so there is no "no valid clue"
+state to fall back out of. The only remaining guard
 is the one real degenerate case, a team with zero unrevealed own words
 (cannot occur in an actual game, since a team is never asked for a clue
 once it has none left) -- handled by returning the most common legal clue
@@ -88,40 +102,89 @@ from .base import MAX_CLUE_NUMBER, Spymaster, TurnContext
 __all__ = ["ExpectedWordsSpymaster", "gain_and_penalty"]
 
 
+GRID_CELLS = 96
+GRID_PAD = 6.0
+
+
+def _ndtr(x: np.ndarray) -> np.ndarray:
+    return torch.special.ndtr(torch.from_numpy(x.astype(np.float32))).numpy()
+
+
 def gain_and_penalty(
-    a: np.ndarray, b: np.ndarray, costs: np.ndarray, tau_gain: float, tau_pen: float
+    a: np.ndarray, b: np.ndarray, costs: np.ndarray, sigma: float, cells: int = GRID_CELLS
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(gain, penalty)`, each `(n_cand, K_max)`, from `a` (`(n_cand,
-    K_max)`, descending own z-scores `a_1 >= a_2 >= ...` per candidate),
-    `b` (`(n_cand, n_non_own)`, non-own z-scores), and `costs`
-    (`(n_non_own,)`, `abs(ROLE_REWARD[role(w)])`). Column `m` is
-    `k = m + 1` -- see the module docstring for the derivation. Pulled out
-    of `_score_all_clues` as a pure function (no `ClueStats`/board
-    lookups) so the metric's algebra -- the sub-linear `gain` term
-    especially -- can be unit-tested directly against hand-computed
-    z-scores, without a synthetic `SimilarityTensor`/`ClueStats` fixture
-    in the way."""
-    # diff[:, m, w] = b_w - a_{m+1} -- shared by both terms below (see
-    # module docstring on why one tensor, two taus).
-    diff = b[:, None, :] - a[:, :, None]  # (n_cand, K_max, n_non_own)
+    K_max)`, descending own z-scores per candidate), `b` (`(n_cand,
+    n_non_own)`, non-own z-scores) and `costs` (`(n_non_own,)`,
+    `abs(ROLE_REWARD[role(w)])`). Column `m` is `k = m + 1`.
 
-    q_gain = torch.special.ndtr(torch.from_numpy((diff / tau_gain).astype(np.float32))).numpy()
-    s = np.prod(1.0 - q_gain, axis=2)  # (n_cand, K_max): s[:, m] = s_{m+1}
-    cumprod_s = np.cumprod(s, axis=1)
-    gain = np.cumsum(cumprod_s, axis=1)  # gain[:, m] = gain(k=m+1)
+    Both terms are exact expectations under the guesser model (the module
+    docstring derives it): the guesser perceives word `i` as `z_i + eps_i`
+    with `eps ~ N(0, sigma)` drawn independently per word, and works down
+    its own perceived order until it picks a non-own word.
 
-    q_pen = torch.special.ndtr(torch.from_numpy((diff / tau_pen).astype(np.float32))).numpy()
-    penalty = np.sum(q_pen * costs[None, None, :], axis=2)  # (n_cand, K_max): penalty[:, m] = penalty(k=m+1)
+    The whole thing turns on conditioning on **D**, the perceived score of
+    the strongest distractor. The obvious formulation -- multiply each
+    word's survival probability together -- is wrong twice over, because
+    those events are not independent: every comparison against one intended
+    word shares that word's `eps`, and every intended word faces the same
+    distractor draws. Both dependencies are positive, so the naive product
+    *understates* survival; measured against Monte Carlo it was low by 0.37
+    expected words at sigma=1.8 (see docs/versions/expected_words.md).
 
-    return gain, penalty
+    Conditioning on `D = d` removes both at once, because given `d` each
+    intended word independently survives with probability
+    `Phi((a_i - d) / sigma)`. `D` is a maximum of independents, so its CDF
+    is available in closed form, `F(d) = prod_w Phi((d - b_w) / sigma)`,
+    and a grid over `d` taking each cell's mass as `F(d_hi) - F(d_lo)`
+    integrates it without needing the density. This reproduces Monte Carlo
+    to 3-4 decimals.
+
+    Pure function (no `ClueStats`/board lookups) so the algebra can be
+    unit-tested directly against hand-computed z-scores.
+    """
+    n_cand, k_max = a.shape
+
+    # One grid per candidate clue, spanning where that clue's own D can
+    # plausibly land. Padding by GRID_PAD sigma on each side puts the
+    # unresolved tail mass far below float32's resolution.
+    lo = b.min(axis=1) - GRID_PAD * sigma  # (n_cand,)
+    hi = np.maximum(b.max(axis=1), a[:, 0]) + GRID_PAD * sigma
+    steps = np.linspace(0.0, 1.0, cells + 1, dtype=np.float32)
+    edges = lo[:, None] + (hi - lo)[:, None] * steps[None, :]  # (n_cand, cells+1)
+
+    # F[:, e] = P(D <= edges[:, e]) -- exact CDF of the max distractor.
+    F = _ndtr((edges[:, :, None] - b[:, None, :]) / sigma).prod(axis=2)  # (n_cand, cells+1)
+    mass = np.diff(F, axis=1)  # (n_cand, cells)
+    mid = 0.5 * (edges[:, :-1] + edges[:, 1:])  # (n_cand, cells)
+
+    # surv[:, c, m] = P(intended word m+1 outranks D | D = mid_c)
+    surv = _ndtr((a[:, None, :] - mid[:, :, None]) / sigma)  # (n_cand, cells, K_max)
+    joint = np.cumprod(surv, axis=2)  # all of 1..k survive, given d
+
+    # gain(k) = sum_{j<=k} P(all of 1..j survive), integrated over d.
+    per_j = np.einsum("nc,nck->nk", mass, joint)
+    gain = np.cumsum(per_j, axis=1)
+
+    # A miss happens exactly when some intended word fails to outrank D,
+    # and the word the guesser then picks IS the strongest distractor -- so
+    # the cost is that word's, not a sum over every distractor that might
+    # have broken through. `resp[:, c, w]` is the chance w is the one at
+    # D = mid_c: the max's mass, split by which word achieves it.
+    hazard = np.exp(-0.5 * ((mid[:, :, None] - b[:, None, :]) / sigma) ** 2)
+    hazard /= np.maximum(_ndtr((mid[:, :, None] - b[:, None, :]) / sigma), 1e-12)
+    resp = hazard / np.maximum(hazard.sum(axis=2, keepdims=True), 1e-12)  # (n_cand, cells, n_non_own)
+    cost_at_d = resp @ costs  # (n_cand, cells): expected cost of a miss at D = d
+    penalty = np.einsum("nc,nck->nk", mass * cost_at_d, 1.0 - joint)
+
+    return gain.astype(np.float32), penalty.astype(np.float32)
 
 
 class ExpectedWordsSpymaster(Spymaster):
     def __init__(
         self,
         space: str = "numberbatch",
-        tau_gain: float = 2.5,
-        tau_pen: float = 0.7,
+        sigma: float = 1.8,
         max_rarity: float = 10.0,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
@@ -136,8 +199,7 @@ class ExpectedWordsSpymaster(Spymaster):
         constructs a fresh spymaster inside every spawned worker
         process."""
         self.space = space
-        self.tau_gain = tau_gain
-        self.tau_pen = tau_pen
+        self.sigma = sigma
         self.max_rarity = max_rarity
         self.clue_stats = clue_stats if clue_stats is not None else ClueStats.load(cache_dir=cache_dir)
 
@@ -192,7 +254,7 @@ class ExpectedWordsSpymaster(Spymaster):
         a = -np.sort(-z_own, axis=1)[:, :K_max]  # (n_cand, K_max): a[:, m] is a_{m+1}, descending
         b = z_non_own  # (n_cand, n_non_own)
 
-        gain, penalty = gain_and_penalty(a, b, costs, self.tau_gain, self.tau_pen)
+        gain, penalty = gain_and_penalty(a, b, costs, self.sigma)
         score = gain - penalty  # (n_cand, K_max)
 
         if b.shape[1] > 0:
