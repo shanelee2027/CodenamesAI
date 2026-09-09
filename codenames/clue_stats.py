@@ -2,7 +2,7 @@
 
 Built once by `scripts/data/build_clue_stats.py` into
 `cache/clue_stats.npz` + `cache/clue_stats_meta.json`, and loaded here.
-`codenames/spymasters/z_threshold.py` needs "how similar is this clue to
+`codenames/spymasters/expected_words.py` needs "how similar is this clue to
 a board word, relative to how that clue behaves in general" -- a z-score
 -- which needs the clue's own mean and standard deviation of similarity
 across the full board vocabulary. Those two numbers are cheap to store
@@ -50,7 +50,7 @@ class ClueStats:
     """Per-clue mean/std similarity across all 400 board words, and a
     rarity percentile, indexed by clue-vocabulary position (matching
     `SimilarityTensor.clue_words` order). General-purpose -- kept free of
-    anything specific to `z_threshold.py` so later models can reuse it
+    anything specific to `expected_words.py` so later models can reuse it
     from a notebook or another spymaster without pulling that one in."""
 
     mean: np.ndarray  # (n_clues, n_spaces) float32

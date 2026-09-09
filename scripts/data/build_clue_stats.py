@@ -4,7 +4,7 @@ board words, per embedding space, plus its rarity percentile
 (`codenames.clue_search.clue_rarity_percentile`).
 
 Why this is a separate build-time artifact rather than something computed
-inside a spymaster: `codenames/spymasters/z_threshold.py` needs to
+inside a spymaster: `codenames/spymasters/expected_words.py` needs to
 z-score a clue's similarity to each board word -- how unusual this
 particular board word is for this clue, relative to how the clue behaves
 in general -- which needs the clue's own mean/std over the *entire* board

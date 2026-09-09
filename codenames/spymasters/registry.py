@@ -46,11 +46,11 @@ from pathlib import Path
 
 from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
+from codenames.spymasters.expected_words import ExpectedWordsSpymaster
 from codenames.spymasters.learned import LearnedSpymaster
 from codenames.spymasters.linear_scorer import LinearScorerSpymaster
 from codenames.spymasters.oracle import OracleSpymaster
 from codenames.spymasters.random_clue import RandomSpymaster
-from codenames.spymasters.z_threshold import ZThresholdSpymaster
 
 DEFAULT_SPYMASTER_CONFIG = Path(__file__).parent.parent.parent / "configs" / "spymasters.json"
 
@@ -60,7 +60,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "linear_scorer": LinearScorerSpymaster,
     "oracle": OracleSpymaster,
     "learned": LearnedSpymaster,
-    "z_threshold": ZThresholdSpymaster,
+    "expected_words": ExpectedWordsSpymaster,
 }
 
 

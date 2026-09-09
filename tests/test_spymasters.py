@@ -75,7 +75,7 @@ class TestRegistry:
         from codenames.spymasters.registry import DEFAULT_SPYMASTER_CONFIG, load_spymasters
 
         entries = load_spymasters(DEFAULT_SPYMASTER_CONFIG)
-        assert set(entries) == {"random", "centroid", "linear_scorer", "oracle", "learned", "z_threshold"}
+        assert set(entries) == {"random", "centroid", "linear_scorer", "oracle", "learned", "expected_words"}
 
     def test_entries_build_the_expected_classes(self):
         from codenames.spymasters.registry import load_spymasters
@@ -95,7 +95,7 @@ class TestRegistry:
         assert entries["centroid"].trained is False
         assert entries["linear_scorer"].trained is False
         assert entries["oracle"].trained is False
-        assert entries["z_threshold"].trained is False
+        assert entries["expected_words"].trained is False
 
     def test_spec_is_a_class_and_kwargs_tuple(self):
         from codenames.spymasters.registry import load_spymasters

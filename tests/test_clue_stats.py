@@ -1,5 +1,5 @@
 """codenames/clue_stats.py: cached per-clue mean/std similarity and the
-z-scoring helper `z_threshold.py` builds on, plus
+z-scoring helper `expected_words.py` builds on, plus
 scripts/data/build_clue_stats.py's pure array-building function."""
 
 from __future__ import annotations

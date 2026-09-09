@@ -3368,3 +3368,59 @@ reran with the worktree root explicitly inserted ahead of the script's
 directory on `sys.path`. Anyone running a `scripts/` entry point directly
 (not via pytest, which doesn't hit this) in a worktree with an editable
 install pointed elsewhere should watch for this.
+
+## expected_words baseline: replaces z_threshold entirely
+
+Implemented the threshold-free baseline `docs/versions/expected_words.md`
+describes: `codenames/spymasters/expected_words.py`
+(`ExpectedWordsSpymaster`), registry entry `expected_words`, and deleted
+`z_threshold.py`/its test/its config entry/its registry entry/its doc
+rather than keeping both around. One metric,
+`score(clue, k) = gain(k) - penalty(k)`, replaces the old own/neutral/
+opponent/assassin thresholds and their three-stage fallback chain --
+every `(clue, k)` pair now scores finite, so there's no "no valid clue"
+state to fall back out of.
+
+**Refactored the metric's core algebra into a standalone pure function,
+`gain_and_penalty(a, b, costs, tau_gain, tau_pen)`, not required by the
+spec.** It takes plain numpy arrays (no `ClueStats`/`SimilarityTensor`),
+so the sub-linear `gain` term -- the property the spec explicitly says
+not to "simplify" away -- can be unit-tested against hand-computed
+z-scores directly, instead of only observable indirectly through a full
+board/clue-vocabulary fixture. `_score_all_clues` just calls it. Judgment
+call, not a spec requirement; flagging since it's a structural choice
+someone reviewing the diff might ask about.
+
+**Judgment call: the spec's "assassin proximity penalised ~10x a
+neutral" doesn't match `ROLE_REWARD` as written.** `ROLE_REWARD` gives
+neutral=-0.2, opponent=-1.0, assassin=-10.0 -- assassin costs the
+*opponent* role exactly 10x at equal margin, but a *neutral* 50x (10.0 /
+0.2), not 10x. Wrote both tests: one asserting the exact 10x ratio
+against `opponent` (matching the spec's number precisely), and one
+asserting the actual 50x ratio against `neutral` (matching the spec's
+role, documenting the real number rather than asserting a false "10x").
+Did not change `ROLE_REWARD` -- that's `codenames/game.py`'s own reward
+formula, out of scope here, and the task said implement the design
+exactly.
+
+**Verification numbers** (40 fresh `load_holdout_wordlist()` boards):
+mean announced number 2.025 (expected ~2.0), distribution concentrated
+on k=2 (37/40), median assassin margin +4.32 (expected ~+4.3), worst
++2.40 (expected ~+2.4) -- all within the validated design's targets.
+Smoke test (`run_two_team_arena.py --n-boards 100`) against all three
+synthetic guessers played legally and finished every game; assassin-hit
+rate 0.0%/14.0%/23.0% for numberbatch/glove/wikipedia2vec respectively,
+reproducing `z_threshold.md`'s cross-space-assassin pattern as expected
+(inherited, not re-derived -- this model still selects on a single
+space).
+
+Hit the same editable-install-shadows-the-worktree footgun the previous
+log entry already flagged, from the other direction: running
+`scripts/pipeline/run_two_team_arena.py` directly picked up the *main
+checkout's* `codenames` package (still had `z_threshold`, not
+`expected_words`) even after clearing `__pycache__`, because the script's
+own directory (not the repo root) is what Python puts on `sys.path[0]`.
+Fixed by running with `PYTHONPATH=.` from the repo root rather than
+editing `sys.path` in the script itself. 340 tests pass (335 - 17
+deleted z_threshold tests + 19 new expected_words tests + 3 pre-existing
+uncommitted changes already in this worktree at session start).
