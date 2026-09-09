@@ -13,9 +13,8 @@ was actually arrived at.
   numerical features.
 - **Not novel research.** Reusing published techniques is fine and expected;
   the contribution is a working, well-measured system.
-- **Not a training-from-scratch embeddings project.** The embedding spaces
-  are downloaded pretrained (fastText, trained locally on a Fandom corpus,
-  is the one exception — see the status note in the main README).
+- **Not a training-from-scratch embeddings project.** Every embedding space
+  is downloaded pretrained.
 
 ## The motivating problem
 
@@ -37,8 +36,11 @@ solve Codenames with a single "best" embedding.
   meaningful: "highest own-word similarity is 0.8" and "ninth own-word
   similarity is 0.8" are entirely different situations.
 - **Concatenate spaces, don't average them.** Averaging destroys the signal
-  that matters most: "high fastText similarity, near-zero GloVe similarity"
-  identifies a domain-specific clue (the Technoblade case). Averaged into
+  that matters most: "high Numberbatch similarity, near-zero GloVe
+  similarity" identifies a clue driven by a structured commonsense relation
+  (e.g. a has-part or is-a edge ConceptNet encodes explicitly) that GloVe's
+  co-occurrence statistics never surface — a knowledge-source-specific clue,
+  the same kind of case the Technoblade example illustrates. Averaged into
   one number, that's indistinguishable from a uniformly mediocre clue.
   `codenames/ablation.py::average_concatenation` exists specifically to
   demonstrate this empirically, not as a serious alternative.
@@ -85,8 +87,8 @@ doc for exactly how.
 
 Three deliberate divergences from the guesser-pool design above, adopted to
 sidestep the "different embeddings know different things" problem rather
-than solve it head-on in the first working version. Revisit once fastText
-exists and/or before scaling past a first pass.
+than solve it head-on in the first working version. Revisit before scaling
+past a first pass.
 
 1. **Clue vocabulary is an intersection, not a union**, of every currently-
    built embedding space's own vocabulary (currently GloVe, Numberbatch,

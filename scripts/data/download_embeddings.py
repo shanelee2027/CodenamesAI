@@ -3,18 +3,15 @@
 Downloads GloVe, ConceptNet Numberbatch, and Wikipedia2Vec into
 data/embeddings/raw/. This only stages the raw files -- it does not build
 the similarity tensor, which is built later, after the board/clue
-machinery exists. Staging now is justified the same way the Fandom corpus
-collection is: these are large, latency-bound downloads with no code
-dependency, not a shortcut around "one module at a time."
+machinery exists. Staging now is justified because these are large,
+latency-bound downloads with no code dependency, not a shortcut around
+"one module at a time."
 
 None of these hosts publish an official checksum, so "checksum
 verification" here means: record a sha256 after every successful download
 into a .sha256 sidecar file, and use expected Content-Length (from a HEAD
 request) to detect a truncated / corrupt local copy on re-run, not to
 verify against a canonical hash.
-
-fastText (the fourth embedding space) is trained locally on the Fandom
-corpus and is not downloaded here.
 
 Usage:
     python scripts/data/download_embeddings.py

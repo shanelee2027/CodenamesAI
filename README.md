@@ -195,7 +195,7 @@ cache/         similarity tensor, rollouts, datasets, checkpoints (gitignored)
 codenames/     library code (board, similarity, features, guessers, spymasters,
                scorer, rollouts, eval_suite, game, arena)
 scripts/
-  data/        build time, run once: downloads, corpus, similarity tensor
+  data/        build time, run once: downloads, similarity tensor
   pipeline/    the iteration loop: generate, featurize, train, arenas
   tools/       interactive: inspector, web UI, record dumps
 tests/         pytest suite
@@ -209,12 +209,10 @@ docs/
 
 ## Status
 
-Corpus collection (Fandom dumps) and fastText training — the fourth
-embedding space, meant to supply pop-culture/proper-noun knowledge — remain
-unbuilt; the project currently runs on 3 of its 4 intended spaces (GloVe,
-ConceptNet Numberbatch, Wikipedia2Vec). Human evaluation (logged games
-against real players, fitting the guesser-pool mixture to that data) also
-hasn't started.
+The project runs on 3 embedding spaces (GloVe, ConceptNet Numberbatch,
+Wikipedia2Vec); a fourth, pop-culture/proper-noun space was planned but is
+now out of scope. Human evaluation (logged games against real players,
+fitting the guesser-pool mixture to that data) also hasn't started.
 
 The infrastructure above is built: the spymaster registry, the rollout
 cache, the frozen eval suite and the eval store all work and are tested.

@@ -3,8 +3,8 @@
 The tensor is built by scripts/data/build_similarity_tensor.py and lives in
 cache/ (gitignored -- regenerate it locally, it's not checked in). Shape is
 (n_clues, n_board_words, n_spaces) fp16, matching the feature vector's exact
-axis order so fastText can append additional space-slices without changing this
-loader's interface.
+axis order so a future embedding space can append additional space-slices
+without changing this loader's interface.
 """
 
 from __future__ import annotations
