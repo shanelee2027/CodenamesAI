@@ -2933,4 +2933,64 @@ runnable") gets checked against the letter of each numbered step, not
 against the requirement. Worth stating the acceptance test, not just the
 task.
 
+## Step 4: rollouts stored separately from features
+
+**Expected:** splitting generation into "simulate the guesser" (expensive,
+model-independent) and "build features" (cheap, model-specific) would make
+a feature-design change much cheaper, since features are now expected to
+vary between models and re-simulating identical rollouts to get different
+columns is pure waste. Guessed ~6x storage saving and did not predict the
+time saving.
+
+**What actually happened**, measured on a 500-example sample at seed 123:
+
+- Generation runs at ~318 examples/sec; featurizing stored rollouts runs
+  at ~11,161. So a feature-vector change now costs about **1/35th** of a
+  regeneration. Bigger than expected, and it is the real payoff -- the
+  storage saving is secondary.
+- Storage is 4.1x smaller (54,134 bytes vs 222,512), not the ~6x guessed.
+  A row is ~87 bytes, not the ~60 estimated: the 25 uint16 word indices
+  plus 25 role bytes dominate, and packing roles to 2 bits was not worth
+  the decode complexity. `docs/iteration-architecture.md` corrected.
+- **Equivalence was verified, not assumed.** The old generator was run
+  first at seed 123 to capture a baseline dataset, then the refactored
+  generate -> featurize path was run at the same seed: `features`,
+  `outcome`, `reward` and `seed` all compare exactly equal. This is why
+  `emit()` keeps its guesser RNG draw in precisely its old position --
+  moving it would have reordered the draw sequence and silently changed
+  which boards and clues a given seed produces.
+
+Two deliberate consequences:
+
+- **Reward is no longer stored.** It is exactly `k * ROLE_REWARD[OWN] +
+  ROLE_REWARD[cause]`, a pure function of (k, cause) and the four reward
+  constants, and `docs/design-decisions.md` requires those to remain
+  changeable at scoring time with no retraining -- a saved `reward`
+  column quietly contradicted that. `rollouts.reward_for` derives it, so
+  changing a reward constant now reprices an existing rollout set for
+  free. The featurized output still contains the identical column, since
+  it is recomputed there.
+- **Perspective is stored resolved.** Rows sampled from
+  `OpponentBoardView` store each word's role *as the acting side sees
+  it*, so `board_from_row` returns a plain `Board` and nothing downstream
+  needs a perspective flag. `swapped` is kept for diagnostics only.
+
+The featurized output is byte-compatible with the old layout on purpose,
+so `scripts/train_scorer.py` needed no changes whatsoever -- which is also
+what made the equivalence check a direct array comparison.
+
+Four tests in `test_generate_training_data.py` failed after the change,
+all asserting the old `features_*.npy` output. Rather than relax them, the
+two that test a genuine *feature* property (the widened 9th opponent slot
+under perspective swapping) now run generate -> featurize end to end,
+which is a better test than before. 292 pass (277 + 15 new in
+`tests/test_rollouts.py`).
+
+**Follow-up not taken:** `run_ablation_study.py`'s `unsorted` variant uses
+the same seed as `base`, so its rollouts are now bit-identical to base's
+and it could skip generation entirely and just re-featurize -- one fewer
+generation pass out of six. Not done because those jobs run concurrently
+in a process pool and would race on the shared directory; it needs the
+job graph sequenced first.
+
 ## Human evaluation (not started)

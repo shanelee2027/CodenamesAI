@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+from featurize_rollouts import featurize  # noqa: E402
 from generate_training_data import (  # noqa: E402
     CLUE_MIX,
     MAX_K,
@@ -205,17 +206,25 @@ class TestGenerate:
         )
         assert produced == 25
 
-        feature_shards = sorted(output_dir.glob("features_*.npy"))
-        assert len(feature_shards) == 3  # 10 + 10 + 5
+        # generate() now writes rollouts (docs/iteration-architecture.md
+        # step 4); the feature dataset is produced from them by featurize().
+        assert len(sorted(output_dir.glob("board_words_*.npy"))) == 3  # 10 + 10 + 5
+        assert (output_dir / "manifest.json").exists()
+
+        features_dir = tmp_path / "features"
+        featurize(rollout_dir=output_dir, output_dir=features_dir, sims_cache_dir=sims_cache_dir)
+
+        feature_shards = sorted(features_dir.glob("features_*.npy"))
+        assert len(feature_shards) == 3
 
         dim = feature_dim(len(SPACES))
         total = 0
         for path in feature_shards:
             features = np.load(path)
             idx = path.stem.split("_")[1]
-            outcomes = np.load(output_dir / f"outcome_{idx}.npy")
-            rewards = np.load(output_dir / f"reward_{idx}.npy")
-            seeds = np.load(output_dir / f"seed_{idx}.npy")
+            outcomes = np.load(features_dir / f"outcome_{idx}.npy")
+            rewards = np.load(features_dir / f"reward_{idx}.npy")
+            seeds = np.load(features_dir / f"seed_{idx}.npy")
 
             assert features.dtype == np.float32
             assert features.shape[1] == dim
@@ -292,7 +301,9 @@ class TestGenerate:
             sims_cache_dir=sims_cache_dir,
             swap_perspective_prob=1.0,
         )
-        features = np.load(output_dir / "features_00000.npy")
+        features_dir = tmp_path / "features"
+        featurize(rollout_dir=output_dir, output_dir=features_dir, sims_cache_dir=sims_cache_dir)
+        features = np.load(features_dir / "features_00000.npy")
         layout = FeatureLayout(spaces=SPACES)
         mask = features[:, layout.mask_slice()]
         opp_start = FEATURE_SLOT_COUNTS[Role.OWN]
@@ -311,7 +322,9 @@ class TestGenerate:
             sims_cache_dir=sims_cache_dir,
             swap_perspective_prob=0.0,
         )
-        features = np.load(output_dir / "features_00000.npy")
+        features_dir = tmp_path / "features"
+        featurize(rollout_dir=output_dir, output_dir=features_dir, sims_cache_dir=sims_cache_dir)
+        features = np.load(features_dir / "features_00000.npy")
         layout = FeatureLayout(spaces=SPACES)
         mask = features[:, layout.mask_slice()]
         opp_start = FEATURE_SLOT_COUNTS[Role.OWN]
@@ -322,7 +335,7 @@ class TestGenerate:
     def test_resumes_by_adding_new_shards_not_overwriting(self, sims_cache_dir, guesser_pool_config, tmp_path):
         output_dir = tmp_path / "out"
         generate(n_examples=5, shard_size=5, output_dir=output_dir, seed=0, guesser_pool_config=guesser_pool_config, sims_cache_dir=sims_cache_dir)
-        assert len(list(output_dir.glob("features_*.npy"))) == 1
+        assert len(list(output_dir.glob("board_words_*.npy"))) == 1
 
         generate(n_examples=5, shard_size=5, output_dir=output_dir, seed=1, guesser_pool_config=guesser_pool_config, sims_cache_dir=sims_cache_dir)
-        assert len(list(output_dir.glob("features_*.npy"))) == 2
+        assert len(list(output_dir.glob("board_words_*.npy"))) == 2

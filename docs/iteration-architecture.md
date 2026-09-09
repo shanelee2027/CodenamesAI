@@ -154,11 +154,25 @@ and the `unsorted`/`pool_*` ablations already need fresh generation
 passes for the same reason.
 
 Store the rollout instead: `(board, clue, guesser, turn_index) ->
-(k, cause, reward)`. Features are then computed on demand per model. A
-new feature design costs a recompute, not a re-simulation, and every
-model trains on the identical rollout set, which makes model-to-model
-comparison cleaner. It is also ~6x smaller on disk (~60 bytes vs ~400 for
-a 103-float vector).
+(k, cause)`. Features are then computed on demand per model. A new
+feature design costs a recompute, not a re-simulation, and every model
+trains on the identical rollout set, which makes model-to-model
+comparison cleaner.
+
+**Built, and measured.** `codenames/rollouts.py` stores the rollouts;
+`scripts/featurize_rollouts.py` turns a rollout set into a training
+dataset whose on-disk layout is byte-compatible with the pre-split one,
+so `scripts/train_scorer.py` needed no changes at all. On a 500-example
+sample: generation runs at ~318 examples/sec, featurization at ~11,161 —
+**~35x**, which is what a feature-design change now costs relative to a
+regeneration. Storage is 4.1x smaller (54,134 bytes of rollouts vs
+222,512 of features; earlier estimates of ~6x and ~60 bytes/row were
+optimistic). Equivalence was verified rather than assumed: the
+featurized rollouts reproduce the pre-refactor dataset exactly — all four
+arrays (`features`, `outcome`, `reward`, `seed`) identical at the same
+seed.
+
+Reward is not stored, only derived, for the reason given above.
 
 This is the same discipline as the similarity tensor and the LLM
 response cache, applied to the third expensive model-independent thing.

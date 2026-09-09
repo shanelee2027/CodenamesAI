@@ -63,23 +63,44 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).parent))
+from featurize_rollouts import featurize  # noqa: E402
 from generate_training_data import generate  # noqa: E402
 from train_scorer import train  # noqa: E402
 
 from codenames.ablation import average_concatenation, drop_space
-from codenames.features import FeatureLayout, build_features_unsorted
+from codenames.features import FeatureLayout, build_features, build_features_unsorted
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG, training_pool
 from codenames.scorer import LinearScorer, Scorer
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 
-def _generate_if_needed(output_dir: Path, n_examples: int, **kwargs) -> None:
+def _generate_if_needed(output_dir: Path, n_examples: int, feature_builder=build_features, **kwargs) -> None:
+    """Produce this variant's feature dataset, via the two-stage pipeline
+    (docs/iteration-architecture.md step 4): generate rollouts, then
+    featurize them. `feature_builder` moved out of `generate()` when
+    features stopped being computed during generation, so it is applied
+    here instead -- the rollouts themselves are feature-agnostic.
+
+    The rollout set is kept in `<output_dir>/rollouts` rather than thrown
+    away, so re-running this variant with a different feature vector skips
+    straight to featurization (measured ~35x faster than regenerating; see
+    docs/log.md). A follow-up worth taking: `unsorted` uses the same seed
+    as `base`, so its rollouts are bit-identical to base's and it could
+    reuse them outright instead of generating its own -- not done here
+    only because these jobs run concurrently in a process pool and would
+    race on the shared directory."""
     if output_dir.exists() and any(output_dir.glob("features_*.npy")):
         print(f"[skip] {output_dir} already generated")
         return
-    print(f"[generate] {output_dir} ({n_examples} examples)")
+    rollout_dir = output_dir / "rollouts"
     t0 = time.time()
-    generate(n_examples=n_examples, shard_size=n_examples, output_dir=output_dir, **kwargs)
+    if not (rollout_dir.exists() and any(rollout_dir.glob("board_words_*.npy"))):
+        print(f"[generate] {rollout_dir} ({n_examples} rollouts)")
+        generate(n_examples=n_examples, shard_size=n_examples, output_dir=rollout_dir, **kwargs)
+    else:
+        print(f"[skip] {rollout_dir} already generated")
+    print(f"[featurize] {output_dir}")
+    featurize(rollout_dir=rollout_dir, output_dir=output_dir, feature_builder=feature_builder)
     print(f"  done: {output_dir} in {time.time() - t0:.0f}s")
 
 

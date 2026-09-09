@@ -61,8 +61,15 @@ Work happens at three different times:
    guesser) triples against the guesser pool, label each with what actually
    happened, and train a model to predict that outcome from board+clue
    features.
+   Split in two, so the expensive half is paid once: generation simulates
+   guesser *rollouts* (model-independent, the dominant cost), and
+   featurization turns those into a model's feature vectors (cheap, ~35x
+   faster). A new feature design re-featurizes stored rollouts instead of
+   re-simulating them — see `codenames/rollouts.py` and
+   [`docs/iteration-architecture.md`](docs/iteration-architecture.md).
    ```bash
-   python scripts/generate_training_data.py --n-examples 200000
+   python scripts/generate_training_data.py --n-examples 200000   # -> cache/rollouts
+   python scripts/featurize_rollouts.py                           # -> cache/training_data
    python scripts/train_scorer.py --data-dir cache/training_data
    ```
 3. **Play time (per turn).** Score every legal clue in the vocabulary in

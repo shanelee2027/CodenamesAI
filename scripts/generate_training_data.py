@@ -1,10 +1,13 @@
 """Generate training examples for M8's scorer (SCOPE.md §M7).
 
-Each example is (features, outcome, reward) for one (sampled board state,
-sampled clue, sampled training-pool guesser) triple:
+Each example is a *rollout*: one (sampled board state, sampled clue,
+sampled training-pool guesser) triple and what the guesser did with it.
+Features are deliberately NOT computed here -- see `codenames/rollouts.py`
+for why the model-independent half (simulating the guesser, expensive) is
+stored separately from the model-specific half (the feature vector,
+cheap), and `scripts/featurize_rollouts.py` for the step that turns a
+stored rollout set into a training dataset.
 
-- **features**: `build_features(board, clue, sims, turn_index)` -- §2's
-  feature vector (see codenames/features.py).
 - **outcome**: `codenames.scorer.outcome_class(k, cause)`, packing two
   things about this guesser's rollout into one training label: `k`, how
   many own-words it revealed before stopping (capped at MAX_K, matching
@@ -18,10 +21,14 @@ sampled clue, sampled training-pool guesser) triple:
   `codenames.scorer.reward_matrix` charge a neutral miss, an opponent
   miss, and an assassin miss differently instead of one flattened
   worst-case penalty -- see scorer.py's module docstring.
-- **reward**: the reward SCOPE §2 attaches to that same rollout (own words
-  +1 each, plus whatever ended the run -- another miss's reward, or nothing
-  if it hit the k cap without a miss). Diagnostic only -- not read by
-  scripts/train_scorer.py, which trains against `outcome` alone.
+- **reward**: no longer stored. It is exactly
+  `k * ROLE_REWARD[OWN] + ROLE_REWARD[cause]` -- a pure function of (k,
+  cause) and the four reward constants, which `docs/design-decisions.md`
+  requires to stay changeable at scoring time with no retraining, so
+  baking them into a saved column contradicted that.
+  `codenames.rollouts.reward_for` derives it on demand instead. It was
+  diagnostic only in any case; scripts/train_scorer.py trains against
+  `outcome` alone.
 
 Guesser sampling still goes through `training_pool()` (SCOPE §3/§5's
 mechanism for "training code must never touch held-out guessers"), though
@@ -67,13 +74,13 @@ game would already be over for team B -- falls back to team A's real
 perspective for that example instead, mirroring `sample_partial_board`'s
 own "always >=1 own word left" rule.
 
-**Output** is sharded .npy files under `--output-dir` (default
-cache/training_data/, gitignored): `features_NNNNN.npy` (float32,
-shard_size x feature_dim), `outcome_NNNNN.npy` (int32, one of
-`codenames.scorer.N_OUTCOME_CLASSES` classes), `reward_NNNNN.npy`
-(float32), `seed_NNNNN.npy` (int64, the sampled board's seed) -- each
-independently mmap-loadable. `seed` exists specifically so M8's training
-script can split by board seed rather than by row (SCOPE §4: "the same
+**Output** is a sharded rollout set under `--output-dir` (default
+cache/rollouts/, gitignored): the columns listed in
+`codenames.rollouts.RolloutBatch` as `<column>_NNNNN.npy`, plus a
+`manifest.json` recording the board vocabulary, clue-vocabulary
+fingerprint, and guesser pool the set was written against -- each column
+independently mmap-loadable. `board_seed` exists specifically so M8's
+training script can split by board seed rather than by row (SCOPE §4: "the same
 board appears in many training examples [if reused]; row-wise splits leak
 boards across train/val"). This is the concrete meaning of "appendable
 mmapped output" here: re-running this script adds new shards after
@@ -98,11 +105,11 @@ import torch
 from codenames.board import MAX_CLUE_NUMBER as MAX_K
 from codenames.board import Board, OpponentBoardView, Role, is_legal_clue, load_training_wordlist
 from codenames.clue_search import mean_from_columns, top_k_legal_clues
-from codenames.features import build_features, feature_dim
 from codenames.game import ROLE_REWARD
 from codenames.gpu_clue_search import batched_mean_similarity
 from codenames.guessers.base import Guesser
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG, training_pool
+from codenames.rollouts import RolloutWriter, clue_vocab_fingerprint, write_manifest
 from codenames.scorer import outcome_class
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
@@ -288,7 +295,7 @@ def simulate_natural_stop(
 
 
 def _existing_shard_count(output_dir: Path) -> int:
-    return len(list(output_dir.glob("features_*.npy")))
+    return len(list(output_dir.glob("board_words_*.npy")))
 
 
 def _plan_batch(
@@ -326,15 +333,20 @@ def generate(
     guesser_pool_config: Path = DEFAULT_POOL_CONFIG,
     sims_cache_dir: Path = DEFAULT_CACHE_DIR,
     board_vocabulary: list[str] | None = None,
-    feature_builder: Callable[[Board, str, SimilarityTensor, int], np.ndarray] = build_features,
     guesser_weights: dict[str, float] | None = None,
     use_gpu_batch: bool = True,
     swap_perspective_prob: float = SWAP_PERSPECTIVE_PROB,
 ) -> int:
-    """`feature_builder` and `guesser_weights` exist for SCOPE §9's
-    ablations (scripts/run_ablation_study.py), not as CLI flags: swapping
-    in `build_features_unsorted` reproduces the exact same sampled
-    boards/clues/guessers for a given `seed` (feature computation never
+    """`guesser_weights` exists for SCOPE §9's pool-sensitivity
+    ablations (scripts/run_ablation_study.py), not as a CLI flag.
+
+    `feature_builder` used to live here too; it doesn't any more, because
+    this function no longer builds features at all -- it writes rollouts
+    (codenames/rollouts.py) and `scripts/featurize_rollouts.py` turns them
+    into a feature dataset afterwards. A feature-vector ablation is now a
+    re-featurization of one stored rollout set rather than a whole fresh
+    generation pass. The historical note below still describes why that
+    separation is sound: feature computation never
     consumes randomness), and `guesser_weights` skews which guesser labels
     each example without changing anything else about the sampling.
 
@@ -363,6 +375,8 @@ def generate(
     if not guesser_names:
         raise ValueError(f"training_pool({guesser_pool_config}) is empty -- nothing to sample from")
     guesser_choice_weights = [guesser_weights[name] for name in guesser_names] if guesser_weights is not None else None
+    guesser_code = {name: i for i, name in enumerate(guesser_names)}
+    board_word_index = {word: i for i, word in enumerate(board_vocabulary)}
 
     device = torch.device("cuda") if (use_gpu_batch and torch.cuda.is_available()) else None
 
@@ -370,41 +384,65 @@ def generate(
     output_dir.mkdir(parents=True, exist_ok=True)
     shard_index = _existing_shard_count(output_dir)
 
-    dim = feature_dim(len(sims.spaces))
     produced = 0
     start_time = time.time()
 
-    def emit(features, outcomes, rewards, seeds, filled: int, board: Board, turn_index: int, clue: str) -> int:
+    def emit(writer: RolloutWriter, board: Board, turn_index: int, clue: str) -> None:
+        """Draw a guesser, roll it out, and record the rollout. The RNG
+        draw here is in exactly the position it was when this function
+        also built a feature vector, so a given seed still produces the
+        identical board/clue/guesser sequence -- only what gets *stored*
+        changed. Features are no longer built here at all; see
+        codenames/rollouts.py and scripts/featurize_rollouts.py."""
         if guesser_choice_weights is not None:
             guesser_name = rng.choices(guesser_names, weights=guesser_choice_weights, k=1)[0]
         else:
             guesser_name = rng.choice(guesser_names)
         guesser = guessers[guesser_name]
-        features[filled] = feature_builder(board, clue, sims, turn_index)
-        k, cause, rewards[filled] = simulate_natural_stop(board, clue, guesser, sims)
-        outcomes[filled] = outcome_class(k, cause)
-        seeds[filled] = board.seed
-        return filled + 1
+        k, cause, _reward = simulate_natural_stop(board, clue, guesser, sims)
+        # Not stored (reward is derived, see codenames/rollouts.py), but still
+        # called for its validation: it raises on an impossible (k, cause),
+        # which is the "fail loud, not silently wrong" guarantee
+        # simulate_natural_stop's docstring relies on.
+        outcome_class(k, cause)
+        writer.add(
+            board=board,
+            board_word_index=board_word_index,
+            clue_index=sims.clue_index[clue.lower()],
+            guesser_index=guesser_code[guesser_name],
+            turn_index=turn_index,
+            k=k,
+            cause=cause,
+            board_seed=board.seed,
+            swapped=isinstance(board, OpponentBoardView),
+        )
+
+    writer = RolloutWriter(output_dir, shard_size)
+    write_manifest(
+        output_dir,
+        board_vocab=list(board_vocabulary),
+        clue_vocab_hash=clue_vocab_fingerprint(sims.clue_words),
+        n_clue_words=len(sims.clue_words),
+        guesser_names=guesser_names,
+        guesser_pool_config=str(guesser_pool_config),
+        seed=seed,
+        extra={"swap_perspective_prob": swap_perspective_prob, "spaces": list(sims.spaces)},
+    )
 
     while produced < n_examples:
         this_shard_size = min(shard_size, n_examples - produced)
-        features = np.empty((this_shard_size, dim), dtype=np.float32)
-        outcomes = np.empty(this_shard_size, dtype=np.int32)
-        rewards = np.empty(this_shard_size, dtype=np.float32)
-        seeds = np.empty(this_shard_size, dtype=np.int64)
 
-        filled = 0
-        while filled < this_shard_size:
+        while len(writer) < this_shard_size:
             if device is None:
                 board, turn_index = sample_partial_board_perspective(rng, board_vocabulary, swap_perspective_prob)
                 clue = sample_clue(rng, sims, board)
                 if clue is None:
                     continue
-                filled = emit(features, outcomes, rewards, seeds, filled, board, turn_index, clue)
+                emit(writer, board, turn_index, clue)
                 produced += 1
                 continue
 
-            target = min(PLAN_BATCH_SIZE, this_shard_size - filled)
+            target = min(PLAN_BATCH_SIZE, this_shard_size - len(writer))
             resolved, pending_boards, pending_turn_indices, pending_queries = _plan_batch(rng, sims, board_vocabulary, target, swap_perspective_prob)
             if pending_queries:
                 scores_batch = batched_mean_similarity(sims, pending_queries, device)
@@ -414,15 +452,12 @@ def generate(
                         resolved.append((board, turn_index, clue))
 
             for board, turn_index, clue in resolved:
-                if filled >= this_shard_size:
+                if len(writer) >= this_shard_size:
                     break
-                filled = emit(features, outcomes, rewards, seeds, filled, board, turn_index, clue)
+                emit(writer, board, turn_index, clue)
                 produced += 1
 
-        np.save(output_dir / f"features_{shard_index:05d}.npy", features)
-        np.save(output_dir / f"outcome_{shard_index:05d}.npy", outcomes)
-        np.save(output_dir / f"reward_{shard_index:05d}.npy", rewards)
-        np.save(output_dir / f"seed_{shard_index:05d}.npy", seeds)
+        filled = writer.flush(shard_index)
 
         elapsed = time.time() - start_time
         rate = produced / elapsed if elapsed > 0 else 0.0
@@ -436,7 +471,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--n-examples", type=int, default=100_000)
     parser.add_argument("--shard-size", type=int, default=50_000)
-    parser.add_argument("--output-dir", type=Path, default=Path("cache/training_data"))
+    # cache/rollouts, not cache/training_data: this script's output is now a
+    # rollout set, and scripts/featurize_rollouts.py turns that into the
+    # training dataset scripts/train_scorer.py reads.
+    parser.add_argument("--output-dir", type=Path, default=Path("cache/rollouts"))
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG)
     parser.add_argument(
