@@ -671,3 +671,65 @@ class TestLLMGuesser:
         # close to one delay. The midpoint is a generous margin against
         # scheduling noise while still failing if calls are serialized.
         assert elapsed < n * delay / 2
+
+
+class TestLLMGuesserEffort:
+    """`effort` is opt-in per model: Opus 5 takes it, the Haiku 4.5 that
+    DEFAULT_MODEL points at rejects it, so it must never be sent
+    unconditionally. See LLMGuesser.__init__."""
+
+    WORDS = ["Apple", "Banana", "Car", "Doghouse"]
+    RANKING = '["Car", "Apple", "Doghouse", "Banana"]'
+
+    def _rank(self, **kwargs):
+        client = _FakeClient([self.RANKING])
+        guesser = LLMGuesser(client=client, **kwargs)
+        guesser.rank_candidates("vehicle", self.WORDS, None)
+        return client.messages.calls[0]
+
+    def test_without_effort_thinking_is_disabled_and_no_output_config(self):
+        call = self._rank()
+        assert call["thinking"] == {"type": "disabled"}
+        assert "output_config" not in call
+
+    def test_with_effort_sends_output_config_and_leaves_thinking_alone(self):
+        call = self._rank(model="claude-opus-5", effort="medium")
+        assert call["output_config"] == {"effort": "medium"}
+        # Thinking must NOT be disabled here: on Opus 5 that is the
+        # discouraged way to cut cost (it can leak <thinking> tags into the
+        # visible response); lowering effort is the supported way.
+        assert "thinking" not in call
+
+    def test_effort_is_part_of_the_cache_identity(self):
+        base = LLMGuesser(model="claude-opus-5")
+        medium = LLMGuesser(model="claude-opus-5", effort="medium")
+        high = LLMGuesser(model="claude-opus-5", effort="high")
+        assert base.cache_model_id == "claude-opus-5"
+        assert medium.cache_model_id != high.cache_model_id
+        assert medium.cache_model_id != base.cache_model_id
+
+    def test_different_efforts_do_not_share_disk_cache_entries(self, tmp_path):
+        """Otherwise changing effort would silently keep serving rankings
+        produced at the old one -- results that were paid for under
+        different conditions than the ones being reported."""
+        db = tmp_path / "store.db"
+        first = _FakeClient([self.RANKING])
+        LLMGuesser(model="claude-opus-5", effort="medium", client=first, cache_path=db).rank_candidates(
+            "vehicle", self.WORDS, None
+        )
+        assert len(first.messages.calls) == 1
+
+        # Same model, same prompt, different effort -> must miss the cache.
+        second = _FakeClient(['["Banana", "Car", "Apple", "Doghouse"]'])
+        LLMGuesser(model="claude-opus-5", effort="high", client=second, cache_path=db).rank_candidates(
+            "vehicle", self.WORDS, None
+        )
+        assert len(second.messages.calls) == 1
+
+        # ...while the identical configuration still hits it.
+        third = _FakeClient([])  # would IndexError if it tried to call
+        ranking = LLMGuesser(
+            model="claude-opus-5", effort="medium", client=third, cache_path=db
+        ).rank_candidates("vehicle", self.WORDS, None)
+        assert third.messages.calls == []
+        assert ranking[0] == "Car"

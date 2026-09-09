@@ -59,9 +59,26 @@ class LLMGuesser(Guesser):
         max_tokens: int = 512,
         client=None,
         cache_path: str | Path | None = None,
+        effort: str | None = None,
     ):
+        """`effort` (low/medium/high/xhigh/max) is the cost-vs-thoroughness
+        knob on current models, passed as `output_config={"effort": ...}`.
+
+        It is opt-in per model rather than a default because the API
+        surface genuinely differs: Claude Opus 5 runs adaptive thinking by
+        default and takes `effort`, while the older Haiku 4.5 that
+        `DEFAULT_MODEL` still points at *rejects* `effort` outright. Sending
+        it unconditionally would break the default guesser.
+
+        Setting `effort` also switches this guesser off the explicit
+        `thinking={"type": "disabled"}` path (see `_query`). On Opus 5,
+        disabling thinking is the discouraged way to cut cost -- it can leak
+        `<thinking>` tags into the visible response -- and lowering effort
+        with thinking left on achieves the same saving without that failure
+        mode."""
         self.model = model
         self.max_tokens = max_tokens
+        self.effort = effort
         # Constructed lazily (not at __init__ time) so importing/building a
         # guesser pool that includes this one doesn't require an API key
         # unless it's actually used -- e.g. tests that inject a fake
@@ -103,6 +120,16 @@ class LLMGuesser(Guesser):
                 self._client = anthropic.Anthropic(default_headers=headers)
             return self._client
 
+    @property
+    def cache_model_id(self) -> str:
+        """What the response cache is keyed by. `effort` changes the
+        response, so two runs of the same model at different efforts must
+        not share cached rankings -- otherwise lowering effort once would
+        silently keep serving the old, more expensive answers (or worse,
+        the reverse). Falls back to the bare model name when no effort is
+        set, so entries cached before this existed stay valid."""
+        return self.model if self.effort is None else f"{self.model}+effort={self.effort}"
+
     def _ranked(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:
         key = (clue, tuple(candidate_words), number)
         with self._lock:
@@ -113,11 +140,11 @@ class LLMGuesser(Guesser):
         # Neither lock is held past this point while the disk read/API
         # call happens -- both are what let many games' calls actually run
         # concurrently instead of one at a time (see __init__'s note).
-        cached = self._disk_cache.get(self.model, clue, key[1], number) if self._disk_cache else None
+        cached = self._disk_cache.get(self.cache_model_id, clue, key[1], number) if self._disk_cache else None
         if cached is None:
             cached = self._query(clue, candidate_words, number)
             if self._disk_cache is not None:
-                self._disk_cache.put(self.model, clue, key[1], number, cached)
+                self._disk_cache.put(self.cache_model_id, clue, key[1], number, cached)
 
         with self._lock:
             self._cache[key] = cached
@@ -126,9 +153,18 @@ class LLMGuesser(Guesser):
     def _query(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:
         count_note = f" for {number} word(s)" if number else ""
         prompt = _PROMPT_TEMPLATE.format(clue=clue, count_note=count_note, words="\n".join(candidate_words))
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
+        request = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if self.effort is not None:
+            # Thinking stays on (adaptive, the default on current models);
+            # `effort` is what trades thoroughness against token spend. This
+            # is the recommended way to cut cost on Opus 5 -- see __init__
+            # on why disabling thinking there is the worse option.
+            request["output_config"] = {"effort": self.effort}
+        else:
             # Ranking a short word list against one clue is a single-shot
             # associative judgment, not the multi-step reasoning extended
             # thinking is built for -- a direct comparison on a real
@@ -138,9 +174,8 @@ class LLMGuesser(Guesser):
             # reason inline in the visible text even with thinking
             # disabled; _parse_ranking's regex search handles that either
             # way by finding the JSON array wherever it appears.
-            thinking={"type": "disabled"},
-            messages=[{"role": "user", "content": prompt}],
-        )
+            request["thinking"] = {"type": "disabled"}
+        response = self.client.messages.create(**request)
         text = next((block.text for block in response.content if block.type == "text"), "")
         return self._parse_ranking(text, candidate_words)
 

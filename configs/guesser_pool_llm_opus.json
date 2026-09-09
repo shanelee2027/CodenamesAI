@@ -1,0 +1,14 @@
+{
+  "_comment": "Evaluation-only external-listener pool: Claude Opus 5 at medium effort. This is the pool configs/eval_suite.json points at, and the only guesser evaluation ever uses -- every other pool in this directory is for training (see docs/iteration-architecture.md's 'two roles for guessers'). Opus 5 runs adaptive thinking by default; 'effort': 'medium' is what keeps the cost down, rather than disabling thinking, which on Opus 5 can leak <thinking> tags into the visible response (see codenames/guessers/llm.py::LLMGuesser.__init__). Effort is part of the response-cache key (LLMGuesser.cache_model_id), so changing it here will not silently reuse rankings produced at a different effort -- but it WILL change EvalSuite.suite_id, which invalidates every already-paid-for game in the eval store. Settle it before spending money, not after. Shares cache/llm_store.db with the Haiku/Sonnet entries; keyed by model, so no collision.",
+  "guessers": [
+    {
+      "name": "llm",
+      "type": "llm",
+      "params": {
+        "model": "claude-opus-5",
+        "effort": "medium",
+        "cache_path": "cache/llm_store.db"
+      }
+    }
+  ]
+}

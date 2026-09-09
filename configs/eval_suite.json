@@ -1,5 +1,5 @@
 {
-  "_comment": "Frozen eval suite (docs/iteration-architecture.md steps 5-6). board_seeds is a fixed list, not a count -- a rerun or an extension must reproduce the exact same boards for seeds already used, so results stay comparable and cache hits actually hit. Boards are built from codenames.board.load_holdout_wordlist() (150 of 400 words, none seen in training), not the full 400-word list -- see codenames/eval_suite.py. guesser_pool_config + guesser_name select a single fixed LLM guesser (never MIXED_GUESSER -- see configs/guesser_pool_llm_sonnet.json), and llm_model is recorded explicitly here (duplicating what the guesser config already implies) because it is part of the suite's identity (codenames.eval_suite.EvalSuite.suite_id): switching models invalidates every cached response and makes old numbers non-comparable, per docs/iteration-architecture.md's \"two roles for guessers\" section. Extending board_seeds with more entries does NOT change suite_id -- only games for the newly-added seeds get simulated (codenames/llm_store.py::GameRecordStore.recorded_seeds).",
+  "_comment": "Frozen eval suite (docs/iteration-architecture.md steps 5-6). board_seeds is a fixed list, not a count -- a rerun or an extension must reproduce the exact same boards for seeds already used, so results stay comparable and cache hits actually hit. Boards are built from codenames.board.load_holdout_wordlist() (150 of 400 words, none seen in training), not the full 400-word list -- see codenames/eval_suite.py. guesser_pool_config + guesser_name select a single fixed LLM guesser (never MIXED_GUESSER -- see configs/guesser_pool_llm_opus.json), and llm_model is recorded explicitly here (duplicating what the guesser config already implies) because it is part of the suite's identity (codenames.eval_suite.EvalSuite.suite_id): switching models invalidates every cached response and makes old numbers non-comparable, per docs/iteration-architecture.md's \"two roles for guessers\" section. Extending board_seeds with more entries does NOT change suite_id -- only games for the newly-added seeds get simulated (codenames/llm_store.py::GameRecordStore.recorded_seeds).",
   "name": "holdout_v1",
   "board_seeds": [
     0,
@@ -103,7 +103,7 @@
     98,
     99
   ],
-  "guesser_pool_config": "configs/guesser_pool_llm_sonnet.json",
+  "guesser_pool_config": "configs/guesser_pool_llm_opus.json",
   "guesser_name": "llm",
-  "llm_model": "claude-sonnet-5"
+  "llm_model": "claude-opus-5"
 }
