@@ -49,6 +49,15 @@
       "roles": [
         "trained"
       ]
+    },
+    {
+      "name": "z_threshold",
+      "type": "z_threshold",
+      "params": {},
+      "trained": false,
+      "roles": [
+        "baseline"
+      ]
     }
   ]
 }
