@@ -51,12 +51,9 @@
       ]
     },
     {
-      "name": "z_threshold",
-      "type": "z_threshold",
-      "params": {
-        "own_top": 0.02,
-        "assassin_outside": 0.6
-      },
+      "name": "expected_words",
+      "type": "expected_words",
+      "params": {},
       "trained": false,
       "roles": [
         "baseline"
