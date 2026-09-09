@@ -100,6 +100,12 @@ should be compared against these, and should clearly beat them.
    bound, not a realistic baseline.
 4. **Linear scorer** (`linear_scorer`) — an 8-constant hand-coded formula,
    weighted average across spaces then weighted sum across roles.
+5. **Z-threshold** (`z_threshold`) — see
+   [`docs/versions/z_threshold.md`](docs/versions/z_threshold.md). Percentile
+   thresholds per role (z-scored against `cache/clue_stats.npz`, built by
+   `scripts/data/build_clue_stats.py`) pick the intended own words, then a
+   Gaussian-noise risk term over the margin to the nearest distractor,
+   weighted by each role's real reward magnitude, scores the clue.
 
 ## Evaluation
 

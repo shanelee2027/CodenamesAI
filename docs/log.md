@@ -3306,3 +3306,65 @@ on disk pending a decision; only `cache/fandom_dump_status.json`, written
 by one of the deleted scripts, was removed. 314 tests pass.
 
 ## Human evaluation (not started)
+
+## z_threshold baseline and cache/clue_stats.npz
+
+Built the fifth baseline (`docs/versions/z_threshold.md` has the design
+and sanity check). Two new modules, one script, one registry entry:
+`codenames/clue_stats.py` (`ClueStats` dataclass -- per-clue mean/std over
+all 400 board words, a rarity percentile, and `z_for_board`),
+`scripts/data/build_clue_stats.py` (writes `cache/clue_stats.npz` +
+`cache/clue_stats_meta.json`), `codenames/spymasters/z_threshold.py`
+(`ZThresholdSpymaster`), and a `z_threshold` entry in
+`configs/spymasters.json` with `"roles": ["baseline"]`.
+
+Expected: percentile-to-z-threshold conversion at construction
+(`statistics.NormalDist`, no scipy), a risk term over Gaussian noise in
+cosine space weighted by each role's real reward magnitude so an assassin
+costs 10x a neutral at equal margin, and the two required fallbacks (no
+valid clue -> ignore role thresholds; no eligible clue -> force the
+single best own word). All landed as designed; 21 new tests
+(`tests/test_clue_stats.py`, `tests/test_z_threshold_spymaster.py`)
+cover threshold filtering, the `MAX_CLUE_NUMBER` cap, revealed-word
+exclusion, both fallbacks, determinism, legality, the assassin-vs-neutral
+risk asymmetry, rarity filtering, and `ClueStats` rejecting a vocabulary
+hash mismatch. 335 tests pass (314 + 21).
+
+**Judgment call: `ClueStats`/`clue_stats` as an extra keyword-only
+constructor argument.** The spec's seven tunable parameters don't include
+a cache location or a way to inject a pre-built `ClueStats`, but tests
+need small synthetic fixtures rather than the real 256MB tensor + 2.7MB
+cache, and `top_clues(ctx, sims, k)`'s signature is fixed by
+`spymasters/base.py` -- there's nowhere else to pass one in per-call. Added
+`cache_dir`/`clue_stats` as keyword-only, defaulting to the real load path,
+so registry/production use is unaffected and tests can hand in a
+synthetic instance directly.
+
+**Sanity check surprised in one way, worth flagging even though it
+checked out.** Every one of 10 real holdout boards announced number=4
+(the max) for its top clue. Verified this isn't a single runaway "hub"
+word dominating every board -- the true max own-word count across the
+whole 111,440-word vocabulary per board was only 5-7, and hundreds to
+~1,300 distinct clues cleared the k>=4 bar per board. It's simply common
+for *some* clue among an 11,000-candidate pool to beat 4 of a random
+9-word own set at only a 90th-percentile bar. Not a bug, but it means
+`own_top=0.10` with `MAX_CLUE_NUMBER=4` makes "announce 4" the modal
+outcome on a fresh board under the defaults -- worth a sweep before this
+baseline's numbers get quoted as typical.
+
+**Environment note, not a design issue:** this worktree's `cache/`
+started empty (correctly gitignored) while the real ~256MB similarity
+tensor lives in the main checkout's `cache/`. Symlinked the four
+similarity-tensor files into this worktree's `cache/` to run
+`build_clue_stats.py` and the sanity check against real data without
+copying 267MB. Separately hit a real footgun worth recording: running
+`python scripts/data/build_clue_stats.py` directly puts the script's own
+directory first on `sys.path`, and an editable install of this package
+(pointing at the main checkout) then shadows this worktree's `codenames/`
+package entirely -- the first attempt silently computed against and wrote
+into the *main checkout's* `cache/`, not this worktree's. Caught it by
+checking where the output landed, deleted the stray files there, and
+reran with the worktree root explicitly inserted ahead of the script's
+directory on `sys.path`. Anyone running a `scripts/` entry point directly
+(not via pytest, which doesn't hit this) in a worktree with an editable
+install pointed elsewhere should watch for this.
