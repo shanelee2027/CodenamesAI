@@ -3,15 +3,15 @@ SAME spymaster+guesser pair on both sides of a real two-team game (see
 codenames/game.py::play_two_team_game), across many seeded boards.
 
 Usage:
-    python scripts/run_two_team_arena.py --n-boards 300 --spymaster centroid --guesser noisy_glove
-    python scripts/run_two_team_arena.py --n-boards 300 \\
+    python scripts/pipeline/run_two_team_arena.py --n-boards 300 --spymaster centroid --guesser noisy_glove
+    python scripts/pipeline/run_two_team_arena.py --n-boards 300 \\
         --checkpoint cache/m9/checkpoints/noise_0_08/scorer_best.pt --guesser noisy_glove
-    python scripts/run_two_team_arena.py --n-boards 300 \\
+    python scripts/pipeline/run_two_team_arena.py --n-boards 300 \\
         --checkpoint cache/blend_pool/checkpoints/scorer_best.pt \\
         --guesser-pool-config configs/guesser_pool_blend.json --guesser blend
 
 With --checkpoint, routes through codenames/two_team_gpu_arena.py's
-batched-across-games GPU path by default (mirrors scripts/run_arena.py's
+batched-across-games GPU path by default (mirrors scripts/pipeline/run_arena.py's
 --gpu-batch-size for the single-team case -- pass --no-gpu-batch for the
 normal per-process CPU path instead). A baseline --spymaster always
 runs through the normal per-process path either way, since it's already
@@ -39,7 +39,7 @@ from codenames.two_team_gpu_arena import run_two_team_self_play_gpu
 # that config.
 # Selected by role from configs/spymasters.json rather than by name, so a
 # new entry needs no edit here. This script offers the "exploration"
-# role (oracle) on top of the standard baselines; scripts/run_arena.py
+# role (oracle) on top of the standard baselines; scripts/pipeline/run_arena.py
 # does not -- that difference is the only reason the two lists differ.
 BASE_SPYMASTER_NAMES = spymaster_names("baseline", "exploration")
 
@@ -74,7 +74,7 @@ def main() -> None:
         type=Path,
         default=None,
         help="persist every game's board + turn sequence to this SQLite file (codenames/llm_store.py), "
-        "so a run can be inspected later without replaying it -- see scripts/dump_game_records.py. "
+        "so a run can be inspected later without replaying it -- see scripts/tools/dump_game_records.py. "
         "Most useful when --guesser costs real money per turn (e.g. 'llm').",
     )
     parser.add_argument("--run-label", default=None, help="label stored alongside --record-games' rows (default: '<spymaster>+<guesser>')")

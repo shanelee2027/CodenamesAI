@@ -39,7 +39,7 @@ kept as NaN-on-miss for consistency with extend_similarity_tensor.py
 rather than assuming that in code.
 
 Usage:
-    python scripts/build_similarity_tensor.py
+    python scripts/data/build_similarity_tensor.py
 """
 
 from __future__ import annotations

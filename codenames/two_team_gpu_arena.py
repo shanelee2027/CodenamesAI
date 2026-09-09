@@ -20,7 +20,7 @@ single-team path already does for its one perspective.
 Only accelerates the case codenames/two_team_arena.py's own docstring
 already scopes to: bulk two-team *self-play*, the SAME LearnedSpymaster
 + guesser pair on both sides. A mixed-spymaster or baseline-only
-two-team comparison stays on scripts/run_two_team_arena.py's
+two-team comparison stays on scripts/pipeline/run_two_team_arena.py's
 process-parallel path -- nothing here to batch for a spymaster that
 doesn't score the whole clue vocabulary per turn.
 

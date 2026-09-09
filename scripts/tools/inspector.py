@@ -17,8 +17,8 @@ ranking, not a full simulated turn -- the number attempt cap and
 turn-ending-on-a-miss rule are game-loop concerns (M6), not built yet.
 
 Usage:
-    python scripts/inspector.py --seed 42 --clue king
-    python scripts/inspector.py --seed 42 --clue king --reveal Shark Egypt
+    python scripts/tools/inspector.py --seed 42 --clue king
+    python scripts/tools/inspector.py --seed 42 --clue king --reveal Shark Egypt
 """
 
 from __future__ import annotations

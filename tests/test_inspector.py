@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "scripts" / "tools"))
 from inspector import BASELINE_ROLE_WEIGHTS, baseline_score  # noqa: E402
 
 from codenames.board import Board, Role

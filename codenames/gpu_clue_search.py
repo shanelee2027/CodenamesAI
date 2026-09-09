@@ -1,5 +1,5 @@
 """GPU-batched version of codenames.clue_search.mean_from_columns, batched
-across many independent samples at once -- for scripts/generate_training_data.py's
+across many independent samples at once -- for scripts/pipeline/generate_training_data.py's
 clue-sampling step, which measured as the dominant per-example cost during
 training-data generation (~3ms/example, ~96% of the total -- see
 docs/log.md's GPU-data-generation entries).

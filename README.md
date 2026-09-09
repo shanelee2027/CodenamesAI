@@ -54,8 +54,8 @@ Work happens at three different times:
    After this, the embedding models themselves are never loaded again —
    everything downstream reads the tensor.
    ```bash
-   python scripts/build_similarity_tensor.py
-   python scripts/extend_similarity_tensor.py   # add a space to an existing tensor
+   python scripts/data/build_similarity_tensor.py
+   python scripts/data/extend_similarity_tensor.py   # add a space to an existing tensor
    ```
 2. **Train time (repeatable).** Simulate many sampled (board, clue,
    guesser) triples against the guesser pool, label each with what actually
@@ -68,23 +68,23 @@ Work happens at three different times:
    re-simulating them — see `codenames/rollouts.py` and
    [`docs/iteration-architecture.md`](docs/iteration-architecture.md).
    ```bash
-   python scripts/generate_training_data.py --n-examples 200000   # -> cache/rollouts
-   python scripts/featurize_rollouts.py                           # -> cache/training_data
-   python scripts/train_scorer.py --data-dir cache/training_data
+   python scripts/pipeline/generate_training_data.py --n-examples 200000   # -> cache/rollouts
+   python scripts/pipeline/featurize_rollouts.py                           # -> cache/training_data
+   python scripts/pipeline/train_scorer.py --data-dir cache/training_data
    ```
 3. **Play time (per turn).** Score every legal clue in the vocabulary in
    one batched forward pass, turn each score into an expected reward for
    every possible clue number, and return the best `(clue, number)` pair.
 
 ```bash
-python scripts/web_inspector.py       # web UI: pick spymasters/guessers, play a full two-team
+python scripts/tools/web_inspector.py       # web UI: pick spymasters/guessers, play a full two-team
                                        # game, or inspect a single clue/turn with live reward/noise/rarity controls
-python scripts/inspector.py           # CLI equivalent of the single-turn inspector
-python scripts/run_arena.py           # single-team cross-play matrix: every spymaster x every guesser
-python scripts/run_two_team_arena.py  # real two-team self-play, one spymaster+guesser pair on both sides
+python scripts/tools/inspector.py           # CLI equivalent of the single-turn inspector
+python scripts/pipeline/run_arena.py           # single-team cross-play matrix: every spymaster x every guesser
+python scripts/pipeline/run_two_team_arena.py  # real two-team self-play, one spymaster+guesser pair on both sides
 ```
 
-`scripts/run_ablation_study.py` regenerates data and retrains a batch of
+`scripts/pipeline/run_ablation_study.py` regenerates data and retrains a batch of
 model variants at once; see its own `--help` and docstring.
 
 ## Baselines

@@ -11,7 +11,7 @@ Reports total plaintext size across all wikis at the end, to track against
 the 1-5GB target in SCOPE.md §M0.
 
 Usage:
-    python scripts/extract_fandom_corpus.py
+    python scripts/data/extract_fandom_corpus.py
 """
 
 from __future__ import annotations

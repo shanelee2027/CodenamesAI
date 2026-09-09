@@ -1,6 +1,6 @@
 """Memory-mapped similarity tensor loader (SCOPE.md §M2).
 
-The tensor is built by scripts/build_similarity_tensor.py and lives in
+The tensor is built by scripts/data/build_similarity_tensor.py and lives in
 cache/ (gitignored -- regenerate it locally, it's not checked in). Shape is
 (n_clues, n_board_words, n_spaces) fp16, matching SCOPE.md §2's exact
 axis order so M4 can append additional space-slices without changing this
@@ -86,10 +86,10 @@ class SimilarityTensor:
 
     def top_clues(self, board_word: str, k: int = 20, space: str | None = None) -> list[tuple[str, float]]:
         """Top-k clue-vocabulary words by similarity to a single board word,
-        highest first. Used by scripts/sanity_check_sims.py.
+        highest first. Used by scripts/data/sanity_check_sims.py.
 
         NaN entries (a clue or board word with no vector in this space --
-        see scripts/extend_similarity_tensor.py) are excluded before
+        see scripts/data/extend_similarity_tensor.py) are excluded before
         ranking, not just sorted last: np.argpartition's behavior with NaN
         mixed into a partial sort is not guaranteed the way a full sort's
         is, so they're dropped up front rather than relied on to land

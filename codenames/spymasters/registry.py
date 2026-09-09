@@ -21,8 +21,8 @@ need a real `checkpoint_path` (produced by a specific training run, not a
 fixed config value) filled in by the caller -- see `spec()`'s `overrides`.
 
 `roles` is how a script says *which kind* of spymaster it wants without
-naming names: `scripts/run_arena.py` takes the "baseline" role, and
-`scripts/run_two_team_arena.py` additionally takes "exploration" (its
+naming names: `scripts/pipeline/run_arena.py` takes the "baseline" role, and
+`scripts/pipeline/run_two_team_arena.py` additionally takes "exploration" (its
 `oracle` entry -- an upper-bound exploration tool, not a realistic
 baseline, per the README). Adding a spymaster is then a config entry and
 nothing else: it appears everywhere its roles say it belongs, with no
@@ -34,7 +34,7 @@ spawned worker processes -- it needs a `(class, kwargs)` spec, not a live
 instance, since a live instance (especially one holding a torch model)
 isn't guaranteed to survive a `spawn`-context pickle/unpickle round trip.
 `SpymasterEntry.spec` gives exactly that; `SpymasterEntry.build()` is for
-callers (e.g. scripts/web_inspector.py) that want a live instance directly,
+callers (e.g. scripts/tools/web_inspector.py) that want a live instance directly,
 in the same process.
 """
 

@@ -22,7 +22,7 @@ earlier version did exactly that and pushed worker RSS past 9GB.
 after CUDA has been initialized in the parent process hangs or crashes the
 child, even if the child never touches the GPU itself -- the forked
 process inherits a broken copy of the CUDA context. This matters
-concretely now that scripts/run_arena.py can combine this module's
+concretely now that scripts/pipeline/run_arena.py can combine this module's
 baselines with codenames/gpu_arena.py's GPU-batched LearnedSpymaster path
 in one invocation: whichever runs first would poison the other under
 "fork," and getting the call order right forever is a landmine, not a fix.

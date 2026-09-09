@@ -2,7 +2,7 @@
 average across spaces per (clue, board word), then a weighted sum across
 roles. Uses SCOPE's own example constants (own +1, opponent -1, neutral
 -0.3, assassin -10) unweighted across spaces, same convention as
-scripts/inspector.py's untuned preview. §4 calls for these constants to be
+scripts/tools/inspector.py's untuned preview. §4 calls for these constants to be
 CMA-ES/grid-search tuned against the guesser pool -- that tuning needs the
 arena this milestone builds, so it's deferred to a follow-up script rather
 than done here; this class takes `weights` as a constructor arg specifically

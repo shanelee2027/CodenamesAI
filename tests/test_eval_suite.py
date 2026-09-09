@@ -132,7 +132,7 @@ class TestGameRecordStoreKeying:
         store.add_game(_by_role(), _result(seed=1), spymaster_id=id_a, suite_id="suite-x")
 
         # A second training run overwrites the same path with a
-        # different model, per scripts/train_scorer.py's docstring.
+        # different model, per scripts/pipeline/train_scorer.py's docstring.
         checkpoint_path.write_bytes(b"second training run, different weights")
         id_b = spymaster_identity("learned", checkpoint_path)
         store.add_game(_by_role(), _result(seed=1), spymaster_id=id_b, suite_id="suite-x")

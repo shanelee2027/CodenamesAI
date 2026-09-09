@@ -5,7 +5,7 @@ simultaneous boards too, entirely on GPU, for codenames/gpu_arena.py's
 bulk self-play throughput.
 
 Kept out of features.py deliberately: features.py is the pure-numpy
-reference implementation, imported by scripts/generate_training_data.py
+reference implementation, imported by scripts/pipeline/generate_training_data.py
 and everything else that has no reason to pull in torch. This module
 depends on torch and is only ever imported by the GPU arena path.
 

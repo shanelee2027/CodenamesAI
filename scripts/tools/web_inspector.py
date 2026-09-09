@@ -1,6 +1,6 @@
 """Local web UI wrapping the inspector (SCOPE.md §M3) in a browser.
 
-Same data as scripts/inspector.py -- same Board, same SimilarityTensor, same
+Same data as scripts/tools/inspector.py -- same Board, same SimilarityTensor, same
 guesser pool -- just served over a tiny local HTTP server (stdlib only, no
 new dependency) instead of printed to a terminal. This lets you click cards
 to reveal them and re-type clues interactively instead of re-running a CLI
@@ -33,7 +33,7 @@ single-turn, read-only peeks, this actually reveals words and shows the
 whole turn-by-turn history. See build_play_game_response.
 
 Usage:
-    python scripts/web_inspector.py [--port 8000]
+    python scripts/tools/web_inspector.py [--port 8000]
 Then open http://localhost:8000 in a browser.
 """
 
@@ -63,7 +63,7 @@ HTML_PATH = Path(__file__).parent / "webui" / "inspector.html"
 
 SIMS = SimilarityTensor.load()
 
-# The same discrete noise levels scripts/run_ablation_study.py's
+# The same discrete noise levels scripts/pipeline/run_ablation_study.py's
 # --noise-levels sweep trains against -- picking any other value would
 # need a fresh guesser pool AND wouldn't correspond to any trained
 # learned:noise_* spymaster, so the play-time noise dial is restricted
@@ -120,7 +120,7 @@ CLUE_RARITY_PERCENTILE = clue_rarity_percentile(SIMS.clue_words)
 
 
 def _discover_checkpoints() -> dict[str, Path]:
-    """Scan scripts/run_ablation_study.py's noise-sweep checkpoints for
+    """Scan scripts/pipeline/run_ablation_study.py's noise-sweep checkpoints for
     trained models, so the web UI can offer "learned" spymasters without
     needing a --checkpoint flag for the common case. Restricted to
     noise_*/ specifically (not every subdirectory under

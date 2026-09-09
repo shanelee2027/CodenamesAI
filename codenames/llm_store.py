@@ -3,7 +3,7 @@ docs/log.md): API responses, so a crash or accidental rerun never re-pays
 for an identical (model, clue, candidates, number) query, and full game
 records (board layout + turn sequence), so a human can inspect exactly
 what happened in a real run without replaying it -- see
-scripts/dump_game_records.py for the human-readable view.
+scripts/tools/dump_game_records.py for the human-readable view.
 
 Both live in the same on-disk file (default cache/llm_store.db,
 gitignored like the rest of cache/) so the arena's multiprocessing
@@ -158,7 +158,7 @@ class GameRecordStore:
         re-running an already-recorded (spymaster, suite, board) game
         overwrites its old row instead of duplicating it, which is what
         makes a rerun idempotent. `label` alone (the pre-step-6 calling
-        convention, still used by scripts/run_two_team_arena.py-style
+        convention, still used by scripts/pipeline/run_two_team_arena.py-style
         training diagnostics) never collides with anything -- see
         `_connect`'s note on NULL uniqueness -- so existing callers that
         don't pass these two keep appending exactly as before."""

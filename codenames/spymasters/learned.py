@@ -30,7 +30,7 @@ materializes the whole similarity tensor on-device once per process (fast
 GPU arena's one dedicated process per run. On CPU it instead loops
 `codenames.features.build_features_batch` per context, which only ever
 reads the handful of tensor columns a given board actually needs off the
-mmap. That matters concretely for scripts/run_arena.py's --no-gpu-batch
+mmap. That matters concretely for scripts/pipeline/run_arena.py's --no-gpu-batch
 fallback, which constructs a LearnedSpymaster fresh inside each of N
 spawned CPU worker processes (codenames/arena.py) -- materializing a
 private full-tensor copy in every one of them is exactly the RSS blowup
@@ -89,7 +89,7 @@ class LearnedSpymaster(Spymaster):
         clue_rarity_percentile): default `max_rarity=100.0` means no
         filtering at all, so every existing caller (arena/training scripts)
         is unaffected unless it explicitly opts in -- this is a UI-facing
-        knob (scripts/web_inspector.py sets a non-default max_rarity at
+        knob (scripts/tools/web_inspector.py sets a non-default max_rarity at
         construction), not a change to evaluation methodology."""
         self.miss_penalty = miss_penalty
         self.own_reward = own_reward
@@ -158,11 +158,11 @@ class LearnedSpymaster(Spymaster):
     def top_clues(self, ctx: TurnContext, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
         """Up to k best legal (clue, number, score) triples, best first --
         for inspecting what the model likes rather than just its single
-        pick (scripts/web_inspector.py). k==1 (give_clue's own case) goes
+        pick (scripts/tools/web_inspector.py). k==1 (give_clue's own case) goes
         through `_pick_legal_clue` so a rarity filter, if active, applies
         the same way it always did for a single pick; k>1 does not apply
         the rarity filter (unchanged from before this method existed --
-        scripts/web_inspector.py applies its own post-hoc filter over a
+        scripts/tools/web_inspector.py applies its own post-hoc filter over a
         larger fetched pool in that case)."""
         board = ctx.board
         best_n, scores = self.score_batch(sims, [ctx])[0]

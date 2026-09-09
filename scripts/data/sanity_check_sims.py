@@ -5,12 +5,12 @@ eyeballing this output. If the tensor indexing is wrong, everything
 downstream is wrong and it will not be obvious from unit tests alone.
 
 Prints one block per space found in the loaded tensor, so a newly added
-space (via scripts/extend_similarity_tensor.py) gets checked automatically
+space (via scripts/data/extend_similarity_tensor.py) gets checked automatically
 without needing a --space flag.
 
 Usage:
-    python scripts/sanity_check_sims.py
-    python scripts/sanity_check_sims.py --words king dream craft sword
+    python scripts/data/sanity_check_sims.py
+    python scripts/data/sanity_check_sims.py --words king dream craft sword
 """
 
 from __future__ import annotations

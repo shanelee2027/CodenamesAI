@@ -33,7 +33,7 @@ Settled, and it drives everything below:
   LLM would overfit the spymaster to how one specific model thinks, and
   would collapse the train/eval distinction entirely.
 
-`scripts/run_arena.py`'s spymaster x guesser matrix is therefore a
+`scripts/pipeline/run_arena.py`'s spymaster x guesser matrix is therefore a
 training diagnostic, not a scoreboard. Its numbers must never be
 presented as evaluation results.
 
@@ -160,9 +160,9 @@ trains on the identical rollout set, which makes model-to-model
 comparison cleaner.
 
 **Built, and measured.** `codenames/rollouts.py` stores the rollouts;
-`scripts/featurize_rollouts.py` turns a rollout set into a training
+`scripts/pipeline/featurize_rollouts.py` turns a rollout set into a training
 dataset whose on-disk layout is byte-compatible with the pre-split one,
-so `scripts/train_scorer.py` needed no changes at all. On a 500-example
+so `scripts/pipeline/train_scorer.py` needed no changes at all. On a 500-example
 sample: generation runs at ~318 examples/sec, featurization at ~11,161 —
 **~35x**, which is what a feature-design change now costs relative to a
 regeneration. Storage is 4.1x smaller (54,134 bytes of rollouts vs
@@ -222,13 +222,27 @@ a methodological benefit, not just a cost saving.
 
 ## Step 7: Naming and layout
 
-- Models get descriptive names, not version numbers. `v1`/`v1.1` keep
-  their names for now and will be renamed or removed later; `CLAUDE.md`'s
-  version-doc convention needs updating to match.
-- `scripts/` groups into one-time data acquisition, the iteration loop,
-  and interactive tools.
-- Artifact directories get a systematic naming convention instead of
-  `cache/m9/`, `cache/arena_blend.db`, `cache/sanity_check2.db`.
+**Done.** `scripts/` is grouped by *when you run it* — `data/` (build
+time, once), `pipeline/` (the iteration loop), `tools/` (interactive) —
+with [`scripts/README.md`](../scripts/README.md) as the index. The
+grouping is constrained by the fact that scripts import their siblings
+through `sys.path`, so anything that imports another script lives in the
+same group; that held for all four such pairs without contortion.
+
+Naming conventions for models and for `cache/` artifacts moved into
+[`CLAUDE.md`](../CLAUDE.md), since that is what gets read at the start of
+a session where a new model is about to be named.
+
+**Existing `cache/` artifacts were deliberately not renamed.** `cache/m9/`,
+`cache/arena_blend.db` and friends are gitignored local data; renaming
+them would break nothing and prove nothing, while risking the one file
+that genuinely matters (`cache/llm_store.db`). The convention applies to
+what gets created from here on.
+
+Historical entries in `docs/log.md` still reference the pre-move script
+paths. That is intentional: the log is a record of what was true when
+each entry was written, not a current-facing index. Every other document
+was updated.
 
 ## Operational note
 

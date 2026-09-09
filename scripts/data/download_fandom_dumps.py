@@ -11,8 +11,8 @@ need an S3 restore request before they're downloadable at all, which is
 out of scope for this script.
 
 Usage:
-    python scripts/check_fandom_dumps.py        # refresh status first
-    python scripts/download_fandom_dumps.py
+    python scripts/data/check_fandom_dumps.py        # refresh status first
+    python scripts/data/download_fandom_dumps.py
 """
 
 from __future__ import annotations

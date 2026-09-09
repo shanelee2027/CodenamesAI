@@ -219,7 +219,7 @@ def load_holdout_wordlist(path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]
 
 def load_training_wordlist(all_path: Path = ASSET_WORDLIST_PATH, holdout_path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]:
     """load_wordlist() minus load_holdout_wordlist() -- what training data
-    generation (scripts/generate_training_data.py) samples boards from."""
+    generation (scripts/pipeline/generate_training_data.py) samples boards from."""
     holdout = set(load_holdout_wordlist(holdout_path))
     return [w for w in load_wordlist(all_path) if w not in holdout]
 

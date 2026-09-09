@@ -1,7 +1,7 @@
 """Shared "search the clue vocabulary for a good, legal clue" helpers.
 
 Used by the baseline spymasters (§6 items 2-3, codenames/spymasters/) and
-by M7's training-data generation (scripts/generate_training_data.py), which
+by M7's training-data generation (scripts/pipeline/generate_training_data.py), which
 both need to turn a (n_clues,)-shaped score array into legal clue words.
 """
 
@@ -108,7 +108,7 @@ def mean_from_columns(columns: list[np.ndarray]) -> np.ndarray:
     caller doing many repeated lookups of the *same* board word (e.g. M7's
     data generation sampling one of only ~400 possible board words millions
     of times) can cache the disk read once per word instead of re-reading
-    it -- see scripts/generate_training_data.py for that caching layer."""
+    it -- see scripts/pipeline/generate_training_data.py for that caching layer."""
     flat = np.stack(columns, axis=1).reshape(columns[0].shape[0], -1)
     with np.errstate(invalid="ignore"):
         valid_counts = np.sum(~np.isnan(flat), axis=1)

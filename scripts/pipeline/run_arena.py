@@ -4,8 +4,8 @@ why), over a fixed set of seeded boards. Prints the win-rate / assassin-rate
 / mean-turns / mean-own-words-per-clue matrix and per-worker peak RSS.
 
 Usage:
-    python scripts/run_arena.py --n-boards 20 --max-workers 8
-    python scripts/run_arena.py --n-boards 300 --checkpoint cache/m9/checkpoints/noise_0_08/scorer_best.pt
+    python scripts/pipeline/run_arena.py --n-boards 20 --max-workers 8
+    python scripts/pipeline/run_arena.py --n-boards 300 --checkpoint cache/m9/checkpoints/noise_0_08/scorer_best.pt
 
 With --checkpoint, the learned spymaster routes through
 codenames/gpu_arena.py's batched-across-games GPU path by default (13x
@@ -34,7 +34,7 @@ from codenames.spymasters.registry import load_spymasters, spymaster_names, spym
 
 # This script's spymasters, selected by role from configs/spymasters.json
 # rather than by name, so a new entry needs no edit here. "oracle" is
-# role "exploration" (a scripts/run_two_team_arena.py-only upper-bound
+# role "exploration" (a scripts/pipeline/run_two_team_arena.py-only upper-bound
 # tool) and so stays out of this cross-play diagnostic, exactly as before.
 BASE_SPYMASTER_NAMES = spymaster_names("baseline")
 
@@ -47,7 +47,7 @@ def main() -> None:
     parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS")
     parser.add_argument("--max-workers", type=int, default=None, help="default: os.cpu_count()")
     parser.add_argument(
-        "--checkpoint", type=Path, default=None, help="scorer checkpoint from scripts/train_scorer.py -- adds a 'learned' spymaster if given"
+        "--checkpoint", type=Path, default=None, help="scorer checkpoint from scripts/pipeline/train_scorer.py -- adds a 'learned' spymaster if given"
     )
     parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for the learned spymaster (default: -10.0, see codenames.scorer)")
     parser.add_argument(

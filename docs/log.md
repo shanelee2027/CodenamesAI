@@ -3131,4 +3131,58 @@ reorganization, which was explicitly out of scope for this pass. The
 plumbing (`codenames/eval_suite.py`) is complete and unit-tested, but has
 not been run against a live LLM.
 
+## Step 7: scripts grouped, naming conventions written down
+
+`scripts/` was 22 files with no grouping — a one-time corpus download sat
+beside a per-iteration training run. Now grouped by *when you run it*:
+`data/` (build time, once), `pipeline/` (the iteration loop), `tools/`
+(interactive), with a `scripts/README.md` index.
+
+The grouping wasn't free to choose. Four scripts import a sibling through
+`sys.path` (`build_similarity_tensor`/`extend_similarity_tensor` ->
+`_embedding_lib`, `run_ablation_study` -> the three pipeline scripts,
+`web_inspector` -> `inspector`), so any split that separated one of those
+pairs would have broken the import. All four pairs happened to fall inside
+the same natural group, so `Path(__file__).parent` inserts still resolve
+and nothing needed rewriting — worth recording, because had they not, the
+right fix would have been to move those functions into `codenames/` and
+leave thin CLI wrappers behind, a much bigger change.
+
+Two path bugs the move introduced, both caught by checking rather than by
+tests:
+
+- `featurize_rollouts.py` computed `PROJECT_ROOT` as
+  `Path(__file__).resolve().parent.parent`, which silently became
+  `scripts/` instead of the repo root once the file moved a level deeper.
+  Now `parents[2]` with a comment saying why. The test suite did *not*
+  catch this (tests import the module directly rather than running it as a
+  script), which is exactly the kind of gap a 310-test suite can still
+  have.
+- Three test files inserted `scripts/` into `sys.path`; they now insert
+  the specific group they import from.
+
+`scratch_llm_transcripts.py` fails a `--help` smoke test, but it did
+before the move too: it has no argparse and calls the API at import, so it
+dies on a missing `ANTHROPIC_API_KEY`. Not a regression; noted so the next
+person doesn't chase it.
+
+Deliberately *not* done: renaming existing `cache/` artifacts (`cache/m9/`,
+`cache/arena_blend.db`, `cache/sanity_check2.db`). They are gitignored
+local data — renaming breaks nothing and proves nothing, while touching
+the directory that holds `cache/llm_store.db`, the only record of paid LLM
+responses and the only reason past evals are reproducible. The naming
+convention in `CLAUDE.md` applies to new artifacts.
+
+Also deliberately not done: rewriting the ~79 references to old script
+paths in this log. Those entries describe where files were when they were
+written. Every current-facing document (README, design-decisions,
+iteration-architecture, the code's own docstrings — 35 of those) was
+updated.
+
+`CLAUDE.md` gained the descriptive-model-naming rule (a name should say
+what changed; `k_cause_mlp`, not `v2`), the cache-layout convention, a
+pointer to `docs/iteration-architecture.md`, and an explicit warning that
+`v1`/`v1.1` are not comparable against models trained under the 150-word
+holdout. 310 tests pass.
+
 ## Human evaluation (not started)

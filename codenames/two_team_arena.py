@@ -43,7 +43,7 @@ from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 # Passed as `guesser_name` to mean "don't fix one guesser -- each game
 # independently draws one, uniformly, from every guesser in
 # --guesser-pool-config" (matching training's own sampling: see
-# scripts/generate_training_data.py's `rng.choice(guesser_names)` and
+# scripts/pipeline/generate_training_data.py's `rng.choice(guesser_names)` and
 # docs/design-decisions.md's "guesser pool is 3 members, equally
 # weighted" -- evaluating against a single fixed guesser instead is a
 # narrower test than what the model was actually trained against).
@@ -182,7 +182,7 @@ def run_two_team_self_play(
     `game_record_db`, if given, persists every game's board layout and
     turn sequence to that SQLite file (codenames/llm_store.py) under
     `run_label`, so it can be inspected later without replaying (see
-    scripts/dump_game_records.py) -- most useful when `guesser_name` costs
+    scripts/tools/dump_game_records.py) -- most useful when `guesser_name` costs
     real money per turn (e.g. "llm")."""
     stats = _new_stats()
     with ProcessPoolExecutor(

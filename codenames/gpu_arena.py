@@ -21,7 +21,7 @@ there's nothing here for them to gain, and
 codenames/arena.py::run_arena remains the right tool for those. A single
 invocation can mix both: run baselines through run_arena, a batch-scoring
 spymaster through this module, and merge the resulting CrossPlayResult
-dicts for one combined report (see scripts/run_arena.py's
+dicts for one combined report (see scripts/pipeline/run_arena.py's
 --gpu-batch-size).
 
 This module gathers board views into TurnContexts and calls

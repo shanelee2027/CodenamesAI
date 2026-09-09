@@ -5,7 +5,7 @@ sampled training-pool guesser) triple and what the guesser did with it.
 Features are deliberately NOT computed here -- see `codenames/rollouts.py`
 for why the model-independent half (simulating the guesser, expensive) is
 stored separately from the model-specific half (the feature vector,
-cheap), and `scripts/featurize_rollouts.py` for the step that turns a
+cheap), and `scripts/pipeline/featurize_rollouts.py` for the step that turns a
 stored rollout set into a training dataset.
 
 - **outcome**: `codenames.scorer.outcome_class(k, cause)`, packing two
@@ -27,7 +27,7 @@ stored rollout set into a training dataset.
   requires to stay changeable at scoring time with no retraining, so
   baking them into a saved column contradicted that.
   `codenames.rollouts.reward_for` derives it on demand instead. It was
-  diagnostic only in any case; scripts/train_scorer.py trains against
+  diagnostic only in any case; scripts/pipeline/train_scorer.py trains against
   `outcome` alone.
 
 Guesser sampling still goes through `training_pool()` (SCOPE §3/§5's
@@ -88,7 +88,7 @@ whatever already exists in the output directory, rather than needing to
 know the eventual total size up front or resizing an existing file.
 
 Usage:
-    python scripts/generate_training_data.py --n-examples 100000
+    python scripts/pipeline/generate_training_data.py --n-examples 100000
 """
 
 from __future__ import annotations
@@ -338,11 +338,11 @@ def generate(
     swap_perspective_prob: float = SWAP_PERSPECTIVE_PROB,
 ) -> int:
     """`guesser_weights` exists for SCOPE §9's pool-sensitivity
-    ablations (scripts/run_ablation_study.py), not as a CLI flag.
+    ablations (scripts/pipeline/run_ablation_study.py), not as a CLI flag.
 
     `feature_builder` used to live here too; it doesn't any more, because
     this function no longer builds features at all -- it writes rollouts
-    (codenames/rollouts.py) and `scripts/featurize_rollouts.py` turns them
+    (codenames/rollouts.py) and `scripts/pipeline/featurize_rollouts.py` turns them
     into a feature dataset afterwards. A feature-vector ablation is now a
     re-featurization of one stored rollout set rather than a whole fresh
     generation pass. The historical note below still describes why that
@@ -360,7 +360,7 @@ def generate(
     get resolved or their guesser gets picked), so a given seed's exact
     shard contents differ from what an older version of this function
     produced -- still fully deterministic for a *given* version of this
-    function, which is what scripts/run_ablation_study.py's same-seed
+    function, which is what scripts/pipeline/run_ablation_study.py's same-seed
     reuse across feature_builder/guesser_weights variants actually
     depends on, not byte-for-byte stability across code changes."""
     # Hardcoded default, not a CLI flag: training data must never include a
@@ -393,7 +393,7 @@ def generate(
         also built a feature vector, so a given seed still produces the
         identical board/clue/guesser sequence -- only what gets *stored*
         changed. Features are no longer built here at all; see
-        codenames/rollouts.py and scripts/featurize_rollouts.py."""
+        codenames/rollouts.py and scripts/pipeline/featurize_rollouts.py."""
         if guesser_choice_weights is not None:
             guesser_name = rng.choices(guesser_names, weights=guesser_choice_weights, k=1)[0]
         else:
@@ -472,8 +472,8 @@ def main() -> None:
     parser.add_argument("--n-examples", type=int, default=100_000)
     parser.add_argument("--shard-size", type=int, default=50_000)
     # cache/rollouts, not cache/training_data: this script's output is now a
-    # rollout set, and scripts/featurize_rollouts.py turns that into the
-    # training dataset scripts/train_scorer.py reads.
+    # rollout set, and scripts/pipeline/featurize_rollouts.py turns that into the
+    # training dataset scripts/pipeline/train_scorer.py reads.
     parser.add_argument("--output-dir", type=Path, default=Path("cache/rollouts"))
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG)

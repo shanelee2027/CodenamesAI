@@ -17,8 +17,8 @@ fastText (the fourth embedding space) is trained locally on the Fandom
 corpus per SCOPE.md §M4 and is not downloaded here.
 
 Usage:
-    python scripts/download_embeddings.py
-    python scripts/download_embeddings.py --only glove numberbatch
+    python scripts/data/download_embeddings.py
+    python scripts/data/download_embeddings.py --only glove numberbatch
 """
 
 from __future__ import annotations

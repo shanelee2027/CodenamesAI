@@ -15,8 +15,8 @@ Fandom and visiting:
     https://<wiki>.fandom.com/wiki/Special:Statistics
 
 Usage:
-    python scripts/check_fandom_dumps.py
-    python scripts/check_fandom_dumps.py --wikis-file scripts/fandom_wikis.txt
+    python scripts/data/check_fandom_dumps.py
+    python scripts/data/check_fandom_dumps.py --wikis-file scripts/data/fandom_wikis.txt
 """
 
 from __future__ import annotations
@@ -146,7 +146,7 @@ def format_row(s: WikiStatus) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--wikis-file", type=Path, default=Path("scripts/fandom_wikis.txt"))
+    parser.add_argument("--wikis-file", type=Path, default=Path("scripts/data/fandom_wikis.txt"))
     parser.add_argument("--output", type=Path, default=Path("cache/fandom_dump_status.json"))
     parser.add_argument("--timeout", type=float, default=15.0)
     args = parser.parse_args()

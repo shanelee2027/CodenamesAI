@@ -3,7 +3,7 @@
 covered here since that corpus isn't fully collected yet).
 
 Computes this space's similarity against whatever clue/board vocabulary
-scripts/build_similarity_tensor.py already fixed (an intersection across
+scripts/data/build_similarity_tensor.py already fixed (an intersection across
 all three downloaded spaces as of the first-pass revision -- see that
 script's docstring). A word not found in this space's source file gets
 NaN in this space's slice (see _embedding_lib.compute_similarity) rather
@@ -11,8 +11,8 @@ than being dropped or zeroed -- should be rare now that the vocabulary is
 an intersection, but not assumed to be zero.
 
 Usage:
-    python scripts/extend_similarity_tensor.py --space numberbatch
-    python scripts/extend_similarity_tensor.py --space wikipedia2vec
+    python scripts/data/extend_similarity_tensor.py --space numberbatch
+    python scripts/data/extend_similarity_tensor.py --space wikipedia2vec
 """
 
 from __future__ import annotations

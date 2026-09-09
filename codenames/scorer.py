@@ -24,7 +24,7 @@ outcome itself.
 
 **reward(k, cause, n)**, for n in 0..MAX_K and k in 0..MAX_K (MAX_K=4,
 matching spymasters.base.MAX_CLUE_NUMBER and the training labels' cap --
-see scripts/generate_training_data.py):
+see scripts/pipeline/generate_training_data.py):
 
     reward(k, cause, n) = k * own_reward + reward_of(cause)   if k < n
                                              (natural stop happens within
@@ -139,7 +139,7 @@ class Scorer(nn.Module):
 class LinearScorer(nn.Module):
     """SCOPE §6 baseline 4: a linear model over the exact same feature
     vector the MLP uses, no hidden layers. Same interface as Scorer so it's
-    a drop-in alternative for scripts/train_scorer.py's model_factory --
+    a drop-in alternative for scripts/pipeline/train_scorer.py's model_factory --
     the gap between this and Scorer is the project's headline result (§6:
     "baselines 3 and 4 are the informative pair ... the gap between 3 and 5
     is the project's headline result"). Its weight matrix is also what

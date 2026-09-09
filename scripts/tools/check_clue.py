@@ -1,15 +1,15 @@
 """Given a clue, rank board words by similarity in each embedding space.
 
-The reverse direction of scripts/sanity_check_sims.py (which takes a board
+The reverse direction of scripts/data/sanity_check_sims.py (which takes a board
 word and finds top clues): this takes a clue -- any word in the 250k-word
 clue vocabulary, not restricted to the 400 board words -- and ranks board
 words by similarity to it. Useful for manually testing whether a candidate
 clue would actually point at the board words you'd expect.
 
 Usage:
-    python scripts/check_clue.py --clue technoblade
-    python scripts/check_clue.py --clue king --board-words King Queen Egypt Shark
-    python scripts/check_clue.py --clue spy --top 15
+    python scripts/tools/check_clue.py --clue technoblade
+    python scripts/tools/check_clue.py --clue king --board-words King Queen Egypt Shark
+    python scripts/tools/check_clue.py --clue spy --top 15
 """
 
 from __future__ import annotations

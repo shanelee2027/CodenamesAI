@@ -1,14 +1,14 @@
 """Stored guesser rollouts -- the model-independent half of training data
 (docs/iteration-architecture.md step 4).
 
-`scripts/generate_training_data.py` used to compute a feature vector and a
+`scripts/pipeline/generate_training_data.py` used to compute a feature vector and a
 rollout outcome together and save only the *featurized* row, discarding
 the board, clue, turn index and guesser. That welded the expensive,
 model-independent half (simulating what a guesser does with a clue) to the
 cheap, model-specific half (turning a board+clue into numbers). Since the
 feature vector is expected to change between models, every new model would
 otherwise re-simulate identical rollouts just to get different columns out
-of them -- and simulation is the dominant cost (`scripts/run_ablation_study.py`
+of them -- and simulation is the dominant cost (`scripts/pipeline/run_ablation_study.py`
 measures ~40 min at moderate scale, against fast training).
 
 So this module stores the rollout itself:
@@ -16,7 +16,7 @@ So this module stores the rollout itself:
     (board state, clue, guesser, turn_index) -> (k, cause)
 
 and features become a pure function applied on demand
-(`scripts/featurize_rollouts.py`). The pipeline is three layers rather
+(`scripts/pipeline/featurize_rollouts.py`). The pipeline is three layers rather
 than two -- rollouts (shared, expensive) -> features (per model, cheap,
 cached) -> training -- which is the same "compute the expensive
 model-independent thing once" discipline the similarity tensor
@@ -130,7 +130,7 @@ def board_from_row(batch: RolloutBatch, i: int, board_vocab: list[str]) -> Board
 
 class RolloutWriter:
     """Accumulates rows in memory and flushes them as a shard, mirroring
-    the shard-per-N layout `scripts/generate_training_data.py` already
+    the shard-per-N layout `scripts/pipeline/generate_training_data.py` already
     used, so an interrupted run keeps whatever shards it finished."""
 
     def __init__(self, output_dir: Path, capacity: int):

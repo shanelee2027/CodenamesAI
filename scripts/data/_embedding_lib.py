@@ -1,5 +1,5 @@
-"""Shared helpers for scripts/build_similarity_tensor.py and
-scripts/extend_similarity_tensor.py.
+"""Shared helpers for scripts/data/build_similarity_tensor.py and
+scripts/data/extend_similarity_tensor.py.
 
 Factored out once both scripts needed the same filtered-loading,
 multi-word mean-pooling, and NaN-aware batched-similarity logic -- this is

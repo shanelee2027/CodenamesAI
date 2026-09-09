@@ -4,11 +4,11 @@ Pure array transforms on an already-generated `(N, feature_dim)` batch of
 feature vectors, using `FeatureLayout` to know which columns are which.
 No `Board`/`SimilarityTensor` involved, and no regeneration needed: both
 ablations here can be derived directly from a base dataset already produced
-by `scripts/generate_training_data.py`, since dropping a space or averaging
+by `scripts/pipeline/generate_training_data.py`, since dropping a space or averaging
 across spaces only rearranges/combines columns that already exist in the
 full feature vector. (The sort ablation is different -- sorting is lossy,
 so it needs `codenames.features.build_features_unsorted` and a fresh
-generation pass instead; see `scripts/run_ablation_study.py`.)
+generation pass instead; see `scripts/pipeline/run_ablation_study.py`.)
 """
 
 from __future__ import annotations

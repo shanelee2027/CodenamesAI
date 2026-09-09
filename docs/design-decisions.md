@@ -69,7 +69,7 @@ simulation is defined by it. Any result is conditional on a made-up
 distribution. Mitigations: make the composition explicit in a config file,
 not code (`configs/guesser_pool.json`); report results as "under pool
 configuration X, we observe Y," never as unconditional truths; and treat a
-noise-level sweep or pool-composition sweep (`scripts/run_ablation_study.py`)
+noise-level sweep or pool-composition sweep (`scripts/pipeline/run_ablation_study.py`)
 as a sensitivity check, not just a hyperparameter search.
 
 **The expected-value / robustness tradeoff.** Two objectives are both worth
@@ -94,7 +94,7 @@ exists and/or before scaling past a first pass.
    every space, so no guesser can fail on a clue purely from a vocabulary
    gap — the exact effect a diverse pool exists to average out, which
    matters more when the pool is small. See
-   `scripts/build_similarity_tensor.py`.
+   `scripts/data/build_similarity_tensor.py`.
 2. **Guesser pool is 3 members, not ~8**: one per currently-built embedding
    space, each wrapped in Gaussian noise, equally weighted, all
    training-visible, none held out. Still "diversity in knowledge, not
@@ -145,7 +145,7 @@ constants, untuned.
 **Split by board seed, not by row.** The same board appears in many
 training examples (a board is sampled once, several clues are drawn against
 it). Row-wise train/val splits leak boards across the split and inflate
-validation numbers. `scripts/train_scorer.py` splits by a hash of each
+validation numbers. `scripts/pipeline/train_scorer.py` splits by a hash of each
 example's board seed instead.
 
 ## Environment
@@ -153,7 +153,7 @@ example's board seed instead.
 - Targets an RTX 5080 (16GB, Blackwell/sm_120), which needs CUDA 12.8+ — pin
   the PyTorch build early rather than debugging this near a deadline.
 - Data generation and any local embedding training are CPU-bound and
-  parallel (see `scripts/run_ablation_study.py`'s `ProcessPoolExecutor`
+  parallel (see `scripts/pipeline/run_ablation_study.py`'s `ProcessPoolExecutor`
   usage).
 - Nothing here needs rented/cloud compute.
 - **Memory design note:** the mmapped similarity tensor exists specifically

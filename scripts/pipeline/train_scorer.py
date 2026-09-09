@@ -19,7 +19,7 @@ Outputs to `--output-dir` (default cache/checkpoints/, gitignored):
   calibration check SCOPE asks for.
 
 Usage:
-    python scripts/train_scorer.py --data-dir cache/training_data
+    python scripts/pipeline/train_scorer.py --data-dir cache/training_data
 """
 
 from __future__ import annotations
@@ -181,7 +181,7 @@ def train(
     num_workers: int = 4,
 ) -> Path:
     """`model_factory` exists for SCOPE §9's linear baseline
-    (scripts/run_ablation_study.py passes `LinearScorer`) -- everything
+    (scripts/pipeline/run_ablation_study.py passes `LinearScorer`) -- everything
     else here (splitting, early stopping, checkpointing, curves,
     reliability diagrams) is architecture-agnostic.
 

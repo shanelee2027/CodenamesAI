@@ -1,12 +1,12 @@
 """Print the board layout + turn-by-turn transcript for games persisted
 by codenames/llm_store.py::GameRecordStore (see --record-games on
-scripts/run_two_team_arena.py) -- the durable, replayable-free
-alternative to scripts/scratch_llm_transcripts.py's one-off prints.
+scripts/pipeline/run_two_team_arena.py) -- the durable, replayable-free
+alternative to scripts/tools/scratch_llm_transcripts.py's one-off prints.
 
 Usage:
-    python scripts/dump_game_records.py cache/llm_store.db
-    python scripts/dump_game_records.py cache/llm_store.db --label "learned:noise_0_08+llm"
-    python scripts/dump_game_records.py cache/llm_store.db --seed 3
+    python scripts/tools/dump_game_records.py cache/llm_store.db
+    python scripts/tools/dump_game_records.py cache/llm_store.db --label "learned:noise_0_08+llm"
+    python scripts/tools/dump_game_records.py cache/llm_store.db --seed 3
 """
 
 from __future__ import annotations

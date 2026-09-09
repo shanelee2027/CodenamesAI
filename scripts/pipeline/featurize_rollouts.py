@@ -2,14 +2,14 @@
 (docs/iteration-architecture.md step 4).
 
 This is the cheap, model-specific half of what
-`scripts/generate_training_data.py` used to do in one pass. That script now
+`scripts/pipeline/generate_training_data.py` used to do in one pass. That script now
 writes rollouts -- (board state, clue, guesser) -> (k, cause), the expensive
 model-*independent* part, see `codenames/rollouts.py` -- and this one applies
 a feature builder to them.
 
 The point of the split: the feature vector is expected to change between
 models, and re-simulating identical rollouts to get different columns out of
-them is the dominant cost in the pipeline (`scripts/run_ablation_study.py`
+them is the dominant cost in the pipeline (`scripts/pipeline/run_ablation_study.py`
 measures generation at ~40 min at moderate scale, against fast training).
 Featurizing a stored rollout set is a fraction of that, so a new feature
 design is a re-featurization rather than a regeneration -- and every model
@@ -18,7 +18,7 @@ comparisons cleaner.
 
 **Output is byte-compatible with the old dataset layout on purpose**:
 `features_NNNNN.npy`, `outcome_NNNNN.npy`, `reward_NNNNN.npy`,
-`seed_NNNNN.npy`, exactly as `scripts/train_scorer.py` already reads them.
+`seed_NNNNN.npy`, exactly as `scripts/pipeline/train_scorer.py` already reads them.
 That script needed no changes at all, and a dataset produced from rollouts
 is interchangeable with one produced by the pre-split pipeline -- which is
 what makes the equivalence check in docs/log.md possible.
@@ -29,9 +29,9 @@ reward constant reprices an existing rollout set for free. `outcome` is
 recomputed via `codenames.scorer.outcome_class` for the same reason.
 
 Usage:
-    python scripts/featurize_rollouts.py --rollout-dir cache/rollouts \\
+    python scripts/pipeline/featurize_rollouts.py --rollout-dir cache/rollouts \\
         --output-dir cache/training_data
-    python scripts/featurize_rollouts.py --feature-builder unsorted ...
+    python scripts/pipeline/featurize_rollouts.py --feature-builder unsorted ...
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from typing import Callable
 
 import numpy as np
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]  # scripts/pipeline/<this> -> repo root
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -65,7 +65,7 @@ from codenames.scorer import outcome_class  # noqa: E402
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor  # noqa: E402
 
 # Named builders so a variant is a CLI flag rather than an import edit. The
-# ablations in scripts/run_ablation_study.py that used to need their own
+# ablations in scripts/pipeline/run_ablation_study.py that used to need their own
 # generation pass (`unsorted`) are now just another entry here over the same
 # stored rollouts.
 FEATURE_BUILDERS: dict[str, Callable[[Board, str, SimilarityTensor, int], np.ndarray]] = {

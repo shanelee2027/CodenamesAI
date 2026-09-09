@@ -4,7 +4,7 @@ Generates a base dataset plus what each ablation axis actually needs (see
 module docstrings on codenames/features.py, codenames/ablation.py, and
 generate_training_data.py's feature_builder/guesser_weights params for why
 most axes don't need their own fresh generation), trains one model per
-variant via scripts/train_scorer.py's reused training loop, and writes a
+variant via scripts/pipeline/train_scorer.py's reused training loop, and writes a
 comparison report.
 
 Variants trained:
@@ -40,12 +40,12 @@ moderate scale), while the 11 training runs after it are individually
 fast enough that parallelizing them too wasn't worth the added complexity.
 
 Usage:
-    python scripts/run_ablation_study.py
-    python scripts/run_ablation_study.py --noise-levels "0.0,0.03,0.06,0.1,0.15" --noise-only
+    python scripts/pipeline/run_ablation_study.py
+    python scripts/pipeline/run_ablation_study.py --noise-levels "0.0,0.03,0.06,0.1,0.15" --noise-only
 
 `--noise-only` skips every variant above except the noise sweep -- for
 refreshing just the web UI's learned:noise_* checkpoints
-(scripts/web_inspector.py) without paying for the other 6 axes, which
+(scripts/tools/web_inspector.py) without paying for the other 6 axes, which
 aren't kept as permanent UI options.
 """
 
