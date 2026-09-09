@@ -1,7 +1,7 @@
 # scripts/
 
 Grouped by *when you run them*, which is the distinction that actually
-matters here — a one-time corpus download and a per-iteration training run
+matters here — a one-time embedding download and a per-iteration training run
 had been sitting side by side in one flat directory of 22 files.
 
 Scripts import their siblings via `sys.path` (`Path(__file__).parent`), so
@@ -16,9 +16,6 @@ Acquire and prepare the inputs everything else reads. After
 | script | what it does |
 |---|---|
 | `download_embeddings.py` | fetch the pretrained embedding spaces |
-| `download_fandom_dumps.py` | fetch Fandom wiki dumps (fastText corpus, unbuilt) |
-| `check_fandom_dumps.py` | dump availability/status check |
-| `extract_fandom_corpus.py` | decompress + extract text from those dumps |
 | `build_similarity_tensor.py` | the `[n_clues × n_board_words × n_spaces]` tensor |
 | `extend_similarity_tensor.py` | add one space to an existing tensor |
 | `sanity_check_sims.py` | eyeball the built tensor |

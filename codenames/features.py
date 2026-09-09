@@ -7,17 +7,16 @@ or the scorer: permutation-invariance and masking need their own
 tests *before* anything is built on top of it.
 
 Layout, for `n = len(sims.spaces)` spaces (currently 3 -- GloVe, Numberbatch,
-Wikipedia2Vec; fastText joins once its remaining training work exists, and nothing
-here is hardcoded to a specific space count):
+Wikipedia2Vec -- and nothing here is hardcoded to a specific space count):
 
-    [space_0's 25 role-sorted values] ... [space_{n-1}'s 25 role-sorted values]
-    [25-slot validity mask]
+    [space_0's 26 role-sorted values] ... [space_{n-1}'s 26 role-sorted values]
+    [26-slot validity mask]
     [own_remaining, turn_index, score_differential]
 
-Total width = 25*n + 25 + 3. With all
-4 planned spaces that's 25*4 + 25 + 3 = 128; with the 3 spaces built so far
-it's 25*3 + 25 + 3 = 103 -- both are "~115" in the sense of a rough
-target, not a hard number to match exactly.
+Total width = 26*n + 26 + 3 (see FEATURE_BOARD_SIZE / feature_dim below). With
+the 3 spaces built so far that's 26*3 + 26 + 3 = 107 -- recompute from
+feature_dim() rather than trusting this docstring if the space count or
+FEATURE_SLOT_COUNTS ever changes.
 
 A third thing made explicit here: **the feature vector's per-role slot
 widths are a separate concept from the real board's per-role card counts**

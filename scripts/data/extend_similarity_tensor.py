@@ -1,6 +1,4 @@
-"""Extend the similarity tensor with Numberbatch and/or Wikipedia2Vec
-(fastText is trained on the Fandom corpus, not covered here since that
-corpus isn't fully collected yet).
+"""Extend the similarity tensor with Numberbatch and/or Wikipedia2Vec.
 
 Computes this space's similarity against whatever clue/board vocabulary
 scripts/data/build_similarity_tensor.py already fixed (an intersection across
