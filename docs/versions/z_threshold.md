@@ -183,6 +183,53 @@ not as an expected-reward model. Making it genuinely load-bearing would
 mean loosening the pre-filter so risk actually varies across candidates,
 which is a design change, not a tuning one.
 
+## What happens when no clue satisfies the thresholds
+
+Measured, because the answer turned out to be counter-intuitive: over
+**1,235 turns of real play at the shipped defaults, it never happened** --
+not once, at any stage of the game.
+
+An earlier note in this doc guessed the fallbacks "would be expected to
+fire more often on partially-revealed boards later in a real game." That
+is backwards. Revealing cards *removes* constraints: fewer unrevealed
+non-own words to stay away from, and fewer own words needed to clear the
+bar. The filter gets looser as the game goes on, not tighter.
+
+Headroom behind that, over 488 turns:
+
+| viable clues per turn | min | 1st pct | median | max |
+|---|---|---|---|---|
+| | 1 | 11 | 142 | 461 |
+
+Three turns of 488 had fewer than 10 viable clues and one had exactly 1,
+so the margin is real but not unlimited. Pushing the parameters much
+harder still doesn't exhaust it -- at `own_top=0.002` with the assassin
+required outside the top 90%, fresh boards still have a median of 7 viable
+clues.
+
+### The fallback chain, in cost order
+
+Since it effectively never fires, the design goal is that when it *does*,
+it degrades into a merely-worse clue rather than an instantly-losing one:
+
+1. **Relax by role, cheapest first.** Give up the neutral bound, then the
+   opponent bound, and only ever the assassin's last -- the order follows
+   `ROLE_REWARD` (neutral -0.2, opponent -1.0, assassin -10.0). This
+   replaced an earlier version that dropped *every* role bound at once,
+   which could turn "this turn needs a worse clue" into "this turn loses
+   the game."
+2. **Force `k=1`** if no clue has any own word above `t`: the intended set
+   becomes each candidate's single best own word.
+3. **Pick the most common word** as an absolute last resort. Unreachable
+   given the two above, but the interface requires a legal `(clue, number)`
+   every turn -- never raising and never returning `None` is a hard rule.
+
+Note the risk term, inert on the normal path (see above), becomes the sole
+discriminator once the pre-filter is relaxed, and there it does real work:
+an assassin sitting at zero margin contributes `p~0.5 x 10 = 5.0` of
+penalty, which swamps any `k <= 4`. The graded relaxation and the risk term
+cover each other.
+
 ## Open for the next model
 
 - `own_top`/`MAX_CLUE_NUMBER` interact in a way that makes "announce 4"

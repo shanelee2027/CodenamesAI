@@ -243,3 +243,41 @@ class TestScoreBatchProtocol:
     def test_to_device_is_a_no_op(self, tmp_path):
         sm, _ = build(tmp_path, {"clue": make_row()})
         sm.to_device("cuda")  # must not raise even without a real device
+
+
+class TestGradedFallbackRelaxation:
+    """When no clue satisfies every role threshold, constraints are given
+    up in order of what a miss costs (ROLE_REWARD: neutral -0.2, opponent
+    -1.0, assassin -10.0) -- cheapest first, the assassin's bound last.
+    Dropping every bound at once would let a turn that merely needed a
+    worse clue return an instantly-losing one instead."""
+
+    def test_relaxes_neutral_before_assassin(self, tmp_path):
+        # Neither clue is valid. "safe_ish" breaches only the NEUTRAL bound;
+        # "deadly" keeps neutrals clear but puts the assassin far above its
+        # bound. Both have the same k, so only the relaxation order decides.
+        rows = {
+            "safe_ish": make_row(own=[3.0] * 2 + [-5.0] * 7, neutral=[3.0] + [-5.0] * 6),
+            "deadly": make_row(own=[3.0] * 2 + [-5.0] * 7, assassin=[3.0]),
+        }
+        sm, sims = build(tmp_path, rows)
+        clue, _ = sm.give_clue(make_ctx(make_board()), sims)
+        assert clue == "safe_ish"
+
+    def test_relaxes_opponent_before_assassin(self, tmp_path):
+        rows = {
+            "opp_breach": make_row(own=[3.0] * 2 + [-5.0] * 7, opponent=[3.0] + [-5.0] * 7),
+            "deadly": make_row(own=[3.0] * 2 + [-5.0] * 7, assassin=[3.0]),
+        }
+        sm, sims = build(tmp_path, rows)
+        clue, _ = sm.give_clue(make_ctx(make_board()), sims)
+        assert clue == "opp_breach"
+
+    def test_still_returns_a_clue_when_only_assassin_breaching_ones_exist(self, tmp_path):
+        """Last resort: every bound relaxed. The requirement is that a
+        legal clue still comes back -- the game demands one every turn."""
+        rows = {"only_option": make_row(own=[3.0] * 2 + [-5.0] * 7, assassin=[3.0])}
+        sm, sims = build(tmp_path, rows)
+        clue, number = sm.give_clue(make_ctx(make_board()), sims)
+        assert clue == "only_option"
+        assert number >= 1
