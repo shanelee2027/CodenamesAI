@@ -7,7 +7,8 @@ config entry, registry entry, doc) rather than kept side by side.
 
 ## Why replace it, not tune it
 
-`docs/versions/z_threshold.md` documented two structural problems, both
+The retired `z_threshold` baseline documented two structural problems
+(its measurements are preserved in `docs/log.md`), both
 inherent to the threshold design rather than fixable by re-sweeping its
 parameters:
 
@@ -128,7 +129,7 @@ safer words.
 
 ### Inherited: the cross-space assassin problem
 
-`z_threshold.md` measured a real, structural finding that this model
+`z_threshold` measured a real, structural finding (see `docs/log.md`) that this model
 inherits rather than fixes, since it's a consequence of selecting on a
 single embedding space (`space="numberbatch"`), not of the threshold
 mechanism that document was otherwise about: **a single-space spymaster
@@ -145,7 +146,7 @@ expected behavior for a single-space model, not a bug.
 ### Inherited: embedding-space disagreement
 
 Related, and also carried over as context rather than re-derived here:
-`z_threshold.md` traced the cross-space assassin problem to a concrete
+`z_threshold` traced the cross-space assassin problem (`docs/log.md`) to a concrete
 example (seed 9, clue "counter", assassin at z=-0.05 in numberbatch but
 +1.79/+1.77 in glove/wikipedia2vec) -- the same clue can look completely
 safe in the space a spymaster actually looks at and simultaneously
@@ -163,7 +164,7 @@ change what space(s) it consults.
   the data; this would be a scoring change, not an architectural one).
 - Only `space="numberbatch"` and the shipped `tau_gain`/`tau_pen`
   defaults are exercised by the measurements above; a `tau` sweep
-  (analogous to `z_threshold.md`'s `own_top`/`assassin_outside` sweep)
+  (analogous to the retired `own_top`/`assassin_outside` sweep in `docs/log.md`)
   hasn't been run, so how sensitive the announced-number distribution is
   to those two constants specifically is unmeasured.
 - `penalty(k)` uses only the single weakest intended word, `a_k` -- a

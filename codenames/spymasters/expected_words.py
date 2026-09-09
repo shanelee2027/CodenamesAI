@@ -1,6 +1,7 @@
 """Baseline: threshold-free expected-words-covered spymaster.
 
-Replaces `z_threshold.py` (see `docs/versions/z_threshold.md`), whose hard
+Replaces the earlier `z_threshold.py` (its version doc was removed with
+it; the measurements survive in `docs/log.md`), whose hard
 role thresholds needed a three-stage fallback chain for the "no clue
 clears every threshold" case, and whose expected-reward term was
 measurably inert on the normal (non-fallback) path -- the thresholds
@@ -29,7 +30,7 @@ word's marginal contribution is `prod_{i<=k} s_i <= 1`, so announcing a
 larger number only helps if the words involved are actually distinct
 enough (in z-score) from the distractors to keep that product near 1. A
 plain `k - penalty` was tried and always picked k=4 (see
-`docs/versions/z_threshold.md`'s "expected-reward term is currently
+`docs/log.md`'s "expected-reward term is currently
 inert" section for the analogous failure in the old model, and this
 file's own version doc for the linear variant's fixed measurement) --
 this is why that shortcut is refused here.
