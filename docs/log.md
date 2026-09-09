@@ -3258,4 +3258,51 @@ trusting the agents' reports.
 
 314 tests pass.
 
+## Fourth embedding space (fastText on Fandom) dropped from scope
+
+The plan was four embedding spaces; three were built (GloVe, Numberbatch,
+Wikipedia2Vec) and the fourth -- a fastText model trained locally on a
+Fandom wiki corpus, meant to supply pop-culture and proper-noun knowledge
+-- never was. Declared out of scope, so the corpus-collection machinery
+and every "coming later" reference are gone: four scripts deleted
+(`download_fandom_dumps.py`, `check_fandom_dumps.py`,
+`extract_fandom_corpus.py`, `fandom_wikis.txt`, 513 lines) and 12
+references rewritten across 8 files. `docs/log.md` untouched, as with the
+SCOPE sweep.
+
+Two things fell out of this that were not the point of the change:
+
+- **A pre-existing documentation bug in `codenames/features.py`.** Its
+  layout docstring described the per-space block as 25 slots and the total
+  as `25*n + 25 + 3`. The real per-space block has been **26** since
+  `FEATURE_SLOT_COUNTS[OPPONENT]` was widened from 8 to 9 for
+  `OpponentBoardView`'s swapped perspective -- so the documented width has
+  been wrong ever since, and would still have been wrong if only the
+  "4 planned spaces" had been changed to 3. Verified against the code:
+  9+9+7+1 = 26, and 26*3 + 26 + 3 = 107 = `feature_dim(3)`, matching the
+  107-wide feature rows generated in practice. The docstring now points at
+  `feature_dim()` as the source of truth rather than restating a number
+  that can drift again.
+- **The concatenate-don't-average rationale had to be re-illustrated.**
+  `docs/design-decisions.md` argued for concatenating spaces using "high
+  fastText similarity, near-zero GloVe similarity". With fastText gone the
+  example named a space that does not exist, so it now contrasts
+  Numberbatch against GloVe: a clue driven by a structured commonsense
+  relation ConceptNet encodes explicitly, which GloVe's co-occurrence
+  statistics never surface. The argument is unchanged; only the pair of
+  spaces illustrating it moved.
+
+**Open, and deliberately not resolved here:** the motivating problem at the
+top of `design-decisions.md` still uses the Technoblade example -- a clue
+GloVe cannot represent at any threshold. The fourth space was what would
+have supplied it. The multi-space argument survives intact (three spaces do
+carry genuinely different knowledge), but the headline example now
+describes a gap nothing in the project can close. Whether to re-anchor it
+on a gap the built spaces actually exhibit is a framing decision about how
+the project is presented, not a cleanup task.
+
+Raw corpus data (`data/fandom_dumps`, `data/fandom_text`, ~2.7GB) is left
+on disk pending a decision; only `cache/fandom_dump_status.json`, written
+by one of the deleted scripts, was removed. 314 tests pass.
+
 ## Human evaluation (not started)
