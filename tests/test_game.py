@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from codenames.board import Board, Card, Role
-from codenames.codemasters.base import Codemaster
+from codenames.spymasters.base import Spymaster
 from codenames.game import ROLE_REWARD, play_game, play_turn, play_two_team_game
 from codenames.guessers.base import Guesser
 
@@ -17,7 +17,7 @@ def make_board(revealed: list[str] | None = None) -> Board:
     return board
 
 
-class FixedCodemaster(Codemaster):
+class FixedSpymaster(Spymaster):
     def __init__(self, clue: str = "clue", number: int = 1):
         self.clue = clue
         self.number = number
@@ -44,7 +44,7 @@ class ScriptedGuesser(Guesser):
 class TestPlayTurn:
     def test_all_own_reveals_exhaust_guesses(self):
         board = make_board()
-        cm = FixedCodemaster(number=2)
+        cm = FixedSpymaster(number=2)
         # Two own words, both guessed -- attempts = number = 2, exactly
         # matching the two own words offered so it never hits a miss.
         guesser = ScriptedGuesser(["Board0", "Board1"])
@@ -55,7 +55,7 @@ class TestPlayTurn:
 
     def test_stops_on_first_non_own(self):
         board = make_board()
-        cm = FixedCodemaster(number=3)
+        cm = FixedSpymaster(number=3)
         guesser = ScriptedGuesser(["Board0", "Board9", "Board1"])  # Board9 is OPPONENT
         turn = play_turn(board, cm, guesser, sims=None)
         assert turn.ended_reason == "opponent"
@@ -64,7 +64,7 @@ class TestPlayTurn:
 
     def test_stops_immediately_on_assassin(self):
         board = make_board()
-        cm = FixedCodemaster(number=3)
+        cm = FixedSpymaster(number=3)
         guesser = ScriptedGuesser(["Board24", "Board0"])  # Board24 is ASSASSIN
         turn = play_turn(board, cm, guesser, sims=None)
         assert turn.ended_reason == "assassin"
@@ -75,7 +75,7 @@ class TestPlayTurn:
         # Only one own word left unrevealed; guessing it should end the
         # turn immediately even though more attempts remained.
         board = make_board(revealed=BOARD_WORDS[:8])
-        cm = FixedCodemaster(number=3)
+        cm = FixedSpymaster(number=3)
         guesser = ScriptedGuesser(["Board8", "Board9"])
         turn = play_turn(board, cm, guesser, sims=None)
         assert turn.ended_reason == "own_words_complete"
@@ -83,7 +83,7 @@ class TestPlayTurn:
 
     def test_no_guesses_when_guesser_declines(self):
         board = make_board()
-        cm = FixedCodemaster(number=1)
+        cm = FixedSpymaster(number=1)
         guesser = ScriptedGuesser([])
         turn = play_turn(board, cm, guesser, sims=None)
         assert turn.ended_reason == "no_guesses"
@@ -94,7 +94,7 @@ class TestPlayTurn:
 class TestPlayGame:
     def test_wins_when_all_own_words_revealed(self):
         board = make_board()
-        cm = FixedCodemaster(number=8)
+        cm = FixedSpymaster(number=8)
         guesser = ScriptedGuesser(BOARD_WORDS[:9])  # all own words, in order
         result = play_game(board, cm, guesser, sims=None, max_turns=5)
         assert result.outcome == "win"
@@ -102,23 +102,23 @@ class TestPlayGame:
 
     def test_loses_on_assassin(self):
         board = make_board()
-        cm = FixedCodemaster(number=1)
+        cm = FixedSpymaster(number=1)
         guesser = ScriptedGuesser(["Board0", "Board24"])
         result = play_game(board, cm, guesser, sims=None, max_turns=5)
         assert result.outcome == "loss"
 
     def test_times_out_when_guesser_never_guesses(self):
         board = make_board()
-        cm = FixedCodemaster(number=1)
+        cm = FixedSpymaster(number=1)
         guesser = ScriptedGuesser([])
         result = play_game(board, cm, guesser, sims=None, max_turns=3)
         assert result.outcome == "timeout"
         assert len(result.turns) == 3
 
 
-class SequencedCodemaster(Codemaster):
+class SequencedSpymaster(Spymaster):
     """Gives a different (clue, number) each call, in order -- lets a
-    test simulate a real multi-turn game instead of FixedCodemaster's one
+    test simulate a real multi-turn game instead of FixedSpymaster's one
     repeated clue."""
 
     def __init__(self, plan: list[tuple[str, int]]):
@@ -152,7 +152,7 @@ class TestBonusGuessThreading:
         # Turn 1: number=2, but the 2nd guess is a miss (Board9 is
         # OPPONENT) -- ends after 1 correct guess, leaving 2-1=1 word
         # believed owed by "c1".
-        cm = SequencedCodemaster([("c1", 2), ("c2", 1)])
+        cm = SequencedSpymaster([("c1", 2), ("c2", 1)])
         guesser = AlwaysBonusGuesser(["Board0", "Board9", "Board1", "Board2"])
         result = play_game(board, cm, guesser, sims=None, max_turns=2)
 
@@ -171,7 +171,7 @@ class TestBonusGuessThreading:
         # up by correct guesses (no miss) -- no backlog, so turn 2 should
         # still get exactly its announced number.
         board = make_board()
-        cm = SequencedCodemaster([("c1", 2), ("c2", 1)])
+        cm = SequencedSpymaster([("c1", 2), ("c2", 1)])
         guesser = AlwaysBonusGuesser(["Board0", "Board1", "Board2", "Board3"])
         result = play_game(board, cm, guesser, sims=None, max_turns=2)
 
@@ -186,16 +186,16 @@ class TestPlayTwoTeamGame:
 
     def test_team_a_moves_first(self):
         board = make_board()
-        team_a = (FixedCodemaster("c", 1), ScriptedGuesser([]))
-        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        team_a = (FixedSpymaster("c", 1), ScriptedGuesser([]))
+        team_b = (FixedSpymaster("c", 1), ScriptedGuesser([]))
         result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=1)
         assert result.turns[0].team == "A"
         assert result.turns[1].team == "B"
 
     def test_team_wins_by_clearing_their_own_words_on_their_own_turn(self):
         board = make_board()
-        team_a = (FixedCodemaster("c", 9), ScriptedGuesser(BOARD_WORDS[:9]))  # all 9 of A's own words
-        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        team_a = (FixedSpymaster("c", 9), ScriptedGuesser(BOARD_WORDS[:9]))  # all 9 of A's own words
+        team_b = (FixedSpymaster("c", 1), ScriptedGuesser([]))
         result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=5)
         assert result.outcome == "win"
         assert result.winner == "A"
@@ -209,8 +209,8 @@ class TestPlayTwoTeamGame:
         # opposing team's accidental reveal helps you in the real game.
         board = make_board()
         b_own_words = BOARD_WORDS[9:17]  # Board9..Board16, team B's 8 own words
-        team_a = (FixedCodemaster("c", 1), ScriptedGuesser(b_own_words))
-        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))  # never guesses
+        team_a = (FixedSpymaster("c", 1), ScriptedGuesser(b_own_words))
+        team_b = (FixedSpymaster("c", 1), ScriptedGuesser([]))  # never guesses
         result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=20)
         assert result.outcome == "win"
         assert result.winner == "B"
@@ -219,8 +219,8 @@ class TestPlayTwoTeamGame:
 
     def test_assassin_ends_the_game_immediately_and_the_other_team_wins(self):
         board = make_board()
-        team_a = (FixedCodemaster("c", 1), ScriptedGuesser(["Board24"]))  # the assassin
-        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        team_a = (FixedSpymaster("c", 1), ScriptedGuesser(["Board24"]))  # the assassin
+        team_b = (FixedSpymaster("c", 1), ScriptedGuesser([]))
         result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=5)
         assert result.outcome == "loss"
         assert result.winner == "B"
@@ -228,8 +228,8 @@ class TestPlayTwoTeamGame:
 
     def test_times_out_when_neither_team_ever_guesses(self):
         board = make_board()
-        team_a = (FixedCodemaster("c", 1), ScriptedGuesser([]))
-        team_b = (FixedCodemaster("c", 1), ScriptedGuesser([]))
+        team_a = (FixedSpymaster("c", 1), ScriptedGuesser([]))
+        team_b = (FixedSpymaster("c", 1), ScriptedGuesser([]))
         result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=3)
         assert result.outcome == "timeout"
         assert result.winner is None
@@ -241,8 +241,8 @@ class TestPlayTwoTeamGame:
         # accidentally shared, B's AlwaysBonusGuesser would claim a bonus
         # it has no history of its own to justify.
         board = make_board()
-        cm_a = SequencedCodemaster([("ca", 2)])
-        cm_b = SequencedCodemaster([("cb", 1)])
+        cm_a = SequencedSpymaster([("ca", 2)])
+        cm_b = SequencedSpymaster([("cb", 1)])
         team_a = (cm_a, AlwaysBonusGuesser(["Board0", "Board9"]))  # Board9 is a miss (opponent, from A's view)
         # Board10/11 (not Board9, which A's turn already revealed) --
         # both B's own unrevealed words, so a wrongly-granted bonus would

@@ -1,9 +1,9 @@
 """Run the two-team self-play arena (codenames/two_team_arena.py): the
-SAME codemaster+guesser pair on both sides of a real two-team game (see
+SAME spymaster+guesser pair on both sides of a real two-team game (see
 codenames/game.py::play_two_team_game), across many seeded boards.
 
 Usage:
-    python scripts/run_two_team_arena.py --n-boards 300 --codemaster centroid --guesser noisy_glove
+    python scripts/run_two_team_arena.py --n-boards 300 --spymaster centroid --guesser noisy_glove
     python scripts/run_two_team_arena.py --n-boards 300 \\
         --checkpoint cache/m9/checkpoints/noise_0_08/scorer_best.pt --guesser noisy_glove
     python scripts/run_two_team_arena.py --n-boards 300 \\
@@ -13,7 +13,7 @@ Usage:
 With --checkpoint, routes through codenames/two_team_gpu_arena.py's
 batched-across-games GPU path by default (mirrors scripts/run_arena.py's
 --gpu-batch-size for the single-team case -- pass --no-gpu-batch for the
-normal per-process CPU path instead). A baseline --codemaster always
+normal per-process CPU path instead). A baseline --spymaster always
 runs through the normal per-process path either way, since it's already
 cheap and has nothing to gain from batching (it scores a handful of
 candidates, not the whole clue vocabulary, each turn).
@@ -27,17 +27,17 @@ from pathlib import Path
 
 import torch
 
-from codenames.codemasters import CentroidCodemaster, LearnedCodemaster, LinearScorerCodemaster, OracleCodemaster, RandomCodemaster
+from codenames.spymasters import CentroidSpymaster, LearnedSpymaster, LinearScorerSpymaster, OracleSpymaster, RandomSpymaster
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 from codenames.two_team_arena import run_two_team_self_play
 from codenames.two_team_gpu_arena import run_two_team_self_play_gpu
 
-BASE_CODEMASTER_SPECS: dict[str, tuple[type, dict]] = {
-    "random": (RandomCodemaster, {"seed": 0}),
-    "centroid": (CentroidCodemaster, {"seed": 0}),
-    "linear_scorer": (LinearScorerCodemaster, {}),
-    "oracle": (OracleCodemaster, {}),
+BASE_SPYMASTER_SPECS: dict[str, tuple[type, dict]] = {
+    "random": (RandomSpymaster, {"seed": 0}),
+    "centroid": (CentroidSpymaster, {"seed": 0}),
+    "linear_scorer": (LinearScorerSpymaster, {}),
+    "oracle": (OracleSpymaster, {}),
 }
 
 
@@ -50,11 +50,11 @@ def main() -> None:
         required=True,
         help="name of one guesser in --guesser-pool-config to use on both sides, or 'mixed' -- each game "
         "independently draws a guesser uniformly from the whole pool, matching the distribution the "
-        "codemaster was actually trained against (see codenames/two_team_arena.py::MIXED_GUESSER)",
+        "spymaster was actually trained against (see codenames/two_team_arena.py::MIXED_GUESSER)",
     )
-    parser.add_argument("--codemaster", choices=list(BASE_CODEMASTER_SPECS), default=None, help="a baseline codemaster")
-    parser.add_argument("--checkpoint", type=Path, default=None, help="a learned scorer checkpoint instead of a baseline codemaster")
-    parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for a learned codemaster (default: -10.0)")
+    parser.add_argument("--spymaster", choices=list(BASE_SPYMASTER_SPECS), default=None, help="a baseline spymaster")
+    parser.add_argument("--checkpoint", type=Path, default=None, help="a learned scorer checkpoint instead of a baseline spymaster")
+    parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for a learned spymaster (default: -10.0)")
     parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS (per team)")
     parser.add_argument("--max-workers", type=int, default=None, help="default: os.cpu_count() -- only used without --checkpoint's GPU path")
     parser.add_argument(
@@ -74,27 +74,27 @@ def main() -> None:
         "so a run can be inspected later without replaying it -- see scripts/dump_game_records.py. "
         "Most useful when --guesser costs real money per turn (e.g. 'llm').",
     )
-    parser.add_argument("--run-label", default=None, help="label stored alongside --record-games' rows (default: '<codemaster>+<guesser>')")
+    parser.add_argument("--run-label", default=None, help="label stored alongside --record-games' rows (default: '<spymaster>+<guesser>')")
     args = parser.parse_args()
 
-    if (args.codemaster is None) == (args.checkpoint is None):
-        parser.error("pass exactly one of --codemaster or --checkpoint")
+    if (args.spymaster is None) == (args.checkpoint is None):
+        parser.error("pass exactly one of --spymaster or --checkpoint")
 
     use_gpu_batch = args.checkpoint is not None and not args.no_gpu_batch
 
     if args.checkpoint is not None:
-        codemaster_cls, codemaster_kwargs = LearnedCodemaster, {"checkpoint_path": args.checkpoint}
+        spymaster_cls, spymaster_kwargs = LearnedSpymaster, {"checkpoint_path": args.checkpoint}
         if args.risk_aversion is not None:
-            codemaster_kwargs["miss_penalty"] = args.risk_aversion
-        codemaster_label = f"learned:{args.checkpoint.parent.name}"
+            spymaster_kwargs["miss_penalty"] = args.risk_aversion
+        spymaster_label = f"learned:{args.checkpoint.parent.name}"
     else:
-        codemaster_cls, codemaster_kwargs = BASE_CODEMASTER_SPECS[args.codemaster]
-        codemaster_label = args.codemaster
+        spymaster_cls, spymaster_kwargs = BASE_SPYMASTER_SPECS[args.spymaster]
+        spymaster_label = args.spymaster
 
     kwargs = {}
     if args.max_turns is not None:
         kwargs["max_turns"] = args.max_turns
-    run_label = args.run_label if args.run_label is not None else f"{codemaster_label}+{args.guesser}"
+    run_label = args.run_label if args.run_label is not None else f"{spymaster_label}+{args.guesser}"
     if args.record_games is not None:
         kwargs["game_record_db"] = args.record_games
         kwargs["run_label"] = run_label
@@ -103,9 +103,9 @@ def main() -> None:
     start = time.time()
     if use_gpu_batch:
         sims = SimilarityTensor.load(args.sims_cache_dir)
-        learned_codemaster = codemaster_cls(**codemaster_kwargs)
+        learned_spymaster = spymaster_cls(**spymaster_kwargs)
         result = run_two_team_self_play_gpu(
-            codemaster=learned_codemaster,
+            spymaster=learned_spymaster,
             guesser_pool_config=args.guesser_pool_config,
             guesser_name=args.guesser,
             seeds=seeds,
@@ -116,8 +116,8 @@ def main() -> None:
         )
     else:
         result = run_two_team_self_play(
-            codemaster_cls,
-            codemaster_kwargs,
+            spymaster_cls,
+            spymaster_kwargs,
             args.guesser_pool_config,
             args.guesser,
             seeds,
@@ -126,7 +126,7 @@ def main() -> None:
         )
     elapsed = time.time() - start
 
-    print(f"{result.n_games} two-team games ({codemaster_label} + {args.guesser} on both sides) in {elapsed:.1f}s\n")
+    print(f"{result.n_games} two-team games ({spymaster_label} + {args.guesser} on both sides) in {elapsed:.1f}s\n")
     print(f"{'assassin-hit rate':22s} {100 * result.assassin_rate:6.1f}%")
     print(f"{'half-turns (all)':22s} {result.mean_half_turns_all:6.2f}")
     turns_clean = f"{result.mean_half_turns_clean_finish:.2f}" if result.mean_half_turns_clean_finish is not None else "--"

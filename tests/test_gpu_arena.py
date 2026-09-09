@@ -10,7 +10,7 @@ pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU-batch
 
 from codenames.arena import run_arena  # noqa: E402
 from codenames.board import load_wordlist  # noqa: E402
-from codenames.codemasters.learned import LearnedCodemaster  # noqa: E402
+from codenames.spymasters.learned import LearnedSpymaster  # noqa: E402
 from codenames.features import feature_dim  # noqa: E402
 from codenames.gpu_arena import run_arena_gpu  # noqa: E402
 from codenames.scorer import Scorer  # noqa: E402
@@ -58,10 +58,10 @@ class TestRunArenaGpu:
         sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
         seeds = list(range(1, 21))
 
-        gpu_codemaster = LearnedCodemaster(checkpoint_path, device="cpu")
+        gpu_spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
         gpu_results = run_arena_gpu(
-            codemaster=gpu_codemaster,
-            codemaster_name="learned",
+            spymaster=gpu_spymaster,
+            spymaster_name="learned",
             guesser_pool_config=guesser_pool_config,
             seeds=seeds,
             db_path=tmp_path / "arena_gpu.db",
@@ -72,7 +72,7 @@ class TestRunArenaGpu:
         )
 
         cpu_results, _ = run_arena(
-            codemaster_specs={"learned": (LearnedCodemaster, {"checkpoint_path": checkpoint_path, "device": "cpu"})},
+            spymaster_specs={"learned": (LearnedSpymaster, {"checkpoint_path": checkpoint_path, "device": "cpu"})},
             guesser_pool_config=guesser_pool_config,
             seeds=seeds,
             db_path=tmp_path / "arena_cpu.db",
@@ -100,10 +100,10 @@ class TestRunArenaGpu:
 
         results_by_batch = {}
         for batch_size in (1, 5, 20):
-            codemaster = LearnedCodemaster(checkpoint_path, device="cpu")
+            spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
             results = run_arena_gpu(
-                codemaster=codemaster,
-                codemaster_name="learned",
+                spymaster=spymaster,
+                spymaster_name="learned",
                 guesser_pool_config=guesser_pool_config,
                 seeds=seeds,
                 db_path=tmp_path / f"arena_{batch_size}.db",

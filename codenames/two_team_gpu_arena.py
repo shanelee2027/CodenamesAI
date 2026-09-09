@@ -1,4 +1,4 @@
-"""GPU-batched two-team self-play arena for LearnedCodemaster specifically
+"""GPU-batched two-team self-play arena for LearnedSpymaster specifically
 -- plays many simultaneous two-team games in lockstep on one GPU process,
 mirroring codenames/gpu_arena.py's single-team batching (see that
 module's docstring for the underlying "batch the forward pass across
@@ -16,10 +16,10 @@ active game and run one batched forward pass, exactly like the
 single-team path already does for its one perspective.
 
 Only accelerates the case codenames/two_team_arena.py's own docstring
-already scopes to: bulk two-team *self-play*, the SAME LearnedCodemaster
-+ guesser pair on both sides. A mixed-codemaster or baseline-only
+already scopes to: bulk two-team *self-play*, the SAME LearnedSpymaster
++ guesser pair on both sides. A mixed-spymaster or baseline-only
 two-team comparison stays on scripts/run_two_team_arena.py's
-process-parallel path -- nothing here to batch for a codemaster that
+process-parallel path -- nothing here to batch for a spymaster that
 doesn't score the whole clue vocabulary per turn.
 
 Reuses codenames/two_team_arena.py's stats bookkeeping
@@ -50,7 +50,7 @@ import torch
 
 from codenames.board import Board, OpponentBoardView, Role
 from codenames.clue_search import top_legal_clue
-from codenames.codemasters.learned import LearnedCodemaster
+from codenames.spymasters.learned import LearnedSpymaster
 from codenames.game import DEFAULT_MAX_TURNS, TurnResult, TwoTeamGameResult, TwoTeamTurnResult
 from codenames.game import play_turn as _play_turn
 from codenames.gpu_features import build_features_batch_multi
@@ -72,7 +72,7 @@ def _winner_if_any(board: Board) -> str | None:
 
 
 def _play_batch_group(
-    codemaster: LearnedCodemaster,
+    spymaster: LearnedSpymaster,
     guessers: dict[int, Guesser],
     boards: list[Board],
     sims: SimilarityTensor,
@@ -82,13 +82,13 @@ def _play_batch_group(
     run_label: str = "",
 ) -> list[TwoTeamGameResult]:
     """Play every board in `boards` as a two-team game to completion,
-    batching the codemaster's clue selection across every game still in
+    batching the spymaster's clue selection across every game still in
     progress each half-turn. Mirrors codenames.game.play_two_team_game's
     exact win/loss/timeout semantics per game -- see this module's
     docstring for why batching across games is valid here. `guessers` is
     keyed by board seed -- each game can have its own guesser (see
     MIXED_GUESSER in codenames/two_team_arena.py), since the guesser only
-    matters after the batched codemaster forward pass, not during it."""
+    matters after the batched spymaster forward pass, not during it."""
     # Snapshotted before any word is revealed -- boards get mutated in
     # place as the while loop below plays them out.
     by_role_by_seed = {b.seed: board_by_role(b) for b in boards} if record_store is not None else None
@@ -124,7 +124,7 @@ def _play_batch_group(
             features = build_features_batch_multi(sims, views, turn_indices, device)  # (n, n_clues, dim)
             n_active, n_clues, dim = features.shape
             with torch.no_grad():
-                probs = codemaster.model.predict_proba(features.reshape(n_active * n_clues, dim).to(codemaster.device))
+                probs = spymaster.model.predict_proba(features.reshape(n_active * n_clues, dim).to(spymaster.device))
             probs = probs.cpu().numpy().reshape(n_active, n_clues, -1)
 
             # Clue selection is pure CPU/numpy work (cheap) -- computed
@@ -137,10 +137,10 @@ def _play_batch_group(
                 view_by_seed[seed] = view
                 best_n, scores = expected_reward_and_best_n(
                     probs[i],
-                    own_reward=codemaster.own_reward,
-                    neutral_reward=codemaster.neutral_reward,
-                    opponent_reward=codemaster.opponent_reward,
-                    assassin_reward=codemaster.miss_penalty,
+                    own_reward=spymaster.own_reward,
+                    neutral_reward=spymaster.neutral_reward,
+                    opponent_reward=spymaster.opponent_reward,
+                    assassin_reward=spymaster.miss_penalty,
                 )
                 clue = top_legal_clue(sims, view, scores)
                 number = int(best_n[sims.clue_index[clue.lower()]])
@@ -158,7 +158,7 @@ def _play_batch_group(
                 view = view_by_seed[seed]
                 candidates_before_turn = [w for w in view.words if not view.is_revealed(w)]
                 turn = _play_turn(
-                    view, codemaster, guessers[seed], sims, clue_and_number=clue_and_number[seed], history=history_by_seed[seed][team]
+                    view, spymaster, guessers[seed], sims, clue_and_number=clue_and_number[seed], history=history_by_seed[seed][team]
                 )
                 return turn, candidates_before_turn
 
@@ -200,7 +200,7 @@ def _play_batch_group(
 
 
 def run_two_team_self_play_gpu(
-    codemaster: LearnedCodemaster,
+    spymaster: LearnedSpymaster,
     guesser_pool_config: Path,
     guesser_name: str,
     seeds: list[int],
@@ -211,7 +211,7 @@ def run_two_team_self_play_gpu(
     game_record_db: Path | None = None,
     run_label: str = "",
 ) -> TwoTeamSelfPlayResult:
-    """Runs `len(seeds)` two-team games, `codemaster` + the named guesser
+    """Runs `len(seeds)` two-team games, `spymaster` + the named guesser
     (or `MIXED_GUESSER` -- see codenames/two_team_arena.py) on both sides
     of each, batching clue selection across up to `batch_size`
     simultaneous games.
@@ -220,8 +220,8 @@ def run_two_team_self_play_gpu(
     params in codenames/two_team_arena.py -- same persisted format,
     written from this single process instead of across worker processes."""
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    codemaster.model.to(device)
-    codemaster.device = device
+    spymaster.model.to(device)
+    spymaster.device = device
 
     if guesser_name == MIXED_GUESSER:
         pool = list(training_pool(guesser_pool_config).values())
@@ -236,7 +236,7 @@ def run_two_team_self_play_gpu(
         batch_seeds = seeds[start : start + batch_size]
         boards = [Board.generate(seed=s) for s in batch_seeds]
         guessers = {s: guesser_for_seed(s) for s in batch_seeds}
-        results = _play_batch_group(codemaster, guessers, boards, sims, max_turns, device, record_store, run_label)
+        results = _play_batch_group(spymaster, guessers, boards, sims, max_turns, device, record_store, run_label)
         for result in results:
             update_stats(stats, result)
 

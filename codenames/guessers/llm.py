@@ -1,9 +1,9 @@
 """An external, independent listener -- for evaluation, never training
 (see docs/log.md). Every other guesser in the pool was handcrafted
-specifically to be a training target: the codemaster learns to please
+specifically to be a training target: the spymaster learns to please
 exactly the listeners it's shown. That makes a high self-play score
-ambiguous -- it could mean "this codemaster is genuinely good," or it
-could just mean "this codemaster and this guesser happen to share the
+ambiguous -- it could mean "this spymaster is genuinely good," or it
+could just mean "this spymaster and this guesser happen to share the
 same blind spots." A real LLM was never part of that training loop, so
 scoring against it breaks the coupling: it's the closest cheap proxy
 this project has for "would an actual human guess this."

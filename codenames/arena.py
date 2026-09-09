@@ -1,21 +1,21 @@
-"""Cross-play evaluation (SCOPE.md §M6): every codemaster x every guesser,
+"""Cross-play evaluation (SCOPE.md §M6): every spymaster x every guesser,
 over a fixed set of seeded boards.
 
-"Off-diagonal results are the ones that matter" (SCOPE §M6) -- a codemaster
+"Off-diagonal results are the ones that matter" (SCOPE §M6) -- a spymaster
 that only does well against guessers it was implicitly tuned around has
 overfit, which is why this always plays the *full* guesser pool (including
 the held-out members), not just the training-visible ones. The held-out
 flag is carried through into the results/DB purely as a label for later
-filtering, once M8's learned codemaster makes the training/held-out split
+filtering, once M8's learned spymaster makes the training/held-out split
 actually matter for who gets trained against what.
 
 Multiprocessing note (SCOPE §7's memory design note): each worker process
 opens its own read-only mmap over the same similarity_tensor.npy via
 SimilarityTensor.load() -- the OS page cache shares the underlying physical
 pages across processes, so the ~1-2GB tensor itself is not duplicated per
-worker. Codemasters/guessers must not defeat this by materializing their own
+worker. Spymasters/guessers must not defeat this by materializing their own
 private copy of the full tensor as an instance cache -- see
-codenames/codemasters/linear_scorer.py's docstring for a case where an
+codenames/spymasters/linear_scorer.py's docstring for a case where an
 earlier version did exactly that and pushed worker RSS past 9GB.
 
 **Worker start method is "spawn," not the Linux default "fork."** Forking
@@ -23,7 +23,7 @@ after CUDA has been initialized in the parent process hangs or crashes the
 child, even if the child never touches the GPU itself -- the forked
 process inherits a broken copy of the CUDA context. This matters
 concretely now that scripts/run_arena.py can combine this module's
-baselines with codenames/gpu_arena.py's GPU-batched LearnedCodemaster path
+baselines with codenames/gpu_arena.py's GPU-batched LearnedSpymaster path
 in one invocation: whichever runs first would poison the other under
 "fork," and getting the call order right forever is a landmine, not a fix.
 "spawn" starts each worker as a genuinely fresh interpreter, sidestepping
@@ -45,17 +45,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from codenames.board import Board, Role
-from codenames.codemasters.base import Codemaster
+from codenames.spymasters.base import Spymaster
 from codenames.game import DEFAULT_MAX_TURNS, GameResult, play_game
 from codenames.guessers import load_pool
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
-CodemasterSpec = tuple[type[Codemaster], dict]
+SpymasterSpec = tuple[type[Spymaster], dict]
 
 
 @dataclass
 class CrossPlayResult:
-    codemaster: str
+    spymaster: str
     guesser: str
     held_out: bool
     n_games: int
@@ -86,7 +86,7 @@ class CrossPlayResult:
 
 
 def new_stats_accumulator() -> dict[str, float]:
-    """One (codemaster, guesser) pair's running totals -- shared between
+    """One (spymaster, guesser) pair's running totals -- shared between
     run_arena's per-process games and codenames/gpu_arena.py's batched
     games, so both runners compute CrossPlayResult identically instead of
     maintaining two copies of this bookkeeping that could quietly drift
@@ -112,9 +112,9 @@ def update_stats(s: dict[str, float], result: GameResult) -> None:
             s[f"guess_{role.value}"] += 1
 
 
-def finalize_result(codemaster: str, guesser: str, held_out: bool, s: dict[str, float]) -> CrossPlayResult:
+def finalize_result(spymaster: str, guesser: str, held_out: bool, s: dict[str, float]) -> CrossPlayResult:
     return CrossPlayResult(
-        codemaster=codemaster,
+        spymaster=spymaster,
         guesser=guesser,
         held_out=held_out,
         n_games=int(s["games"]),
@@ -136,7 +136,7 @@ def _init_db(db_path: Path) -> sqlite3.Connection:
         """
         CREATE TABLE IF NOT EXISTS turns (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            codemaster TEXT NOT NULL,
+            spymaster TEXT NOT NULL,
             guesser TEXT NOT NULL,
             guesser_held_out INTEGER NOT NULL,
             board_seed INTEGER NOT NULL,
@@ -174,7 +174,7 @@ def _log_game(conn: sqlite3.Connection, cm_name: str, g_name: str, held_out: boo
     conn.executemany(
         """
         INSERT INTO turns
-            (codemaster, guesser, guesser_held_out, board_seed, turn_index,
+            (spymaster, guesser, guesser_held_out, board_seed, turn_index,
              clue, number, guesses_json, reward, ended_reason, game_outcome)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -185,9 +185,9 @@ def _log_game(conn: sqlite3.Connection, cm_name: str, g_name: str, held_out: boo
 _WORKER_STATE: dict = {}
 
 
-def _worker_init(sims_cache_dir: Path, codemaster_specs: dict[str, CodemasterSpec], guesser_pool_config: Path, max_turns: int) -> None:
+def _worker_init(sims_cache_dir: Path, spymaster_specs: dict[str, SpymasterSpec], guesser_pool_config: Path, max_turns: int) -> None:
     _WORKER_STATE["sims"] = SimilarityTensor.load(sims_cache_dir)
-    _WORKER_STATE["codemasters"] = {name: cls(**kwargs) for name, (cls, kwargs) in codemaster_specs.items()}
+    _WORKER_STATE["spymasters"] = {name: cls(**kwargs) for name, (cls, kwargs) in spymaster_specs.items()}
     _WORKER_STATE["guesser_pool"] = load_pool(guesser_pool_config)
     _WORKER_STATE["max_turns"] = max_turns
 
@@ -196,15 +196,15 @@ def _play_task(task: tuple[str, str, int]) -> tuple[str, str, int, GameResult, i
     cm_name, g_name, seed = task
     state = _WORKER_STATE
     board = Board.generate(seed=seed)
-    codemaster = state["codemasters"][cm_name]
+    spymaster = state["spymasters"][cm_name]
     guesser = state["guesser_pool"][g_name].guesser
-    result = play_game(board, codemaster, guesser, state["sims"], max_turns=state["max_turns"])
+    result = play_game(board, spymaster, guesser, state["sims"], max_turns=state["max_turns"])
     rss_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return cm_name, g_name, os.getpid(), result, rss_kb
 
 
 def run_arena(
-    codemaster_specs: dict[str, CodemasterSpec],
+    spymaster_specs: dict[str, SpymasterSpec],
     guesser_pool_config: Path,
     seeds: list[int],
     db_path: Path,
@@ -212,11 +212,11 @@ def run_arena(
     max_turns: int = DEFAULT_MAX_TURNS,
     max_workers: int | None = None,
 ) -> tuple[dict[tuple[str, str], CrossPlayResult], dict[int, int]]:
-    """Play every codemaster against every guesser over `seeds`. Returns
-    (results keyed by (codemaster, guesser), per-worker-pid max RSS in KB)."""
+    """Play every spymaster against every guesser over `seeds`. Returns
+    (results keyed by (spymaster, guesser), per-worker-pid max RSS in KB)."""
     guesser_held_out = {name: entry.held_out for name, entry in load_pool(guesser_pool_config).items()}
     tasks = [
-        (cm_name, g_name, seed) for cm_name in codemaster_specs for g_name in guesser_held_out for seed in seeds
+        (cm_name, g_name, seed) for cm_name in spymaster_specs for g_name in guesser_held_out for seed in seeds
     ]
 
     conn = _init_db(db_path)
@@ -227,7 +227,7 @@ def run_arena(
         max_workers=max_workers,
         mp_context=multiprocessing.get_context("spawn"),
         initializer=_worker_init,
-        initargs=(sims_cache_dir, codemaster_specs, guesser_pool_config, max_turns),
+        initargs=(sims_cache_dir, spymaster_specs, guesser_pool_config, max_turns),
     ) as pool:
         for cm_name, g_name, pid, result, rss_kb in pool.map(_play_task, tasks):
             held_out = guesser_held_out[g_name]

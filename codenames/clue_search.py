@@ -1,6 +1,6 @@
 """Shared "search the clue vocabulary for a good, legal clue" helpers.
 
-Used by the baseline codemasters (§6 items 2-3, codenames/codemasters/) and
+Used by the baseline spymasters (§6 items 2-3, codenames/spymasters/) and
 by M7's training-data generation (scripts/generate_training_data.py), which
 both need to turn a (n_clues,)-shaped score array into legal clue words.
 """
@@ -22,7 +22,7 @@ _CANDIDATE_POOL = 200
 
 def clue_rarity_percentile(clue_words: list[str]) -> dict[str, float]:
     """0.0 = the most common word in the clue vocabulary, ~100.0 = the
-    rarest -- lets a codemaster (or the web UI) filter out obscure clues
+    rarest -- lets a spymaster (or the web UI) filter out obscure clues
     like "confectionery".
 
     Originally derived from GloVe's own frequency-ordered file position,
@@ -125,6 +125,6 @@ def mean_similarity_to_words(sims: SimilarityTensor, words: list[str]) -> np.nda
     missing. Doubles as a "distance to centroid" proxy: a candidate clue's
     mean cosine similarity to a set of points approximates its similarity
     to their mean, which is as close as we can get without raw embedding
-    vectors (see codemasters/centroid.py's docstring for the full reasoning)."""
+    vectors (see spymasters/centroid.py's docstring for the full reasoning)."""
     cols = [np.asarray(sims.tensor[:, sims.board_index[w.lower()], :], dtype=np.float32) for w in words]
     return mean_from_columns(cols)

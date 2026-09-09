@@ -218,8 +218,8 @@
   </div>
 
   <div class="controls">
-    <label>codemaster</label>
-    <select id="codemaster"></select>
+    <label>spymaster</label>
+    <select id="spymaster"></select>
     <label>top</label>
     <input id="topK" type="number" min="1" max="50" value="10" style="width:60px;" title="How many candidate clues to show, best first.">
     <label>max rarity %</label>
@@ -239,7 +239,7 @@
     <label>assassin (risk aversion)</label>
     <input id="assassinReward" type="number" step="0.5" placeholder="-10" style="width:70px;">
     <label>sim. noise</label>
-    <select id="simNoise" title="Which noise-level guesser pool the 'if this clue+number were actually played' panel simulates against -- independent of which noise level the codemaster was trained under.">
+    <select id="simNoise" title="Which noise-level guesser pool the 'if this clue+number were actually played' panel simulates against -- independent of which noise level the spymaster was trained under.">
       <option value="0.0">0.0</option>
       <option value="0.03">0.03</option>
       <option value="0.06">0.06</option>
@@ -264,8 +264,8 @@
     </div>
     <div>
       <div class="panel">
-        <h2>Candidate clues from the AI codemaster</h2>
-        <div id="aiCandidates">Pick a codemaster and click "Get AI clues".</div>
+        <h2>Candidate clues from the AI spymaster</h2>
+        <div id="aiCandidates">Pick a spymaster and click "Get AI clues".</div>
       </div>
       <div class="panel">
         <h2>What each guesser would pick</h2>
@@ -289,7 +289,7 @@
   </div>
 
   <div id="gameTab" style="display:none;">
-    <div class="sub" style="margin-top:-4px;">Pick a codemaster+guesser pair for each team, then play a real
+    <div class="sub" style="margin-top:-4px;">Pick a spymaster+guesser pair for each team, then play a real
       two-team game to completion (one shared board, alternating turns) via
       codenames/game.py::play_two_team_game -- straight through to win/loss/timeout, no per-turn clicking.
       Team A has 9 own words and always moves first, matching real Codenames; team B has 8.</div>
@@ -303,8 +303,8 @@
 
     <div class="controls">
       <span class="sub" style="margin-right:6px; font-weight:600;">Team A (9 words, moves first) --</span>
-      <label>codemaster</label>
-      <select id="gameCodemasterA"></select>
+      <label>spymaster</label>
+      <select id="gameSpymasterA"></select>
       <label>guesser</label>
       <select id="gameGuesserA"></select>
       <label>own</label>
@@ -316,13 +316,13 @@
       <label>assassin</label>
       <input id="gameAssassinRewardA" type="number" step="0.5" placeholder="-10" style="width:60px;">
       <label>max rarity %</label>
-      <input id="gameMaxRarityA" type="number" min="0" max="100" step="5" placeholder="50" style="width:60px;" title="Exclude clues rarer than this percentile of the clue vocabulary (100 = no filtering). Applies only to a learned:* codemaster on this side.">
+      <input id="gameMaxRarityA" type="number" min="0" max="100" step="5" placeholder="50" style="width:60px;" title="Exclude clues rarer than this percentile of the clue vocabulary (100 = no filtering). Applies only to a learned:* spymaster on this side.">
     </div>
 
     <div class="controls">
       <span class="sub" style="margin-right:6px; font-weight:600;">Team B (8 words) --</span>
-      <label>codemaster</label>
-      <select id="gameCodemasterB"></select>
+      <label>spymaster</label>
+      <select id="gameSpymasterB"></select>
       <label>guesser</label>
       <select id="gameGuesserB"></select>
       <label>own</label>
@@ -334,10 +334,10 @@
       <label>assassin</label>
       <input id="gameAssassinRewardB" type="number" step="0.5" placeholder="-10" style="width:60px;">
       <label>max rarity %</label>
-      <input id="gameMaxRarityB" type="number" min="0" max="100" step="5" placeholder="50" style="width:60px;" title="Exclude clues rarer than this percentile of the clue vocabulary (100 = no filtering). Applies only to a learned:* codemaster on this side.">
+      <input id="gameMaxRarityB" type="number" min="0" max="100" step="5" placeholder="50" style="width:60px;" title="Exclude clues rarer than this percentile of the clue vocabulary (100 = no filtering). Applies only to a learned:* spymaster on this side.">
     </div>
-    <div class="sub" style="margin-top:-8px;">reward values and max rarity apply only to a learned:* codemaster on
-      that side, blank = default (max rarity default 50) -- if both teams pick the *same* learned codemaster, they
+    <div class="sub" style="margin-top:-8px;">reward values and max rarity apply only to a learned:* spymaster on
+      that side, blank = default (max rarity default 50) -- if both teams pick the *same* learned spymaster, they
       share one instance and team B's overrides win for both.</div>
 
     <div id="gameMessage"></div>
@@ -356,7 +356,7 @@
       <div>
         <div class="panel">
           <h2>Result</h2>
-          <div id="gameResult">Pick a codemaster and guesser, then click "Simulate full game".</div>
+          <div id="gameResult">Pick a spymaster and guesser, then click "Simulate full game".</div>
         </div>
         <div class="panel">
           <h2>Turn-by-turn</h2>
@@ -546,27 +546,27 @@ function refresh() {
   else loadState();
 }
 
-const DEFAULT_CODEMASTER = 'learned:noise_0_08';
+const DEFAULT_SPYMASTER = 'learned:noise_0_08';
 
-async function loadCodemasters() {
-  const data = await fetchJSON('/api/codemasters');
-  const select = document.getElementById('codemaster');
+async function loadSpymasters() {
+  const data = await fetchJSON('/api/spymasters');
+  const select = document.getElementById('spymaster');
   select.innerHTML = '';
-  for (const name of data.codemasters) {
+  for (const name of data.spymasters) {
     const opt = document.createElement('option');
     opt.value = name;
     opt.textContent = name;
     select.appendChild(opt);
   }
-  if (data.codemasters.includes(DEFAULT_CODEMASTER)) select.value = DEFAULT_CODEMASTER;
+  if (data.spymasters.includes(DEFAULT_SPYMASTER)) select.value = DEFAULT_SPYMASTER;
 }
 
 let lastCandidates = [];
 
-function renderAiCandidates(codemaster, candidates) {
+function renderAiCandidates(spymaster, candidates) {
   const el = document.getElementById('aiCandidates');
   lastCandidates = candidates;
-  if (!candidates.length) { el.innerHTML = 'Pick a codemaster and click "Get AI clues".'; return; }
+  if (!candidates.length) { el.innerHTML = 'Pick a spymaster and click "Get AI clues".'; return; }
   el.innerHTML = '';
   candidates.forEach((c, i) => {
     const row = document.createElement('div');
@@ -579,7 +579,7 @@ function renderAiCandidates(codemaster, candidates) {
       `<span class="candidate-number">number ${c.number}</span>` +
       `<span class="candidate-score">${scoreText}</span>` +
       `<span class="candidate-rarity">${rarityText}</span>`;
-    row.addEventListener('click', () => selectCandidate(codemaster, i));
+    row.addEventListener('click', () => selectCandidate(spymaster, i));
     el.appendChild(row);
   });
 }
@@ -599,12 +599,12 @@ function rewardParams() {
   return params;
 }
 
-async function selectCandidate(codemaster, index) {
+async function selectCandidate(spymaster, index) {
   const c = lastCandidates[index];
   document.querySelectorAll('.candidate-row').forEach((row) => row.classList.toggle('active', Number(row.dataset.index) === index));
 
   document.getElementById('clue').value = c.clue;
-  document.getElementById('aiClueReadout').textContent = `${codemaster} candidate #${index + 1}: "${c.clue}" (number ${c.number})`;
+  document.getElementById('aiClueReadout').textContent = `${spymaster} candidate #${index + 1}: "${c.clue}" (number ${c.number})`;
   await queryClue();
 
   const seed = currentSeed();
@@ -615,18 +615,18 @@ async function selectCandidate(codemaster, index) {
 
 async function getAiClue() {
   const seed = currentSeed();
-  const codemaster = document.getElementById('codemaster').value;
+  const spymaster = document.getElementById('spymaster').value;
   const topK = document.getElementById('topK').value || 1;
   const maxRarity = document.getElementById('maxRarity').value.trim() || 100;
-  const data = await fetchJSON(`/api/give_clue?seed=${seed}&codemaster=${encodeURIComponent(codemaster)}&top_k=${topK}&max_rarity=${maxRarity}&reveal=${encodeURIComponent(currentReveal())}${rewardParams()}`);
+  const data = await fetchJSON(`/api/give_clue?seed=${seed}&spymaster=${encodeURIComponent(spymaster)}&top_k=${topK}&max_rarity=${maxRarity}&reveal=${encodeURIComponent(currentReveal())}${rewardParams()}`);
   if (data.error) {
     document.getElementById('aiClueReadout').textContent = data.error;
     return;
   }
 
-  document.getElementById('aiClueReadout').textContent = `${data.clues.length} candidate(s) from ${codemaster}`;
-  renderAiCandidates(codemaster, data.clues);
-  await selectCandidate(codemaster, 0);
+  document.getElementById('aiClueReadout').textContent = `${data.clues.length} candidate(s) from ${spymaster}`;
+  renderAiCandidates(spymaster, data.clues);
+  await selectCandidate(spymaster, 0);
 }
 
 document.getElementById('newBoard').addEventListener('click', () => { revealed.clear(); refresh(); });
@@ -657,17 +657,17 @@ document.getElementById('tabInspector').addEventListener('click', () => switchTa
 document.getElementById('tabGame').addEventListener('click', () => switchTab('game'));
 
 async function loadGameSelectors() {
-  const [codemasterData, guesserData] = await Promise.all([fetchJSON('/api/codemasters'), fetchJSON('/api/guessers')]);
+  const [spymasterData, guesserData] = await Promise.all([fetchJSON('/api/spymasters'), fetchJSON('/api/guessers')]);
   for (const side of ['A', 'B']) {
-    const cmSelect = document.getElementById(`gameCodemaster${side}`);
+    const cmSelect = document.getElementById(`gameSpymaster${side}`);
     cmSelect.innerHTML = '';
-    for (const name of codemasterData.codemasters) {
+    for (const name of spymasterData.spymasters) {
       const opt = document.createElement('option');
       opt.value = name;
       opt.textContent = name;
       cmSelect.appendChild(opt);
     }
-    if (codemasterData.codemasters.includes(DEFAULT_CODEMASTER)) cmSelect.value = DEFAULT_CODEMASTER;
+    if (spymasterData.spymasters.includes(DEFAULT_SPYMASTER)) cmSelect.value = DEFAULT_SPYMASTER;
 
     const gSelect = document.getElementById(`gameGuesser${side}`);
     gSelect.innerHTML = '';
@@ -720,7 +720,7 @@ function renderGameResult(data) {
   el.innerHTML =
     `<div class="outcome-banner ${outcomeClass}">${outcomeLabel}</div>` +
     `<div class="sub">seed ${data.seed} -- ` +
-    `A: ${data.codemaster_a} + ${data.guesser_a} vs. B: ${data.codemaster_b} + ${data.guesser_b} -- ` +
+    `A: ${data.spymaster_a} + ${data.guesser_a} vs. B: ${data.spymaster_b} + ${data.guesser_b} -- ` +
     `${data.turns.length} turn(s) -- total reward A ${data.total_reward.A.toFixed(1)}, B ${data.total_reward.B.toFixed(1)}</div>`;
 }
 
@@ -764,9 +764,9 @@ function renderGameTurns(turns) {
 
 async function playGame() {
   const seed = parseInt(document.getElementById('gameSeed').value, 10) || 42;
-  const codemasterA = document.getElementById('gameCodemasterA').value;
+  const spymasterA = document.getElementById('gameSpymasterA').value;
   const guesserA = document.getElementById('gameGuesserA').value;
-  const codemasterB = document.getElementById('gameCodemasterB').value;
+  const spymasterB = document.getElementById('gameSpymasterB').value;
   const guesserB = document.getElementById('gameGuesserB').value;
   document.getElementById('gameMessage').innerHTML = '';
   document.getElementById('gameResult').textContent = 'Simulating...';
@@ -774,8 +774,8 @@ async function playGame() {
 
   const data = await fetchJSON(
     `/api/play_game?seed=${seed}` +
-    `&codemaster_a=${encodeURIComponent(codemasterA)}&guesser_a=${encodeURIComponent(guesserA)}` +
-    `&codemaster_b=${encodeURIComponent(codemasterB)}&guesser_b=${encodeURIComponent(guesserB)}` +
+    `&spymaster_a=${encodeURIComponent(spymasterA)}&guesser_a=${encodeURIComponent(guesserA)}` +
+    `&spymaster_b=${encodeURIComponent(spymasterB)}&guesser_b=${encodeURIComponent(guesserB)}` +
     `${gameRewardParams('a')}${gameRewardParams('b')}`
   );
   if (data.error) {
@@ -794,7 +794,7 @@ document.getElementById('gameRandomSeed').addEventListener('click', () => {
 });
 document.getElementById('playGame').addEventListener('click', playGame);
 
-loadCodemasters();
+loadSpymasters();
 loadGameSelectors();
 loadState();
 </script>

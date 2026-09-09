@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from codenames.board import Role, load_wordlist
-from codenames.codemasters.random_clue import RandomCodemaster
+from codenames.spymasters.random_clue import RandomSpymaster
 from codenames.game import TurnResult, TwoTeamGameResult, TwoTeamTurnResult
 from codenames.two_team_arena import MIXED_GUESSER, _new_stats, finalize_result, run_two_team_self_play, update_stats
 
@@ -115,7 +115,7 @@ class TestStatsBookkeeping:
 class TestRunTwoTeamSelfPlay:
     def test_runs_real_games_end_to_end(self, sims_cache_dir, guesser_pool_config):
         result = run_two_team_self_play(
-            RandomCodemaster,
+            RandomSpymaster,
             {"seed": 0},
             guesser_pool_config,
             "space_a",
@@ -133,7 +133,7 @@ class TestRunTwoTeamSelfPlay:
 
     def test_mixed_guesser_runs_end_to_end(self, sims_cache_dir, two_guesser_pool_config):
         result = run_two_team_self_play(
-            RandomCodemaster,
+            RandomSpymaster,
             {"seed": 0},
             two_guesser_pool_config,
             MIXED_GUESSER,

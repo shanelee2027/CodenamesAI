@@ -8,8 +8,8 @@ import pytest
 
 from codenames.arena import run_arena
 from codenames.board import load_wordlist
-from codenames.codemasters.centroid import CentroidCodemaster
-from codenames.codemasters.random_clue import RandomCodemaster
+from codenames.spymasters.centroid import CentroidSpymaster
+from codenames.spymasters.random_clue import RandomSpymaster
 
 CLUE_WORDS = ["clueone", "cluetwo", "cluethree"]
 SPACES = ["a"]
@@ -40,15 +40,15 @@ def guesser_pool_config(tmp_path):
 
 
 class TestRunArena:
-    def test_plays_every_codemaster_against_every_guesser(self, sims_cache_dir, guesser_pool_config, tmp_path):
-        codemaster_specs = {
-            "random": (RandomCodemaster, {"seed": 0}),
-            "centroid": (CentroidCodemaster, {"seed": 0}),
+    def test_plays_every_spymaster_against_every_guesser(self, sims_cache_dir, guesser_pool_config, tmp_path):
+        spymaster_specs = {
+            "random": (RandomSpymaster, {"seed": 0}),
+            "centroid": (CentroidSpymaster, {"seed": 0}),
         }
         db_path = tmp_path / "arena.db"
 
         results, worker_rss = run_arena(
-            codemaster_specs=codemaster_specs,
+            spymaster_specs=spymaster_specs,
             guesser_pool_config=guesser_pool_config,
             seeds=[1, 2],
             db_path=db_path,
@@ -81,11 +81,11 @@ class TestRunArena:
     def test_mean_turns_on_win_is_none_when_nothing_won(self, sims_cache_dir, guesser_pool_config, tmp_path):
         # max_turns=0 forces every game to time out (play_game's loop body
         # never runs) -- zero wins, so there's nothing to average.
-        codemaster_specs = {"random": (RandomCodemaster, {"seed": 0})}
+        spymaster_specs = {"random": (RandomSpymaster, {"seed": 0})}
         db_path = tmp_path / "arena.db"
 
         results, _ = run_arena(
-            codemaster_specs=codemaster_specs,
+            spymaster_specs=spymaster_specs,
             guesser_pool_config=guesser_pool_config,
             seeds=[1, 2],
             db_path=db_path,
@@ -99,11 +99,11 @@ class TestRunArena:
             assert r.mean_turns_on_win is None
 
     def test_logs_one_row_per_turn_to_sqlite(self, sims_cache_dir, guesser_pool_config, tmp_path):
-        codemaster_specs = {"random": (RandomCodemaster, {"seed": 0})}
+        spymaster_specs = {"random": (RandomSpymaster, {"seed": 0})}
         db_path = tmp_path / "arena.db"
 
         run_arena(
-            codemaster_specs=codemaster_specs,
+            spymaster_specs=spymaster_specs,
             guesser_pool_config=guesser_pool_config,
             seeds=[1],
             db_path=db_path,
@@ -113,7 +113,7 @@ class TestRunArena:
         )
 
         conn = sqlite3.connect(db_path)
-        rows = conn.execute("SELECT codemaster, guesser, board_seed, turn_index, clue, ended_reason, game_outcome FROM turns").fetchall()
+        rows = conn.execute("SELECT spymaster, guesser, board_seed, turn_index, clue, ended_reason, game_outcome FROM turns").fetchall()
         conn.close()
 
         assert len(rows) > 0

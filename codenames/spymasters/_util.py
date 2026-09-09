@@ -1,10 +1,10 @@
-"""Shared helpers for the baseline codemasters (SCOPE.md §6, items 1-3).
+"""Shared helpers for the baseline spymasters (SCOPE.md §6, items 1-3).
 
 Kept separate from base.py to avoid duplicating "how many words does this
 clue safely cover" logic across random_clue.py, centroid.py, and
 linear_scorer.py. "Find the best legal clue" lives in codenames/clue_search.py
 instead, since M7's training-data generation needs that too and isn't a
-codemaster.
+spymaster.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ def natural_number(sims: SimilarityTensor, board: Board, clue: str, max_number: 
     """How many own-words this clue's similarity profile ranks above every
     other unrevealed word -- the standard Codenames convention that the
     number signals how many words are safely covered. Capped at
-    max_number (see codemasters.base.MAX_CLUE_NUMBER)."""
+    max_number (see spymasters.base.MAX_CLUE_NUMBER)."""
     unrevealed = [w for w in board.words if not board.is_revealed(w)]
     values = sims.similarities_for_board(clue, unrevealed)  # (n, n_spaces)
     with np.errstate(invalid="ignore"):
@@ -39,7 +39,7 @@ def natural_number(sims: SimilarityTensor, board: Board, clue: str, max_number: 
 def state_rng(seed: int | None, board: Board) -> random.Random:
     """A Random seeded deterministically from (instance seed, board seed,
     revealed-set) so results are reproducible regardless of process or call
-    order -- important once the arena runs codemasters across worker
+    order -- important once the arena runs spymasters across worker
     processes (SCOPE §5 M6)."""
     key = repr((seed, board.seed, tuple(sorted(board.revealed))))
     return random.Random(key)

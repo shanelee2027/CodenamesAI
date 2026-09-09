@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from codenames.board import Board, Card, Role
-from codenames.codemasters.learned import LearnedCodemaster
+from codenames.spymasters.learned import LearnedSpymaster
 from codenames.features import feature_dim
 from codenames.scorer import Scorer
 from codenames.similarity import SimilarityTensor
@@ -46,9 +46,9 @@ def checkpoint_path(tmp_path):
     return path
 
 
-class TestLearnedCodemaster:
+class TestLearnedSpymaster:
     def test_gives_a_legal_clue_from_the_vocabulary(self, sims, checkpoint_path):
-        cm = LearnedCodemaster(checkpoint_path)
+        cm = LearnedSpymaster(checkpoint_path)
         board = make_board()
         clue, number = cm.give_clue(board, sims)
         assert clue in sims.clue_words
@@ -57,13 +57,13 @@ class TestLearnedCodemaster:
         assert is_legal_clue(clue, board.words)
 
     def test_number_is_within_the_models_full_range(self, sims, checkpoint_path):
-        cm = LearnedCodemaster(checkpoint_path)
+        cm = LearnedSpymaster(checkpoint_path)
         board = make_board()
         _, number = cm.give_clue(board, sims)
-        assert 1 <= number <= 4  # floored at 1, like every other codemaster here
+        assert 1 <= number <= 4  # floored at 1, like every other spymaster here
 
     def test_top_k_clues_ranked_best_first_and_agrees_with_give_clue(self, sims, checkpoint_path):
-        cm = LearnedCodemaster(checkpoint_path)
+        cm = LearnedSpymaster(checkpoint_path)
         board = make_board()
         top2 = cm.top_k_clues(board, sims, k=2)
         assert len(top2) == 2
@@ -76,11 +76,11 @@ class TestLearnedCodemaster:
         assert (clue, number) == top2[0][:2]
 
     def test_turn_index_proxy_is_revealed_count(self, sims, checkpoint_path, monkeypatch):
-        cm = LearnedCodemaster(checkpoint_path)
+        cm = LearnedSpymaster(checkpoint_path)
         board = make_board(revealed=["Board9", "Board10"])
 
         seen_turn_index = {}
-        import codenames.codemasters.learned as learned_module
+        import codenames.spymasters.learned as learned_module
 
         original = learned_module.build_features_batch
 
@@ -93,8 +93,8 @@ class TestLearnedCodemaster:
         assert seen_turn_index["value"] == 2
 
     def test_different_risk_aversion_can_change_the_chosen_number(self, sims, checkpoint_path):
-        cautious = LearnedCodemaster(checkpoint_path, miss_penalty=-10.0)
-        lenient = LearnedCodemaster(checkpoint_path, miss_penalty=-0.01)
+        cautious = LearnedSpymaster(checkpoint_path, miss_penalty=-10.0)
+        lenient = LearnedSpymaster(checkpoint_path, miss_penalty=-0.01)
         board = make_board()
         # Same underlying model/board -- just confirm both run end-to-end
         # with different knobs without erroring; the knob's effect on a
@@ -107,7 +107,7 @@ class TestLearnedCodemaster:
         # reward knobs added alongside it -- confirm they're accepted and
         # run end-to-end without erroring (the math itself is covered by
         # test_scorer.py's TestExpectedRewardAndBestN).
-        cm = LearnedCodemaster(checkpoint_path, own_reward=2.0, neutral_reward=-0.3, opponent_reward=-2.0)
+        cm = LearnedSpymaster(checkpoint_path, own_reward=2.0, neutral_reward=-0.3, opponent_reward=-2.0)
         board = make_board()
         clue, number = cm.give_clue(board, sims)
         assert clue in sims.clue_words

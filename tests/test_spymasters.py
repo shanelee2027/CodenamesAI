@@ -6,11 +6,11 @@ import numpy as np
 import pytest
 
 from codenames.board import Board, Card, Role
-from codenames.codemasters.base import MAX_CLUE_NUMBER, Codemaster
-from codenames.codemasters.centroid import CentroidCodemaster
-from codenames.codemasters.linear_scorer import DEFAULT_WEIGHTS, LinearScorerCodemaster
-from codenames.codemasters.oracle import OracleCodemaster
-from codenames.codemasters.random_clue import RandomCodemaster
+from codenames.spymasters.base import MAX_CLUE_NUMBER, Spymaster
+from codenames.spymasters.centroid import CentroidSpymaster
+from codenames.spymasters.linear_scorer import DEFAULT_WEIGHTS, LinearScorerSpymaster
+from codenames.spymasters.oracle import OracleSpymaster
+from codenames.spymasters.random_clue import RandomSpymaster
 from codenames.similarity import SimilarityTensor
 
 BOARD_WORDS = [f"Board{i}" for i in range(25)]
@@ -41,17 +41,17 @@ def base_tensor() -> np.ndarray:
     return np.full((len(CLUE_WORDS), len(BOARD_WORDS), len(SPACES)), 0.05, dtype=np.float32)
 
 
-class TestCodemasterIsAbstract:
+class TestSpymasterIsAbstract:
     def test_cannot_instantiate_directly(self):
         with pytest.raises(TypeError):
-            Codemaster()
+            Spymaster()
 
 
-class TestRandomCodemaster:
+class TestRandomSpymaster:
     def test_returns_legal_clue_and_valid_number(self, tmp_path):
         sims = make_sims(tmp_path, base_tensor())
         board = make_board()
-        cm = RandomCodemaster(seed=0)
+        cm = RandomSpymaster(seed=0)
         clue, number = cm.give_clue(board, sims)
         assert clue in sims.clue_words
         assert 1 <= number <= MAX_CLUE_NUMBER
@@ -59,20 +59,20 @@ class TestRandomCodemaster:
     def test_deterministic_given_same_state(self, tmp_path):
         sims = make_sims(tmp_path, base_tensor())
         board = make_board()
-        a = RandomCodemaster(seed=7).give_clue(board, sims)
-        b = RandomCodemaster(seed=7).give_clue(board, sims)
+        a = RandomSpymaster(seed=7).give_clue(board, sims)
+        b = RandomSpymaster(seed=7).give_clue(board, sims)
         assert a == b
 
     def test_number_capped_by_own_remaining(self, tmp_path):
         sims = make_sims(tmp_path, base_tensor())
         # Reveal all but one own word -- number must be forced to 1.
         board = make_board(revealed=BOARD_WORDS[:8])
-        cm = RandomCodemaster(seed=3)
+        cm = RandomSpymaster(seed=3)
         _, number = cm.give_clue(board, sims)
         assert number == 1
 
 
-class TestCentroidCodemaster:
+class TestCentroidSpymaster:
     def test_picks_clue_nearest_the_single_remaining_own_word(self, tmp_path):
         tensor = base_tensor()
         own0_idx = BOARD_WORDS.index("Board0")  # first OWN word
@@ -85,7 +85,7 @@ class TestCentroidCodemaster:
         own_words = BOARD_WORDS[:9]
         board = make_board(revealed=[w for w in own_words if w != "Board0"])
 
-        cm = CentroidCodemaster(seed=0)
+        cm = CentroidSpymaster(seed=0)
         clue, number = cm.give_clue(board, sims)
         assert clue == "ownfavored"
         assert 1 <= number <= MAX_CLUE_NUMBER
@@ -93,12 +93,12 @@ class TestCentroidCodemaster:
     def test_deterministic_given_same_state(self, tmp_path):
         sims = make_sims(tmp_path, base_tensor())
         board = make_board()
-        a = CentroidCodemaster(seed=5).give_clue(board, sims)
-        b = CentroidCodemaster(seed=5).give_clue(board, sims)
+        a = CentroidSpymaster(seed=5).give_clue(board, sims)
+        b = CentroidSpymaster(seed=5).give_clue(board, sims)
         assert a == b
 
 
-class TestLinearScorerCodemaster:
+class TestLinearScorerSpymaster:
     def test_prefers_own_favored_over_assassin_favored(self, tmp_path):
         tensor = base_tensor()
         own_idxs = [BOARD_WORDS.index(f"Board{i}") for i in range(9)]
@@ -113,7 +113,7 @@ class TestLinearScorerCodemaster:
         sims = make_sims(tmp_path, tensor)
 
         board = make_board()
-        cm = LinearScorerCodemaster()
+        cm = LinearScorerSpymaster()
         clue, number = cm.give_clue(board, sims)
         assert clue == "ownfavored"
         assert 1 <= number <= MAX_CLUE_NUMBER
@@ -128,7 +128,7 @@ class TestLinearScorerCodemaster:
         sims = make_sims(tmp_path, tensor)
 
         board = make_board()
-        cm = LinearScorerCodemaster()
+        cm = LinearScorerSpymaster()
         top3 = cm.top_k_clues(board, sims, k=3)
         assert len(top3) == 3
         assert [c for c, _, _ in top3] == ["ownfavored", "mixedclue", "neutralfavored"]
@@ -149,7 +149,7 @@ class TestLinearScorerCodemaster:
         # why) -- just check repeated calls keep working correctly.
         sims = make_sims(tmp_path, base_tensor())
         board = make_board()
-        cm = LinearScorerCodemaster()
+        cm = LinearScorerSpymaster()
         first = cm.give_clue(board, sims)
         second = cm.give_clue(board, sims)
         assert first == second
@@ -167,7 +167,7 @@ def _suppress_unused_clues(tensor: np.ndarray, used: list[str]) -> None:
             tensor[CLUE_WORDS.index(clue), BOARD_WORDS.index("Board9"), :] = 0.99
 
 
-class TestOracleCodemaster:
+class TestOracleSpymaster:
     def test_picks_the_clue_with_the_longest_consecutive_own_run(self, tmp_path):
         tensor = base_tensor()
         clue_idx = CLUE_WORDS.index("ownfavored")
@@ -180,7 +180,7 @@ class TestOracleCodemaster:
         sims = make_sims(tmp_path, tensor)
 
         board = make_board()
-        cm = OracleCodemaster(space="a")
+        cm = OracleSpymaster(space="a")
         clue, number = cm.give_clue(board, sims)
         assert clue == "ownfavored"
         assert number == 5  # number = the intended word count directly
@@ -198,7 +198,7 @@ class TestOracleCodemaster:
         sims = make_sims(tmp_path, tensor)
 
         board = make_board()
-        cm = OracleCodemaster(space="a")
+        cm = OracleSpymaster(space="a")
         top2 = cm.top_k_clues(board, sims, k=2)
         assert [c for c, _, _ in top2] == ["ownfavored", "mixedclue"]
         assert top2[0][1:] == (3, 3.0)  # number=run=3, score=run=3.0
@@ -210,12 +210,12 @@ class TestOracleCodemaster:
     def test_zero_run_length_floors_number_at_one(self, tmp_path):
         # Every clue's single highest-similarity word is an opponent word
         # -- the best achievable run length is 0 for all of them, but
-        # number is floored at 1 like every other codemaster here.
+        # number is floored at 1 like every other spymaster here.
         tensor = base_tensor()
         for clue in CLUE_WORDS:
             tensor[CLUE_WORDS.index(clue), BOARD_WORDS.index("Board9"), :] = 0.99
         sims = make_sims(tmp_path, tensor)
         board = make_board()
-        cm = OracleCodemaster(space="a")
+        cm = OracleSpymaster(space="a")
         _, number = cm.give_clue(board, sims)
         assert number == 1

@@ -1,4 +1,4 @@
-"""The learned codemaster (SCOPE.md §M8): play-time scoring built on the
+"""The learned spymaster (SCOPE.md §M8): play-time scoring built on the
 trained Scorer, with four runtime reward parameters.
 
 Scores every candidate clue in one batched forward pass, per SCOPE §2:
@@ -14,7 +14,7 @@ particular reward value, only against the empirical (k, cause) outcome.
 the one meant to double as SCOPE's "risk aversion" knob and the existing
 web UI field already calls it that.
 
-`turn_index` isn't part of the Codemaster interface (`give_clue(board,
+`turn_index` isn't part of the Spymaster interface (`give_clue(board,
 sims)` -- no turn counter is threaded through the arena/game loop). Uses
 the same proxy `generate_training_data.py` used to label training examples
 (count of currently-revealed words) -- using a different proxy at play time
@@ -34,7 +34,7 @@ from codenames.game import ROLE_REWARD
 from codenames.scorer import DEFAULT_MISS_PENALTY, OWN_REWARD, Scorer, expected_reward_and_best_n
 from codenames.similarity import SimilarityTensor
 
-from .base import Codemaster
+from .base import Spymaster
 
 # Over-fetch pool when a rarity filter is active: the forward pass scoring
 # the whole vocabulary already happened, so asking top_k_legal_clues to
@@ -44,7 +44,7 @@ from .base import Codemaster
 _RARITY_FETCH_POOL = 300
 
 
-class LearnedCodemaster(Codemaster):
+class LearnedSpymaster(Spymaster):
     def __init__(
         self,
         checkpoint_path: Path | str,

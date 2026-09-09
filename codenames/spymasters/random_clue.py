@@ -6,10 +6,10 @@ from codenames.board import Board, Role, is_legal_clue
 from codenames.similarity import SimilarityTensor
 
 from ._util import state_rng
-from .base import MAX_CLUE_NUMBER, Codemaster
+from .base import MAX_CLUE_NUMBER, Spymaster
 
 
-class RandomCodemaster(Codemaster):
+class RandomSpymaster(Spymaster):
     def __init__(self, seed: int | None = None):
         self.seed = seed
 

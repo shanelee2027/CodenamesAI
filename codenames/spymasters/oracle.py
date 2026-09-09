@@ -1,4 +1,4 @@
-"""An oracle codemaster -- not a realistic strategy, an explicit exploration
+"""An oracle spymaster -- not a realistic strategy, an explicit exploration
 tool (per user request). For every candidate clue, sorts the board's
 *unrevealed* words by raw cosine similarity in one fixed space (no noise,
 no guesser pool -- just the tensor's stored value for that space) and finds
@@ -25,10 +25,10 @@ from codenames.board import Board, Role
 from codenames.clue_search import top_k_legal_clues, top_legal_clue
 from codenames.similarity import SimilarityTensor
 
-from .base import Codemaster
+from .base import Spymaster
 
 
-class OracleCodemaster(Codemaster):
+class OracleSpymaster(Spymaster):
     def __init__(self, space: str = "numberbatch"):
         self.space = space
 
@@ -63,9 +63,9 @@ class OracleCodemaster(Codemaster):
 
     def give_clue(self, board: Board, sims: SimilarityTensor) -> tuple[str, int]:
         # number = the intended word count directly (matches
-        # codemasters/_util.py::natural_number's convention) -- announcing
+        # spymasters/_util.py::natural_number's convention) -- announcing
         # n grants exactly n guesses (codenames.game.play_turn), no bonus
-        # attempt. Floored at 1, same as every other codemaster here: a run length
+        # attempt. Floored at 1, same as every other spymaster here: a run length
         # of 0 (this space's single best-ranked word isn't even own) still
         # has to be announced as *something*.
         run_length, combined = self._score_all_clues(board, sims)

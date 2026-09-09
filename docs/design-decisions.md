@@ -9,7 +9,7 @@ was actually arrived at.
 ## What this project explicitly is not
 
 - **Not an LLM wrapper.** No language model is prompted for a clue anywhere
-  in the pipeline. The codemaster is a learned scoring function over
+  in the pipeline. The spymaster is a learned scoring function over
   numerical features.
 - **Not novel research.** Reusing published techniques is fine and expected;
   the contribution is a working, well-measured system.
@@ -137,7 +137,7 @@ trust. The linear version is still built, as a baseline — see the README's
 baselines section.
 
 **Optimization of any small, fixed parameter set** (e.g. tuning
-`codemasters/linear_scorer.py`'s baseline weights) should use CMA-ES,
+`spymasters/linear_scorer.py`'s baseline weights) should use CMA-ES,
 Bayesian optimization, or grid search — not policy gradients. Not yet done
 for that baseline; its weights are still SCOPE's original illustrative
 constants, untuned.

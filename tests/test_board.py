@@ -233,8 +233,8 @@ class TestOpponentBoardView:
         assert view.seed == board.seed
 
     def test_revealed_set_is_shared_not_copied(self):
-        # Some codemaster code reads board.revealed directly (e.g.
-        # codenames/codemasters/_util.py::state_rng, LearnedCodemaster's
+        # Some spymaster code reads board.revealed directly (e.g.
+        # codenames/spymasters/_util.py::state_rng, LearnedSpymaster's
         # turn-index calc) rather than going through is_revealed() --
         # needs to see the same set, live, from either perspective.
         board = Board.generate(seed=7)

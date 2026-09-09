@@ -10,7 +10,7 @@ import torch
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU-batched two-team arena needs CUDA")
 
 from codenames.board import Board, load_wordlist  # noqa: E402
-from codenames.codemasters.learned import LearnedCodemaster  # noqa: E402
+from codenames.spymasters.learned import LearnedSpymaster  # noqa: E402
 from codenames.features import feature_dim  # noqa: E402
 from codenames.guessers.base import Guesser  # noqa: E402
 from codenames.scorer import Scorer  # noqa: E402
@@ -87,9 +87,9 @@ class TestRunTwoTeamSelfPlayGpu:
         sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
         seeds = list(range(1, 21))
 
-        gpu_codemaster = LearnedCodemaster(checkpoint_path, device="cpu")
+        gpu_spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
         gpu_result = run_two_team_self_play_gpu(
-            codemaster=gpu_codemaster,
+            spymaster=gpu_spymaster,
             guesser_pool_config=guesser_pool_config,
             guesser_name="space_a",
             seeds=seeds,
@@ -100,7 +100,7 @@ class TestRunTwoTeamSelfPlayGpu:
         )
 
         cpu_result = run_two_team_self_play(
-            LearnedCodemaster,
+            LearnedSpymaster,
             {"checkpoint_path": checkpoint_path, "device": "cpu"},
             guesser_pool_config,
             "space_a",
@@ -127,9 +127,9 @@ class TestRunTwoTeamSelfPlayGpu:
 
         results_by_batch = {}
         for batch_size in (1, 5, 20):
-            codemaster = LearnedCodemaster(checkpoint_path, device="cpu")
+            spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
             results_by_batch[batch_size] = run_two_team_self_play_gpu(
-                codemaster=codemaster,
+                spymaster=spymaster,
                 guesser_pool_config=guesser_pool_config,
                 guesser_name="space_a",
                 seeds=seeds,
@@ -148,9 +148,9 @@ class TestRunTwoTeamSelfPlayGpu:
         sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
         seeds = list(range(1, 21))
 
-        gpu_codemaster = LearnedCodemaster(checkpoint_path, device="cpu")
+        gpu_spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
         gpu_result = run_two_team_self_play_gpu(
-            codemaster=gpu_codemaster,
+            spymaster=gpu_spymaster,
             guesser_pool_config=two_guesser_pool_config,
             guesser_name=MIXED_GUESSER,
             seeds=seeds,
@@ -160,7 +160,7 @@ class TestRunTwoTeamSelfPlayGpu:
             device=torch.device("cuda"),
         )
         cpu_result = run_two_team_self_play(
-            LearnedCodemaster,
+            LearnedSpymaster,
             {"checkpoint_path": checkpoint_path, "device": "cpu"},
             two_guesser_pool_config,
             MIXED_GUESSER,
@@ -176,10 +176,10 @@ class TestRunTwoTeamSelfPlayGpu:
 
     def test_batch_guesser_calls_overlap_instead_of_serializing(self, sims_cache_dir, checkpoint_path):
         sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
-        codemaster = LearnedCodemaster(checkpoint_path, device="cpu")
+        spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
         device = torch.device("cuda")
-        codemaster.model.to(device)
-        codemaster.device = device
+        spymaster.model.to(device)
+        spymaster.device = device
 
         n_games, delay = 6, 0.2
         boards = [Board.generate(seed=s) for s in range(n_games)]
@@ -187,7 +187,7 @@ class TestRunTwoTeamSelfPlayGpu:
         guessers = {b.seed: guesser for b in boards}
 
         start = time.monotonic()
-        _play_batch_group(codemaster, guessers, boards, sims, max_turns=1, device=device)
+        _play_batch_group(spymaster, guessers, boards, sims, max_turns=1, device=device)
         elapsed = time.monotonic() - start
 
         # Serialized, even a single half-turn round would take

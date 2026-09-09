@@ -31,7 +31,7 @@ from codenames.clue_search import top_k_legal_clues, top_legal_clue
 from codenames.similarity import SimilarityTensor
 
 from ._util import natural_number
-from .base import MAX_CLUE_NUMBER, Codemaster
+from .base import MAX_CLUE_NUMBER, Spymaster
 
 DEFAULT_WEIGHTS: dict[Role, float] = {
     Role.OWN: 1.0,
@@ -41,7 +41,7 @@ DEFAULT_WEIGHTS: dict[Role, float] = {
 }
 
 
-class LinearScorerCodemaster(Codemaster):
+class LinearScorerSpymaster(Spymaster):
     def __init__(self, weights: dict[Role, float] | None = None):
         self.weights = dict(weights) if weights is not None else dict(DEFAULT_WEIGHTS)
 

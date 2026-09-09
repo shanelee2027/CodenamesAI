@@ -5,12 +5,12 @@ Design notes for the two non-obvious calls made here:
 Role partition is fixed at own=9, opponent=8, neutral=7, assassin=1 (25
 total) -- the standard Codenames starting-team split, matching the feature
 vector layout in SCOPE.md §2. Every `Card`'s role is fixed at board
-generation from one team's perspective -- codemasters, guessers, and the
+generation from one team's perspective -- spymasters, guessers, and the
 scorer are all written against that single perspective, never a
 parameter. Real two-team play (codenames/game.py::play_two_team_game) is
 still possible without changing any of them: `OpponentBoardView` below
 just swaps OWN/OPPONENT while sharing the same underlying revealed-state,
-so handing the second team's codemaster/guesser that view instead of the
+so handing the second team's spymaster/guesser that view instead of the
 real `Board` is enough.
 
 Legality's "morphological variants" rule is deliberately narrow. Regular
@@ -57,12 +57,12 @@ BOARD_SIZE = sum(ROLE_COUNTS.values())
 
 # The learned scorer (M8) outputs a distribution over k in 0..4 -- "the
 # number of own-words the guesser will reveal before stopping" (SCOPE §2).
-# Baseline codemasters (M6) cap their chosen number at the same bound so
-# every codemaster's outputs stay comparable in the arena. Lives here (not
-# in codemasters/base.py, where it conceptually belongs) so both
-# codemasters/ and scorer.py can import it without a circular dependency --
-# codemasters/learned.py already depends on scorer.py, so scorer.py can't
-# depend back on anything under codemasters/.
+# Baseline spymasters (M6) cap their chosen number at the same bound so
+# every spymaster's outputs stay comparable in the arena. Lives here (not
+# in spymasters/base.py, where it conceptually belongs) so both
+# spymasters/ and scorer.py can import it without a circular dependency --
+# spymasters/learned.py already depends on scorer.py, so scorer.py can't
+# depend back on anything under spymasters/.
 MAX_CLUE_NUMBER = 4
 
 
@@ -148,10 +148,10 @@ class OpponentBoardView:
     is immediately gone for both -- only the role labels differ.
 
     This is what makes two-team play (codenames/game.py::play_two_team_game)
-    possible without touching Board, Codemaster, Guesser, or the scorer at
+    possible without touching Board, Spymaster, Guesser, or the scorer at
     all: every one of them only ever queries a board through role_of/
     words_by_role/remaining/is_revealed/reveal/words, so handing the
-    second team's codemaster and guesser this view instead of the real
+    second team's spymaster and guesser this view instead of the real
     Board is enough for them to correctly see "their own" 8 or 9 words as
     Role.OWN, with no code anywhere needing to know two teams exist."""
 
@@ -169,9 +169,9 @@ class OpponentBoardView:
     @property
     def revealed(self) -> set[str]:
         # Which words are revealed doesn't depend on perspective, only
-        # what role they turn out to be -- some codemaster code reads
-        # this set directly (codenames/codemasters/_util.py::state_rng,
-        # LearnedCodemaster's turn-index calc) rather than going through
+        # what role they turn out to be -- some spymaster code reads
+        # this set directly (codenames/spymasters/_util.py::state_rng,
+        # LearnedSpymaster's turn-index calc) rather than going through
         # is_revealed()/reveal(), so it needs to exist here too.
         return self._board.revealed
 

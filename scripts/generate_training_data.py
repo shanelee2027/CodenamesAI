@@ -59,7 +59,7 @@ training example, only ever mask=0 padding. Every function in this file
 that takes a `board` only ever calls `role_of`/`words_by_role`/
 `is_revealed`/`words`/`remaining` on it (never `isinstance` checks), so
 `OpponentBoardView` is a drop-in substitute everywhere here, exactly as
-it is for a codemaster or guesser -- no other change to clue sampling,
+it is for a spymaster or guesser -- no other change to clue sampling,
 guesser rollout, or feature building was needed. The one case handled
 specially: if a swap is drawn but the real OPPONENT role (team B's real
 own words) has already been fully revealed, that's a state where the
@@ -132,8 +132,8 @@ SWAP_PERSPECTIVE_PROB = 0.5
 # ~400 columns, a few hundred MB), not per example. Kept local to this
 # script rather than in clue_search.py: the arena runs many worker
 # processes and already had one cache-related RSS blowup fixed (see
-# codemasters/linear_scorer.py) -- a shared cache there would reintroduce
-# the same risk for CentroidCodemaster. This script is a single process,
+# spymasters/linear_scorer.py) -- a shared cache there would reintroduce
+# the same risk for CentroidSpymaster. This script is a single process,
 # so no such multiplication applies. Only used by the CPU fallback path
 # now (sample_clue) -- the default GPU-batched path
 # (codenames.gpu_clue_search) doesn't need per-word caching at all, since

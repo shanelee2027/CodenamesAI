@@ -6,26 +6,26 @@ new dependency) instead of printed to a terminal. This lets you click cards
 to reveal them and re-type clues interactively instead of re-running a CLI
 command each time.
 
-Also lets you test codemasters (random/centroid, an "oracle:numberbatch"
-upper-bound explorer -- see codenames/codemasters/oracle.py -- and any
+Also lets you test spymasters (random/centroid, an "oracle:numberbatch"
+upper-bound explorer -- see codenames/spymasters/oracle.py -- and any
 trained "learned" checkpoint found under cache/checkpoints/ or
 cache/m9/checkpoints/noise_*/, auto-discovered at startup, no flag needed
 for the common case -- currently the noise-sweep variants, see
 docs/log.md) and simulate the resulting turn against every guesser. Two
 things stay adjustable at request time with no retraining, since neither
 is baked into the trained model: the 4 reward values a learned
-codemaster's clue choice (and the simulated turn's displayed reward) are
+spymaster's clue choice (and the simulated turn's displayed reward) are
 scored against (own/neutral/opponent/assassin -- see
 codenames/scorer.py's module docstring), and which noise-level guesser
 pool a turn gets simulated against (one of NOISE_LEVELS, independent of
-which noise level the codemaster itself was *trained* under). A third
+which noise level the spymaster itself was *trained* under). A third
 knob, `max_rarity`, screens candidate clues by CLUE_RARITY_PERCENTILE --
 derived once at startup from wordfreq's conversational/subtitle-weighted
 word frequencies (not raw web-corpus rank, which badly overrates place
 names -- see docs/log.md) -- so an obscure pick like "confectionery" can
 be filtered out without retraining anything either.
 
-A second tab, "Full Game," picks a codemaster+guesser pair for each of
+A second tab, "Full Game," picks a spymaster+guesser pair for each of
 two teams and plays a real two-team game to completion via
 codenames/game.py::play_two_team_game (one shared board, alternating
 turns, straight through to win/loss/timeout) -- unlike the main tab's
@@ -50,7 +50,7 @@ import numpy as np
 
 from codenames.board import Board, Role, is_legal_clue
 from codenames.clue_search import clue_rarity_percentile
-from codenames.codemasters import CentroidCodemaster, LearnedCodemaster, OracleCodemaster, RandomCodemaster
+from codenames.spymasters import CentroidSpymaster, LearnedSpymaster, OracleSpymaster, RandomSpymaster
 from codenames.game import DEFAULT_MAX_TURNS, ROLE_REWARD, play_two_team_game
 from codenames.guessers import load_pool
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
@@ -65,7 +65,7 @@ SIMS = SimilarityTensor.load()
 # The same discrete noise levels scripts/run_ablation_study.py's
 # --noise-levels sweep trains against -- picking any other value would
 # need a fresh guesser pool AND wouldn't correspond to any trained
-# learned:noise_* codemaster, so the play-time noise dial is restricted
+# learned:noise_* spymaster, so the play-time noise dial is restricted
 # to exactly these rather than a free-form number.
 NOISE_LEVELS = [0.0, 0.03, 0.06, 0.08, 0.1, 0.15]
 DEFAULT_NOISE = 0.03
@@ -74,7 +74,7 @@ _BASE_POOL_CONFIG = json.loads(DEFAULT_POOL_CONFIG.read_text())
 # The single weighted-blend guesser (configs/guesser_pool_blend.json) --
 # offered alongside the standard 3-guesser pool at every noise level,
 # with its own fixed noise_std (0.08, the level it was designed and
-# trained a codemaster against), NOT overridden by the play-time noise
+# trained a spymaster against), NOT overridden by the play-time noise
 # dial the way the 3 standard noisy_* guessers are.
 _BLEND_POOL_CONFIG = json.loads(Path("configs/guesser_pool_blend.json").read_text())
 _BLEND_ENTRY = _BLEND_POOL_CONFIG["guessers"][0]
@@ -120,7 +120,7 @@ CLUE_RARITY_PERCENTILE = clue_rarity_percentile(SIMS.clue_words)
 
 def _discover_checkpoints() -> dict[str, Path]:
     """Scan scripts/run_ablation_study.py's noise-sweep checkpoints for
-    trained models, so the web UI can offer "learned" codemasters without
+    trained models, so the web UI can offer "learned" spymasters without
     needing a --checkpoint flag for the common case. Restricted to
     noise_*/ specifically (not every subdirectory under
     cache/m9/checkpoints/) so the dropdown stays limited to the permanent
@@ -147,17 +147,17 @@ def _discover_checkpoints() -> dict[str, Path]:
 _DEFAULT_UI_MAX_RARITY = 50.0
 
 
-def _load_learned_codemasters() -> dict:
+def _load_learned_spymasters() -> dict:
     learned = {}
     for label, path in _discover_checkpoints().items():
         try:
             # rarity_percentile/max_rarity: UI-only defaults (arena/training
-            # scripts construct LearnedCodemaster with the class default of
+            # scripts construct LearnedSpymaster with the class default of
             # 100.0 = no filtering, unaffected by this). See
-            # codenames/codemasters/learned.py's give_clue for how this is
+            # codenames/spymasters/learned.py's give_clue for how this is
             # used, and _apply_reward_overrides below for how a request can
             # override it per call.
-            learned[f"learned:{label}"] = LearnedCodemaster(
+            learned[f"learned:{label}"] = LearnedSpymaster(
                 path, rarity_percentile=CLUE_RARITY_PERCENTILE, max_rarity=_DEFAULT_UI_MAX_RARITY
             )
         except Exception as e:
@@ -168,15 +168,15 @@ def _load_learned_codemasters() -> dict:
     return learned
 
 
-# CODEMASTERS is finalized before the server starts serving (main() may add
+# SPYMASTERS is finalized before the server starts serving (main() may add
 # an explicit --checkpoint on top of whatever auto-discovery found).
-CODEMASTERS: dict = {
-    "random": RandomCodemaster(seed=0),
-    "centroid": CentroidCodemaster(seed=0),
+SPYMASTERS: dict = {
+    "random": RandomSpymaster(seed=0),
+    "centroid": CentroidSpymaster(seed=0),
 }
 if "numberbatch" in SIMS.spaces:
-    CODEMASTERS["oracle:numberbatch"] = OracleCodemaster(space="numberbatch")
-CODEMASTERS.update(_load_learned_codemasters())
+    SPYMASTERS["oracle:numberbatch"] = OracleSpymaster(space="numberbatch")
+SPYMASTERS.update(_load_learned_spymasters())
 
 
 def _nan_to_none(value: float) -> float | None:
@@ -263,12 +263,12 @@ def _parse_reveal(query: dict) -> list[str]:
     return raw.split(",") if raw else []
 
 
-# Query-param name -> LearnedCodemaster attribute. "risk_aversion" keeps
+# Query-param name -> LearnedSpymaster attribute. "risk_aversion" keeps
 # its established name (-> miss_penalty, the assassin value) rather than
 # being renamed "assassin_reward" everywhere, since that's the field the
 # UI has always called it and matches SCOPE's own "risk aversion" framing.
 # max_rarity lives here too (not just a reward, but the same "per-request
-# override of a plain LearnedCodemaster attribute" mechanism applies).
+# override of a plain LearnedSpymaster attribute" mechanism applies).
 _REWARD_PARAMS = {
     "risk_aversion": "miss_penalty",
     "own_reward": "own_reward",
@@ -278,15 +278,15 @@ _REWARD_PARAMS = {
 }
 
 
-def _apply_reward_overrides(codemaster, overrides: dict[str, str]) -> None:
-    """Set any of these attributes directly on the shared codemaster
+def _apply_reward_overrides(spymaster, overrides: dict[str, str]) -> None:
+    """Set any of these attributes directly on the shared spymaster
     instance from raw (possibly empty) query-string values -- fine for a
-    single-user local dev tool. No-op for codemasters without a given
-    attribute (everything except LearnedCodemaster)."""
+    single-user local dev tool. No-op for spymasters without a given
+    attribute (everything except LearnedSpymaster)."""
     for param, attr in _REWARD_PARAMS.items():
         value = overrides.get(param, "")
-        if value and hasattr(codemaster, attr):
-            setattr(codemaster, attr, float(value))
+        if value and hasattr(spymaster, attr):
+            setattr(spymaster, attr, float(value))
 
 
 # Over-fetch pool when a rarity filter is active: top_k_clues' own
@@ -301,7 +301,7 @@ _RARITY_FETCH_POOL = 300
 def build_give_clue_response(
     seed: int,
     reveal: list[str],
-    codemaster_name: str,
+    spymaster_name: str,
     reward_overrides: dict[str, str] | None = None,
     top_k: int = 1,
     max_rarity: float = _DEFAULT_UI_MAX_RARITY,
@@ -310,21 +310,21 @@ def build_give_clue_response(
     filtering"; pass 100 for that) excludes clues above that
     CLUE_RARITY_PERCENTILE -- e.g. max_rarity=50 keeps only
     the more-common half of the clue vocabulary, screening out obscure
-    picks like "confectionery". Only applies to codemasters exposing
-    top_k_clues (i.e. not RandomCodemaster, which has no ranking to
+    picks like "confectionery". Only applies to spymasters exposing
+    top_k_clues (i.e. not RandomSpymaster, which has no ranking to
     filter); may return fewer than top_k if the over-fetch pool doesn't
     contain that many eligible clues, same as top_k_legal_clues' own
     "fewer than k" case."""
-    if codemaster_name not in CODEMASTERS:
-        return {"error": f"unknown codemaster {codemaster_name!r}, choices: {list(CODEMASTERS)}"}
-    codemaster = CODEMASTERS[codemaster_name]
-    _apply_reward_overrides(codemaster, reward_overrides or {})
+    if spymaster_name not in SPYMASTERS:
+        return {"error": f"unknown spymaster {spymaster_name!r}, choices: {list(SPYMASTERS)}"}
+    spymaster = SPYMASTERS[spymaster_name]
+    _apply_reward_overrides(spymaster, reward_overrides or {})
     board = _make_board(seed, reveal)
 
-    filtering = max_rarity < 100.0 and hasattr(codemaster, "top_k_clues")
-    if (top_k > 1 or filtering) and hasattr(codemaster, "top_k_clues"):
+    filtering = max_rarity < 100.0 and hasattr(spymaster, "top_k_clues")
+    if (top_k > 1 or filtering) and hasattr(spymaster, "top_k_clues"):
         fetch_k = max(top_k, _RARITY_FETCH_POOL) if filtering else top_k
-        candidates = codemaster.top_k_clues(board, SIMS, fetch_k)
+        candidates = spymaster.top_k_clues(board, SIMS, fetch_k)
         if filtering:
             candidates = [c for c in candidates if CLUE_RARITY_PERCENTILE.get(c[0], 100.0) <= max_rarity]
         clues = [
@@ -332,10 +332,10 @@ def build_give_clue_response(
             for c, n, s in candidates[:top_k]
         ]
     else:
-        clue, number = codemaster.give_clue(board, SIMS)
+        clue, number = spymaster.give_clue(board, SIMS)
         clues = [{"clue": clue, "number": number, "score": None, "rarity_percentile": CLUE_RARITY_PERCENTILE.get(clue)}]
 
-    return {"codemaster": codemaster_name, "clues": clues}
+    return {"spymaster": spymaster_name, "clues": clues}
 
 
 def _simulate_turn(board: Board, clue: str, number: int, guesser, sims: SimilarityTensor, reward_table: dict) -> dict:
@@ -386,12 +386,12 @@ def build_simulate_response(
     return {"clue": clue, "number": number, "noise": noise, "results": results}
 
 
-def _resolve_codemaster(name: str, reward_overrides: dict[str, str] | None):
-    if name not in CODEMASTERS:
-        return None, f"unknown codemaster {name!r}, choices: {list(CODEMASTERS)}"
-    codemaster = CODEMASTERS[name]
-    _apply_reward_overrides(codemaster, reward_overrides or {})
-    return codemaster, None
+def _resolve_spymaster(name: str, reward_overrides: dict[str, str] | None):
+    if name not in SPYMASTERS:
+        return None, f"unknown spymaster {name!r}, choices: {list(SPYMASTERS)}"
+    spymaster = SPYMASTERS[name]
+    _apply_reward_overrides(spymaster, reward_overrides or {})
+    return spymaster, None
 
 
 def _resolve_guesser(name: str):
@@ -426,16 +426,16 @@ def _turn_payload(t, board: Board) -> dict:
 
 def build_play_game_response(
     seed: int,
-    codemaster_a_name: str,
+    spymaster_a_name: str,
     guesser_a_name: str,
-    codemaster_b_name: str,
+    spymaster_b_name: str,
     guesser_b_name: str,
     reward_overrides_a: dict[str, str] | None = None,
     reward_overrides_b: dict[str, str] | None = None,
     max_turns: int = DEFAULT_MAX_TURNS,
 ) -> dict:
     """Runs codenames.game.play_two_team_game to completion -- two
-    codemaster/guesser pairs, both chosen from the UI, alternating turns
+    spymaster/guesser pairs, both chosen from the UI, alternating turns
     on one shared board (team A's 9 words vs. team B's 8, per
     OpponentBoardView in codenames/board.py) -- unlike
     build_simulate_response's single-turn, read-only peek, this actually
@@ -443,15 +443,15 @@ def build_play_game_response(
     codenames/arena.py's evaluation runs use, just one game instead of
     hundreds.
 
-    `CODEMASTERS` holds one shared instance per name (fine for a
+    `SPYMASTERS` holds one shared instance per name (fine for a
     single-user local dev tool, same as elsewhere in this file) -- if
-    both sides pick the *same* learned codemaster, its reward overrides
+    both sides pick the *same* learned spymaster, its reward overrides
     can't actually differ between A and B, since they're the same
     Python object; B's overrides are applied last and win for both."""
-    codemaster_a, error = _resolve_codemaster(codemaster_a_name, reward_overrides_a)
+    spymaster_a, error = _resolve_spymaster(spymaster_a_name, reward_overrides_a)
     if error:
         return {"error": error}
-    codemaster_b, error = _resolve_codemaster(codemaster_b_name, reward_overrides_b)
+    spymaster_b, error = _resolve_spymaster(spymaster_b_name, reward_overrides_b)
     if error:
         return {"error": error}
     guesser_a, error = _resolve_guesser(guesser_a_name)
@@ -462,13 +462,13 @@ def build_play_game_response(
         return {"error": error}
 
     board = Board.generate(seed=seed)
-    result = play_two_team_game(board, (codemaster_a, guesser_a), (codemaster_b, guesser_b), SIMS, max_turns=max_turns)
+    result = play_two_team_game(board, (spymaster_a, guesser_a), (spymaster_b, guesser_b), SIMS, max_turns=max_turns)
 
     return {
         "seed": seed,
-        "codemaster_a": codemaster_a_name,
+        "spymaster_a": spymaster_a_name,
         "guesser_a": guesser_a_name,
-        "codemaster_b": codemaster_b_name,
+        "spymaster_b": spymaster_b_name,
         "guesser_b": guesser_b_name,
         "outcome": result.outcome,
         "winner": result.winner,
@@ -519,8 +519,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send_json(build_query_response(seed, clue, _parse_reveal(query), top, guesser_top))
             return
 
-        if parsed.path == "/api/codemasters":
-            self._send_json({"codemasters": list(CODEMASTERS)})
+        if parsed.path == "/api/spymasters":
+            self._send_json({"spymasters": list(SPYMASTERS)})
             return
 
         if parsed.path == "/api/guessers":
@@ -531,9 +531,9 @@ class Handler(BaseHTTPRequestHandler):
             seed = int(query.get("seed", ["42"])[0])
             response = build_play_game_response(
                 seed,
-                query.get("codemaster_a", [""])[0],
+                query.get("spymaster_a", [""])[0],
                 query.get("guesser_a", [""])[0],
-                query.get("codemaster_b", [""])[0],
+                query.get("spymaster_b", [""])[0],
                 query.get("guesser_b", [""])[0],
                 reward_overrides_a={param: query.get(f"{param}_a", [""])[0] for param in _REWARD_PARAMS},
                 reward_overrides_b={param: query.get(f"{param}_b", [""])[0] for param in _REWARD_PARAMS},
@@ -543,11 +543,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/give_clue":
             seed = int(query.get("seed", ["42"])[0])
-            codemaster_name = query.get("codemaster", [""])[0]
+            spymaster_name = query.get("spymaster", [""])[0]
             reward_overrides = {param: query.get(param, [""])[0] for param in _REWARD_PARAMS}
             top_k = int(query.get("top_k", ["1"])[0])
             max_rarity = float(query.get("max_rarity", [str(_DEFAULT_UI_MAX_RARITY)])[0])
-            response = build_give_clue_response(seed, _parse_reveal(query), codemaster_name, reward_overrides, top_k, max_rarity)
+            response = build_give_clue_response(seed, _parse_reveal(query), spymaster_name, reward_overrides, top_k, max_rarity)
             self._send_json(response, status=400 if "error" in response else 200)
             return
 
@@ -577,15 +577,15 @@ def main() -> None:
         help="extra scorer checkpoint to load as 'learned', e.g. one outside the auto-scanned "
         "cache/checkpoints/ and cache/m9/checkpoints/*/ locations. Not required for the common "
         "case -- checkpoints in those locations are picked up automatically at startup (see the "
-        "'learned:<name>' entries in the codemaster dropdown). Risk aversion is set from the web UI, not a flag.",
+        "'learned:<name>' entries in the spymaster dropdown). Risk aversion is set from the web UI, not a flag.",
     )
     args = parser.parse_args()
 
     if args.checkpoint is not None:
-        CODEMASTERS["learned"] = LearnedCodemaster(
+        SPYMASTERS["learned"] = LearnedSpymaster(
             args.checkpoint, rarity_percentile=CLUE_RARITY_PERCENTILE, max_rarity=_DEFAULT_UI_MAX_RARITY
         )
-        print(f"loaded learned codemaster from {args.checkpoint}")
+        print(f"loaded learned spymaster from {args.checkpoint}")
 
     server = ThreadingHTTPServer(("localhost", args.port), Handler)
     print(f"Inspector web UI running at http://localhost:{args.port}  (Ctrl+C to stop)")

@@ -23,7 +23,7 @@ reward value in the first place, only against the empirical (k, cause)
 outcome itself.
 
 **reward(k, cause, n)**, for n in 0..MAX_K and k in 0..MAX_K (MAX_K=4,
-matching codemasters.base.MAX_CLUE_NUMBER and the training labels' cap --
+matching spymasters.base.MAX_CLUE_NUMBER and the training labels' cap --
 see scripts/generate_training_data.py):
 
     reward(k, cause, n) = k * own_reward + reward_of(cause)   if k < n
@@ -40,12 +40,12 @@ depending on which role stopped the rollout. `assassin_reward` (default
 "risk aversion" knob per SCOPE's own "the assassin penalty is the
 risk-aversion parameter" -- the other three default to the real game's
 `ROLE_REWARD` values (own +1, neutral -0.2, opponent -1), not baseline-3's
-separate untuned -0.3-for-neutral constant (`codemasters/linear_scorer.py`),
+separate untuned -0.3-for-neutral constant (`spymasters/linear_scorer.py`),
 since this is the reward the model is actually meant to optimize, not an
 illustrative heuristic. Neutral being mildly negative (not a true 0) is
 deliberate: a neutral guess still burns a turn and gives no progress
 toward winning, so it's not actually free -- see docs/log.md. All four are exposed as independent runtime
-parameters (see `codenames/codemasters/learned.py` and the web UI) so any
+parameters (see `codenames/spymasters/learned.py` and the web UI) so any
 of them can be explored without retraining.
 
 A clue announcing n gives exactly n guesses -- no standard-Codenames "+1
@@ -53,7 +53,7 @@ bonus guess" (see docs/log.md's numbering-convention entries for why).
 This formula always assumes exactly n: a guesser that claims an earned
 bonus guess (`Guesser.bonus_guesses`, see codenames/guessers/base.py) can
 make real play slightly outperform what this reward calculation
-predicted, since the codemaster's own math has no notion of it.
+predicted, since the spymaster's own math has no notion of it.
 
 k=MAX_K is a right-censored "MAX_K or more" bucket (see the training-data
 docstring). Since n never exceeds MAX_K, a censored k always means the
@@ -208,9 +208,9 @@ def expected_reward_and_best_n(
 
     `min_n=1` excludes n=0 from consideration: reward_matrix's formula
     treats n=0 as a legitimate (if useless -- 0 attempts, reward always 0)
-    play, but every other codemaster in this project floors its announced
-    number at 1 (codemasters/_util.py::natural_number), so the learned
-    codemaster does too by default, for consistency."""
+    play, but every other spymaster in this project floors its announced
+    number at 1 (spymasters/_util.py::natural_number), so the learned
+    spymaster does too by default, for consistency."""
     matrix = reward_matrix(own_reward, neutral_reward, opponent_reward, assassin_reward)  # (n_classes, n_n)
     expected = probs @ matrix  # (batch, n_n) -- E[reward|clue,n] for every n
     candidate_n = np.arange(matrix.shape[1])

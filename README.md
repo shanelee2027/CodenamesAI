@@ -1,10 +1,10 @@
 # CodenamesAI
 
 A Codenames clue-giving agent built around a learned clue scorer over
-multiple word embedding spaces. Codenames has two roles: the **codemaster**
+multiple word embedding spaces. Codenames has two roles: the **spymaster**
 sees which board words belong to which team and gives a one-word clue plus
 a number; the **guesser** sees only the words and tries to pick their
-team's words from the clue. This project builds the codemaster — the
+team's words from the clue. This project builds the spymaster — the
 guesser is deliberately simple and hand-written, a training environment
 rather than a deliverable.
 
@@ -70,11 +70,11 @@ Work happens at three different times:
    every possible clue number, and return the best `(clue, number)` pair.
 
 ```bash
-python scripts/web_inspector.py       # web UI: pick codemasters/guessers, play a full two-team
+python scripts/web_inspector.py       # web UI: pick spymasters/guessers, play a full two-team
                                        # game, or inspect a single clue/turn with live reward/noise/rarity controls
 python scripts/inspector.py           # CLI equivalent of the single-turn inspector
-python scripts/run_arena.py           # single-team cross-play matrix: every codemaster x every guesser
-python scripts/run_two_team_arena.py  # real two-team self-play, one codemaster+guesser pair on both sides
+python scripts/run_arena.py           # single-team cross-play matrix: every spymaster x every guesser
+python scripts/run_two_team_arena.py  # real two-team self-play, one spymaster+guesser pair on both sides
 ```
 
 `scripts/run_ablation_study.py` regenerates data and retrains a batch of
@@ -96,9 +96,9 @@ should be compared against these, and should clearly beat them.
 ## Evaluation
 
 Two teams play a real game against each other (`codenames/game.py::play_two_team_game`):
-the same codemaster+guesser pair on both sides, alternating turns, board
+the same spymaster+guesser pair on both sides, alternating turns, board
 depleting from both sides' actual play. A symmetric win rate isn't
-reported — since both teams run the identical codemaster/guesser, it
+reported — since both teams run the identical spymaster/guesser, it
 mostly reflects the fixed first-move edge (team A always has 9 words to
 team B's 8), not model quality. Instead, both teams' turns are pooled
 into one set of stats:
@@ -149,16 +149,16 @@ at play time with no retraining.
 
 **Results.** Real two-team self-play, 300 boards, each game's guesser
 drawn uniformly from `noise_std=0.08`'s 3 guessers (matching the mix the
-codemaster was trained against):
+spymaster was trained against):
 
-| codemaster | assassin-hit rate | half-turns (all) | half-turns (clean) | mean clue number | mean correct/clue |
+| spymaster | assassin-hit rate | half-turns (all) | half-turns (clean) | mean clue number | mean correct/clue |
 |---|---|---|---|---|---|
 | **model 1 (learned)** | **0.7%** | **8.99** | **9.02** | **1.81** | **1.74** |
 | centroid | 14.0% | 10.34 | 11.21 | 1.47 | 1.29 |
 | linear_scorer | 7.7% | 18.96 | 19.04 | 1.18 | 0.45 |
 | random | 89.7% | 9.16 | 15.03 | 2.39 | 0.41 |
 
-| codemaster | own | opponent | neutral | assassin |
+| spymaster | own | opponent | neutral | assassin |
 |---|---|---|---|---|
 | **model 1 (learned)** | **96.3%** | **0.8%** | **2.8%** | **0.0%** |
 | centroid | 89.2% | 4.2% | 5.7% | 0.9% |
@@ -187,14 +187,14 @@ blend guesser on both sides (baselines evaluated with the same guesser —
 not a controlled comparison against model 1, which uses a different,
 harder guesser pool):
 
-| codemaster | assassin-hit rate | half-turns (all) | half-turns (clean) | mean clue number | mean correct/clue |
+| spymaster | assassin-hit rate | half-turns (all) | half-turns (clean) | mean clue number | mean correct/clue |
 |---|---|---|---|---|---|
 | **model 1.1 (learned)** | **5.7%** | **8.15** | **8.37** | **2.11** | **1.74** |
 | centroid | 17.3% | 10.50 | 11.57 | 1.47 | 1.22 |
 | linear_scorer | 24.3% | 18.50 | 19.21 | 1.19 | 0.41 |
 | random | 86.7% | 9.58 | 15.62 | 2.32 | 0.42 |
 
-| codemaster | own | opponent | neutral | assassin |
+| spymaster | own | opponent | neutral | assassin |
 |---|---|---|---|---|
 | **model 1.1 (learned)** | **86.1%** | **4.1%** | **9.4%** | **0.3%** |
 | centroid | 86.0% | 6.0% | 6.9% | 1.2% |
@@ -208,7 +208,7 @@ See [`docs/versions/v1.1.md`](docs/versions/v1.1.md) for run details.
 `HistoryAwareGuesser` (`codenames/guessers/history_aware.py`) can spend one
 earned bonus guess per turn — real Codenames' `n+1` rule, reinstated only
 when a past clue's miss plausibly left a word unaccounted-for. It requires
-no codemaster or training changes. In real two-team self-play (300 boards,
+no spymaster or training changes. In real two-team self-play (300 boards,
 each model's own guesser with vs. without history-awareness), it makes
 both models measurably worse:
 
@@ -227,7 +227,7 @@ questions for why.
 ```
 data/          raw dumps and embeddings (gitignored)
 cache/         similarity tensor, generated datasets, checkpoints (gitignored)
-codenames/     library code (board, similarity, features, guessers, codemasters, scorer, game, arena)
+codenames/     library code (board, similarity, features, guessers, spymasters, scorer, game, arena)
 scripts/       pipeline scripts (build/generate/train) and the inspector/arena/web UI
 tests/         pytest suite
 docs/

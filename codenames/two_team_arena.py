@@ -1,14 +1,14 @@
 """Two-team self-play arena: bulk-runs codenames.game.play_two_team_game
-with the SAME codemaster+guesser pair on both sides, across many seeded
+with the SAME spymaster+guesser pair on both sides, across many seeded
 boards, in parallel worker processes -- mirrors codenames/arena.py's
 process-parallel structure, but for one symmetric pair rather than a
-codemaster x guesser cross-product.
+spymaster x guesser cross-product.
 
 With both teams running identical logic, *which* team wins isn't
 informative -- it's mostly just the 9-vs-8 first-move edge every game
 already has, not a signal about model quality (see docs/log.md). The
 question this answers instead is the same one the single-team arena
-already answers -- how often does this codemaster/guesser combination's
+already answers -- how often does this spymaster/guesser combination's
 own play end in an assassin hit, versus a clean finish -- just measured
 in a real two-team game where the board depletes from *both* sides'
 actual play, not the single-team framing's static distractors. Both
@@ -21,7 +21,7 @@ the first-move edge, not a quality signal.
 `guesser_name` can also be `MIXED_GUESSER` ("mixed"): instead of fixing
 one guesser for the whole run, each game independently draws one,
 uniformly, from every guesser in `guesser_pool_config` -- matching the
-distribution the codemaster was actually trained against (see
+distribution the spymaster was actually trained against (see
 docs/design-decisions.md), rather than the narrower test a single fixed
 guesser is.
 """
@@ -119,21 +119,21 @@ _WORKER_STATE: dict = {}
 
 def _worker_init(
     sims_cache_dir: Path,
-    codemaster_cls: type,
-    codemaster_kwargs: dict,
+    spymaster_cls: type,
+    spymaster_kwargs: dict,
     guesser_pool_config: Path,
     guesser_name: str,
     max_turns: int,
     game_record_db: Path | None,
     run_label: str,
 ) -> None:
-    # Constructs the codemaster fresh inside the worker (not by pickling
+    # Constructs the spymaster fresh inside the worker (not by pickling
     # an existing instance across the process boundary) -- same reason
     # codenames/arena.py does this: avoids pickling issues and, combined
     # with "spawn" below, sidesteps the CUDA-after-fork hazard documented
     # there.
     _WORKER_STATE["sims"] = SimilarityTensor.load(sims_cache_dir)
-    _WORKER_STATE["codemaster"] = codemaster_cls(**codemaster_kwargs)
+    _WORKER_STATE["spymaster"] = spymaster_cls(**spymaster_kwargs)
     _WORKER_STATE["guesser_name"] = guesser_name
     if guesser_name == MIXED_GUESSER:
         _WORKER_STATE["guesser_pool"] = list(training_pool(guesser_pool_config).values())
@@ -154,7 +154,7 @@ def _play_task(seed: int) -> TwoTeamGameResult:
         guesser = random.Random(seed).choice(state["guesser_pool"])
     else:
         guesser = state["guesser"]
-    team = (state["codemaster"], guesser)
+    team = (state["spymaster"], guesser)
     # Snapshotted before any word is revealed -- play_two_team_game
     # mutates this same Board object in place.
     by_role = board_by_role(board) if state["record_store"] is not None else None
@@ -165,8 +165,8 @@ def _play_task(seed: int) -> TwoTeamGameResult:
 
 
 def run_two_team_self_play(
-    codemaster_cls: type,
-    codemaster_kwargs: dict,
+    spymaster_cls: type,
+    spymaster_kwargs: dict,
     guesser_pool_config: Path,
     guesser_name: str,
     seeds: list[int],
@@ -176,7 +176,7 @@ def run_two_team_self_play(
     game_record_db: Path | None = None,
     run_label: str = "",
 ) -> TwoTeamSelfPlayResult:
-    """Runs `len(seeds)` two-team games, the same (codemaster, guesser)
+    """Runs `len(seeds)` two-team games, the same (spymaster, guesser)
     pair on both sides of each, across `max_workers` processes.
 
     `game_record_db`, if given, persists every game's board layout and
@@ -191,8 +191,8 @@ def run_two_team_self_play(
         initializer=_worker_init,
         initargs=(
             sims_cache_dir,
-            codemaster_cls,
-            codemaster_kwargs,
+            spymaster_cls,
+            spymaster_kwargs,
             guesser_pool_config,
             guesser_name,
             max_turns,

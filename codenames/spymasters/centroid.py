@@ -20,10 +20,10 @@ from codenames.clue_search import mean_similarity_to_words, top_k_legal_clues, t
 from codenames.similarity import SimilarityTensor
 
 from ._util import natural_number, state_rng
-from .base import MAX_CLUE_NUMBER, Codemaster
+from .base import MAX_CLUE_NUMBER, Spymaster
 
 
-class CentroidCodemaster(Codemaster):
+class CentroidSpymaster(Spymaster):
     def __init__(self, seed: int | None = None):
         self.seed = seed
 

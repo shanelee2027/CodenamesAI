@@ -490,7 +490,7 @@ in a config file.
 
 ## M6 — Arena
 
-**Expected:** cross-play matrix, every codemaster x every guesser, over
+**Expected:** cross-play matrix, every spymaster x every guesser, over
 fixed seeded boards. SQLite logging, one row per turn. Multiprocessing
 across cores sharing the mmapped tensor, reporting per-worker RSS.
 Metrics: win rate, mean turns, assassin rate, mean own-words per clue.
@@ -498,13 +498,13 @@ Metrics: win rate, mean turns, assassin rate, mean own-words per clue.
 **Actual:** matched expectations, plus a mid-build correction on the
 memory-sharing requirement. Notes:
 
-- Built out of order relative to guessers-before-codemasters intuition:
+- Built out of order relative to guessers-before-spymasters intuition:
   M8's learned scorer doesn't exist yet, so the arena needed *something*
-  to pair against the pool. Built the three codemaster baselines SCOPE
+  to pair against the pool. Built the three spymaster baselines SCOPE
   §6 lists that don't require the feature vector or a trained model:
   random legal clue, centroid, and the 8-constant linear scorer (§6
-  items 1-3; items 4-5 need M7/M8). `codenames/codemasters/` mirrors
-  `guessers/`'s shape: a `Codemaster` ABC with one abstract method,
+  items 1-3; items 4-5 need M7/M8). `codenames/spymasters/` mirrors
+  `guessers/`'s shape: a `Spymaster` ABC with one abstract method,
   `give_clue(board, sims) -> (clue, number)`.
 - **Centroid baseline without raw vectors.** SCOPE §6 says "clue nearest
   the mean of a random own-word subset," but build-time explicitly
@@ -521,10 +521,10 @@ memory-sharing requirement. Notes:
   `natural_number()` helper: rank unrevealed words by similarity to the
   clue, count how many own-words rank above the first non-own word. All
   three cap at `MAX_CLUE_NUMBER = 4`, matching the learned scorer's
-  eventual k in 0..4 (§2), so every codemaster's outputs stay comparable
+  eventual k in 0..4 (§2), so every spymaster's outputs stay comparable
   once M8 exists.
 - **Memory bug found via the arena's own RSS reporting.** First version
-  of `LinearScorerCodemaster` cached `nanmean(tensor, axis=2)` once per
+  of `LinearScorerSpymaster` cached `nanmean(tensor, axis=2)` once per
   instance (~850MB as float32) to avoid rescanning the full tensor every
   turn. Looked fine in isolated tests. Running the real arena with 2
   workers showed **9.4GB RSS per worker** -- SCOPE §7's memory design
@@ -543,32 +543,32 @@ memory-sharing requirement. Notes:
 - **Off-diagonal by design, not as an afterthought.** The arena always
   plays the *full* guesser pool, held-out members included -- `held_out`
   is carried through into results and the SQLite rows purely as a label.
-  It doesn't gate anything yet (none of the 3 baseline codemasters are
+  It doesn't gate anything yet (none of the 3 baseline spymasters are
   data-driven, so "held out from training" has no referent for them),
-  but it will matter the moment M8's learned codemaster exists, and
+  but it will matter the moment M8's learned spymaster exists, and
   getting the label plumbed through now means M8 doesn't need to touch
   the arena or DB schema to use it.
 - Multiprocessing via `concurrent.futures.ProcessPoolExecutor` with a
   per-worker `initializer` that loads its own `SimilarityTensor` (own
   mmap handle onto the same file -- OS page cache shares the physical
-  pages), the guesser pool, and the codemaster instances once, reused
+  pages), the guesser pool, and the spymaster instances once, reused
   across every task that lands on that worker.
 - SQLite schema is one row per turn (`codenames/arena.py::_init_db`):
-  codemaster, guesser, guesser_held_out, board_seed, turn_index, clue,
+  spymaster, guesser, guesser_held_out, board_seed, turn_index, clue,
   number, guesses (JSON), reward, ended_reason, game_outcome. Denormalized
   on purpose (game_outcome repeated on every turn row of a game) so a
   query never needs a join to filter by outcome.
 - Real-data smoke run (`scripts/run_arena.py --n-boards 3`) surfaced a
   concrete, useful finding rather than just exercising the plumbing:
   `cautious_glove` (the confidence-threshold guesser, threshold 0.2)
-  times out on every single game against every codemaster -- 0.0%
+  times out on every single game against every spymaster -- 0.0%
   win/assassin rate, 40 turns (the timeout cap), 0.000 own-words/clue.
   Its threshold is high enough that essentially no real clue clears it,
   so it always declines every guess. Not a bug -- SCOPE's guesser pool
   is deliberately supposed to include failure modes -- but worth flagging
   in case the threshold (chosen arbitrarily in M5) needs revisiting once
   M9's pool-sensitivity sweep happens.
-- 19 new tests (`tests/test_codemasters.py`, `tests/test_game.py`,
+- 19 new tests (`tests/test_spymasters.py`, `tests/test_game.py`,
   `tests/test_arena.py`), all using synthetic fixtures, no dependency on
   the real cache -- consistent with `test_guessers.py`/`test_similarity.py`.
   89 tests total, all passing. Arena tests use a tiny synthetic tensor but
@@ -640,14 +640,14 @@ and a real throughput bottleneck found and partially fixed. Notes:
   a vector in one space doesn't corrupt the vector or wrongly flip the
   shared mask). Written and passing before `generate_training_data.py`
   was started, per SCOPE's explicit ordering.
-- **Clue sampling and rollout simulation, not codemaster reuse.** M8's
+- **Clue sampling and rollout simulation, not spymaster reuse.** M8's
   target label is "how many own-words would this guesser reveal for this
-  clue" -- a property of (board, clue, guesser) alone, with no codemaster
+  clue" -- a property of (board, clue, guesser) alone, with no spymaster
   or chosen "number" involved. `simulate_natural_stop()` reads the
   guesser's own ranking and peeks at `board.role_of()` without ever
   calling `board.reveal()`, so many (clue, guesser) pairs can be rolled
   out against the identical sampled board state with no board-copying.
-  Capped at `MAX_K` (reusing `codemasters.base.MAX_CLUE_NUMBER` -- same
+  Capped at `MAX_K` (reusing `spymasters.base.MAX_CLUE_NUMBER` -- same
   constant, same meaning, imported not redefined).
 - Guessers are sampled from `training_pool()`, never `load_pool()` -- this
   is the concrete point where the held-out/training split (§3, built in
@@ -681,19 +681,19 @@ and a real throughput bottleneck found and partially fixed. Notes:
   re-running the script adds new shards after whatever's already there,
   rather than needing the eventual total size up front.
 - Small refactor while wiring this up: pulled `top_legal_clue` (renamed
-  from a codemaster-only helper) and the centroid "mean similarity to a
-  word subset" logic out of `codemasters/_util.py` and `centroid.py` into
+  from a spymaster-only helper) and the centroid "mean similarity to a
+  word subset" logic out of `spymasters/_util.py` and `centroid.py` into
   a new top-level `codenames/clue_search.py`, since M7 needed the exact
   same "score every clue, find the best legal ones" logic and it isn't a
-  codemaster concept. `mean_from_columns()` is split out from
+  spymaster concept. `mean_from_columns()` is split out from
   `mean_similarity_to_words()` specifically so the data-generation
   script's column cache (kept local to that script, not in the shared
   module) can reuse the math without re-reading from disk -- deliberately
   *not* added to the shared module itself, since the arena already had
   one cache-related RSS blowup fixed this milestone
-  (`codemasters/linear_scorer.py`) and a shared cache there would
+  (`spymasters/linear_scorer.py`) and a shared cache there would
   reintroduce the same multi-worker multiplication risk for
-  `CentroidCodemaster`.
+  `CentroidSpymaster`.
 - 12 new tests in `tests/test_generate_training_data.py` (board sampling
   never reveals the assassin and always leaves >=1 own word; clue mix
   fractions sum to 1; the rollout never mutates the board; k is correctly
@@ -706,7 +706,7 @@ and a real throughput bottleneck found and partially fixed. Notes:
 
 **Expected:** MLP per §2 (input -> 256,256,128 -> 5 logits). Training
 script with board-seed splitting, early stopping, checkpointing, training
-curves, validation reliability diagrams. `codemasters/learned.py`
+curves, validation reliability diagrams. `spymasters/learned.py`
 implementing play-time scoring with a runtime risk-aversion parameter.
 Register with the arena.
 
@@ -733,13 +733,13 @@ two circular-import bugs the new dependency direction exposed. Notes:
   treated as exactly 4 when computing reward(4, n), which only actually
   matters at n=4).
 - **Two circular imports surfaced by the new dependency direction**
-  (`codemasters/learned.py` -> `scorer.py`, the first time anything under
-  `codemasters/` needed something outside it going the *other* way).
+  (`spymasters/learned.py` -> `scorer.py`, the first time anything under
+  `spymasters/` needed something outside it going the *other* way).
   Both fixed by relocating rather than restructuring: `MAX_CLUE_NUMBER`
-  moved from `codemasters/base.py` to `board.py` (its natural home is
+  moved from `spymasters/base.py` to `board.py` (its natural home is
   arguably neither, but board.py has zero internal dependencies, so
   nothing importing it can ever cycle); `game.py`'s import of
-  `Codemaster` moved behind `TYPE_CHECKING` (it was only ever used as a
+  `Spymaster` moved behind `TYPE_CHECKING` (it was only ever used as a
   type hint, and `from __future__ import annotations` already makes every
   annotation in that file a lazy string at runtime). Both bugs were
   invisible to `pytest` -- test files happened to import submodules in an
@@ -760,8 +760,8 @@ two circular-import bugs the new dependency direction exposed. Notes:
   once per clue, on a fixture with real missing-vector entries -- the two
   code paths computing bit-identical results is the actual correctness
   guarantee here, not just "it runs."
-- `codemasters/learned.py`'s `give_clue()` needs `turn_index`, which isn't
-  part of the `Codemaster` interface (no turn counter is threaded through
+- `spymasters/learned.py`'s `give_clue()` needs `turn_index`, which isn't
+  part of the `Spymaster` interface (no turn counter is threaded through
   `game.py`/`arena.py`). Uses the same proxy M7's data generation used to
   *label* training examples (count of currently-revealed words) --
   deliberately, since using a different proxy at play time than at
@@ -779,12 +779,12 @@ two circular-import bugs the new dependency direction exposed. Notes:
   reliability diagrams -- SCOPE explicitly asks for both, and nothing
   already in `pyproject.toml` plots).
 - Real-data smoke test (3,000 examples generated, 8 epochs trained, then
-  `run_arena.py --checkpoint ...` with `learned` added to the codemaster
+  `run_arena.py --checkpoint ...` with `learned` added to the spymaster
   set): trained-and-scored end to end, including through the arena's
   multiprocessing path. Not a real result -- 3,000 examples and 8 epochs
   is nowhere near the 5-20M target M7 flagged as a multi-day job at
   current throughput -- purely a plumbing check. Worker RSS with the
-  learned codemaster included rose to ~2.9GB (vs. ~1.5GB for M6's
+  learned spymaster included rose to ~2.9GB (vs. ~1.5GB for M6's
   baselines-only run), from the model + the batched full-vocabulary
   feature matrix; still comfortably within SCOPE §7's budget at any
   reasonable worker count, so left as-is rather than optimized preemptively.
@@ -794,7 +794,7 @@ two circular-import bugs the new dependency direction exposed. Notes:
   chosen number), `tests/test_train_scorer.py` (seed-based split
   correctness, sharded dataset filtering, and a full train() smoke run
   asserting the checkpoint and both diagnostic images exist),
-  `tests/test_learned_codemaster.py` (legal-clue output, the full 0..4
+  `tests/test_learned_spymaster.py` (legal-clue output, the full 0..4
   number range being reachable, the turn_index proxy, risk-aversion
   plumbing), plus 2 more in `tests/test_features.py` for
   `build_features_batch`. 134 tests total, all passing.
@@ -990,14 +990,14 @@ real findings, not just UI polish:
   guessers. This only affects data generated from here forward -- the
   existing `cache/checkpoints/` and `cache/m9/checkpoints/*/` models were
   all trained under the old 0.15 and won't reflect this until retrained.
-- **`OracleCodemaster` had a real off-by-one**, caught by explicitly
+- **`OracleSpymaster` had a real off-by-one**, caught by explicitly
   confirming the numbering convention rather than assuming it: `number`
   is supposed to be the intended word count directly (every other
-  codemaster already follows this via `codemasters/_util.py::natural_number`;
+  spymaster already follows this via `spymasters/_util.py::natural_number`;
   `codenames.game.play_turn` then applies the standard "+1 bonus guess"
   itself, unchanged). Oracle was reporting `run_length - 1` instead of
   `run_length` -- silently under-announcing by one word relative to every
-  other codemaster's convention. Fixed; `number` now equals the run length
+  other spymaster's convention. Fixed; `number` now equals the run length
   directly everywhere.
 
 ## Post-M9: noise sweep confirms the hypothesis, with a real gotcha along the way
@@ -1099,7 +1099,7 @@ Changed:
   outputs.
 - Updated comments/docstrings/help-text referencing the old `n+1`
   convention across `codenames/guessers/base.py`,
-  `codenames/codemasters/oracle.py`, `scripts/inspector.py`, and the web
+  `codenames/spymasters/oracle.py`, `scripts/inspector.py`, and the web
   UI's simulation-panel placeholder text (`scripts/webui/inspector.html`).
 - `docs/SCOPE.md`'s play-time-scoring section now documents this as an
   explicit divergence from standard Codenames rules.
@@ -1132,9 +1132,9 @@ parameters -- `own_reward`, `neutral_reward`, `opponent_reward`,
 `assassin_reward` -- instead of one `miss_penalty`, so a natural-stop
 cell charges the *cause's own* value instead of a flattened one.
 Confirmed with the user before implementing: `neutral_reward` defaults to
-the true game's 0.0, not `codemasters/linear_scorer.py`'s baseline-3
+the true game's 0.0, not `spymasters/linear_scorer.py`'s baseline-3
 constant of -0.3 (an untuned illustrative value for a different, hand-
-coded codemaster, not something the actual scorer should be trained
+coded spymaster, not something the actual scorer should be trained
 against).
 
 Also added, per the user's follow-up request: all four reward values are
@@ -1144,7 +1144,7 @@ none of them are baked into training, only into the scoring formula
 applied after inference. And a play-time noise-level dial on the turn-
 simulation panel, picking which of the 5 already-trained noise-level
 guesser pools (0.0/0.03/0.06/0.1/0.15) to simulate a clue against --
-independent of which noise level the codemaster itself was *trained*
+independent of which noise level the spymaster itself was *trained*
 under, so a train/test noise mismatch can be explored directly
 (`codenames/guessers/registry.py::load_pool` widened to accept an
 in-memory config dict, not just a file path, so the 5 pools can be built
@@ -1160,7 +1160,7 @@ board/clue/guesser sampling never depended on the label scheme -- but the
 (the old `k_*.npy` shards don't carry cause information at all).
 
 Also did the previously-agreed cleanup alongside this: the web UI's
-codemaster dropdown is now exactly `random`, `centroid`,
+spymaster dropdown is now exactly `random`, `centroid`,
 `oracle:numberbatch`, plus 5 `learned:noise_*` entries (was 15+ stale M9
 ablation-study checkpoints). `web_inspector.py::_discover_checkpoints`
 now globs `noise_*/scorer_best.pt` specifically rather than every
@@ -1197,14 +1197,14 @@ run, not just the noise axis, to be a fair comparison).
 
 All 184 tests pass (169 + 15 new: `outcome_class`/`decode_outcome_class`
 round-trip and validation tests, `reward_matrix`'s per-cause behavior,
-`load_pool` accepting a dict, `LearnedCodemaster`'s 3 new reward params).
+`load_pool` accepting a dict, `LearnedSpymaster`'s 3 new reward params).
 
 ## Post-M9: web UI clue-rarity filter, and a noise-level observation to revisit
 
 Two things from playing with the retrained UI. First, an anecdotal
 observation worth recording even though nothing was changed in response
 to it yet: the user's impression, trying different `learned:noise_*`
-codemasters in the UI, was that clue quality subjectively peaked around
+spymasters in the UI, was that clue quality subjectively peaked around
 `noise_std` 0.06-0.10, not 0.03 -- despite 0.03 having the better
 val_accuracy of the two (63.5% vs. 57.0%/50.2%). Val_accuracy measures
 "how often does the model's top-1 prediction match the exact (k, cause)
@@ -1240,7 +1240,7 @@ field, default blank = no filtering): excludes any candidate clue above
 that percentile before truncating to `top_k`, via an over-fetch-then-
 filter on the existing `top_k_clues()` mechanism (fetch up to 300
 candidates instead of just `top_k`, filter, then truncate) -- no changes
-needed to any codemaster class or `codenames/clue_search.py`, since the
+needed to any spymaster class or `codenames/clue_search.py`, since the
 forward pass that scores the whole vocabulary already happens regardless
 of how many results are requested; asking for a bigger pool afterward is
 close to free. Doesn't apply to `random` (nothing to rank). Each
@@ -1291,8 +1291,8 @@ predictable the 0.08-noise task is, not "how good" 0.08 is for actual
 play -- that comparison still needs the arena, not val_accuracy.)
 
 Also set new web UI defaults per the user's request: `max_rarity=90`,
-default codemaster `learned:noise_0_08`, default simulation noise `0.08`
-(`scripts/webui/inspector.html`'s `DEFAULT_CODEMASTER` constant and the
+default spymaster `learned:noise_0_08`, default simulation noise `0.08`
+(`scripts/webui/inspector.html`'s `DEFAULT_SPYMASTER` constant and the
 `maxRarity`/`simNoise` inputs' default values).
 
 All 184 tests pass (`_train_variant`'s new skip path has no dedicated
@@ -1336,7 +1336,7 @@ New layout:
 
 Deliberately did NOT do: a mechanical sweep of the ~33 files whose
 docstrings cite "SCOPE.md §N" internally (board.py, features.py,
-scorer.py, every guesser/codemaster, most scripts). Those citations are
+scorer.py, every guesser/spymaster, most scripts). Those citations are
 inert historical breadcrumbs explaining *why* code is the way it is, not
 functional file-path reads (confirmed via grep -- nothing actually opens
 docs/SCOPE.md at runtime), and rewriting dozens of docstrings purely to
@@ -1378,12 +1378,12 @@ No code changed, docs only. All 184 tests still pass.
 
 The user wanted the README's new "Model 1" section to have actual metrics,
 not just an architecture description: run real full games with the
-noise_0.08 codemaster against the noise_0.08 guesser pool, and report
+noise_0.08 spymaster against the noise_0.08 guesser pool, and report
 average game length, assassin-hit rate, and how often each card type gets
 hit.
 
 `codenames/arena.py` already had win_rate/assassin_rate/mean_turns
-per (codemaster, guesser) pair, but nothing broke guesses down by role.
+per (spymaster, guesser) pair, but nothing broke guesses down by role.
 Added four fields to `CrossPlayResult` -- `guess_own_rate`,
 `guess_opponent_rate`, `guess_neutral_rate`, `guess_assassin_rate` -- the
 fraction of every individual guess (across every turn of every game, not
@@ -1400,10 +1400,10 @@ one rather than widening the main table to 11 columns.
 Ran it for real: `python scripts/run_arena.py --n-boards 300
 --guesser-pool-config cache/m9/pool_configs/noise_0_08.json --checkpoint
 cache/m9/checkpoints/noise_0_08/scorer_best.pt`. A 50-board timing probe
-first (166s for 12 codemaster x guesser pairs with 4 workers) to size the
+first (166s for 12 spymaster x guesser pairs with 4 workers) to size the
 real run before committing to it; the full 300-board run (3600 games, 8
 workers) took 859s (~14 min), landing inside the estimated window.
-`LearnedCodemaster` runs its forward pass on CPU by default, which is
+`LearnedSpymaster` runs its forward pass on CPU by default, which is
 almost certainly the dominant per-turn cost here (~28 GFLOPs over the full
 ~111k-clue vocabulary every turn) -- noted as a real but nuanced
 optimization target in conversation (GPU doesn't trivially help the
@@ -1443,7 +1443,7 @@ boards batched together). That's a genuine 57x per-call speedup. But
 `build_features_batch` (the numpy gather/sort producing that forward
 pass's input) costs a separately-measured ~80ms/board, entirely CPU-bound
 and untouched by moving just the model to GPU. So naively flipping
-`LearnedCodemaster`'s device to "cuda" would cut per-turn cost from
+`LearnedSpymaster`'s device to "cuda" would cut per-turn cost from
 ~186ms to ~82ms -- a real but much smaller ~2.3x win, not 57x -- and that
 estimate doesn't even account for whether 8 concurrent CPU worker
 processes all sharing one GPU device would contend with each other
@@ -1530,7 +1530,7 @@ distinction rather than just repeating the flashier 24x number.
   pure-numpy, no torch, since scripts/generate_training_data.py and
   others import it with no reason to pull torch in.
 - `codenames/game.py::play_turn` gained an optional `clue_and_number`
-  param -- skips calling `codemaster.give_clue()` when given, so the new
+  param -- skips calling `spymaster.give_clue()` when given, so the new
   batched runner can compute clues for many boards at once (off this
   function's hot path) and still reuse this exact, already-tested
   attempt/reveal/stop logic per board unchanged. Zero behavior change for
@@ -1544,18 +1544,18 @@ distinction rather than just repeating the flashier 24x number.
   lockstep per "round" (fixed batch groups, not a streaming refill queue
   -- simpler to get right, and games are short enough that the wasted
   compute on already-finished boards near a group's end is minor).
-  Batches only the codemaster's clue *selection*; guessers and the
+  Batches only the spymaster's clue *selection*; guessers and the
   turn-resolution logic are untouched, reused directly via `play_turn`.
-  Only accelerates `LearnedCodemaster` -- every other codemaster already
+  Only accelerates `LearnedSpymaster` -- every other spymaster already
   scores a handful of candidates, not the full vocabulary, so there's
   nothing for them to gain here.
 - `scripts/run_arena.py` gained `--gpu-batch-size`: baselines still run
-  through the normal `run_arena`, the learned codemaster routes through
+  through the normal `run_arena`, the learned spymaster routes through
   `run_arena_gpu` instead when this is set, results merged into one
   report.
 
 **A real bug found while cross-validating, not by inspection.** Testing
-"GPU codemaster first, then the CPU multiprocess path" to compare results
+"GPU spymaster first, then the CPU multiprocess path" to compare results
 hung indefinitely -- traced to a genuine hazard: `ProcessPoolExecutor`
 defaults to `fork` on Linux, and forking a worker process *after* CUDA has
 been initialized in the parent hands the child a broken, unusable CUDA
@@ -1587,7 +1587,7 @@ too, both call orders: `n_games`, `win_rate`, `assassin_rate`,
 matched exactly, not just approximately.
 
 **Real end-to-end benchmark**, matching the earlier self-play evaluation's
-exact setup (noise_0.08 codemaster, that noise level's 3 guessers, 300
+exact setup (noise_0.08 spymaster, that noise level's 3 guessers, 300
 boards each, 900 games): CPU path (8 workers) took 716.4s; GPU path
 (batch_size=32) took 54.9s. **13.05x measured speedup** -- notably better
 than the ~3x estimated beforehand, because the estimate assumed each CPU
@@ -1766,7 +1766,7 @@ check).
 ## Web UI: the blend guesser is now a selectable option
 
 Trained `learned:blend` last session but only wired it up as a
-codemaster choice -- the guesser side (the "what each guesser would
+spymaster choice -- the guesser side (the "what each guesser would
 pick" list, and the pool a simulated turn plays against) still only
 built from `configs/guesser_pool.json`'s standard 3-guesser pool, so
 `blend` never showed up there. Requested: add it as a choice in the UI.
@@ -1791,8 +1791,8 @@ architecture.
 Ran `scripts/run_arena.py --n-boards 300 --checkpoint
 cache/blend_pool/checkpoints/scorer_best.pt --guesser-pool-config
 configs/guesser_pool_blend.json` (300 boards, 1 guesser in this pool ->
-300 games per codemaster, GPU-batched path, 59.5s total for all 4
-codemaster x guesser pairs). Results:
+300 games per spymaster, GPU-batched path, 59.5s total for all 4
+spymaster x guesser pairs). Results:
 
 - learned: 3.7% assassin-hit, 5.28 turns (all) / 5.41 (wins only), 84.7%
   own-word rate.
@@ -1803,7 +1803,7 @@ codemaster x guesser pairs). Results:
 - linear_scorer: 15.3% assassin-hit. random: 91.0%.
 
 Explicitly not a controlled model-1-vs-model-1.1 comparison -- different
-guesser pools mean different game difficulty (every codemaster does
+guesser pools mean different game difficulty (every spymaster does
 better here than against the standard pool, including random: 91.0% vs.
 88.5% assassin-hit), so the two runs aren't apples-to-apples. Documented
 as a new `docs/versions/v1.1.md` (mirroring v1.md's self-play section
@@ -1824,16 +1824,16 @@ choice to use it as the default.
 
 Single source of truth: `ROLE_REWARD` in `codenames/game.py`, which
 `codenames/scorer.py::reward_matrix`/`expected_reward_and_best_n` and
-`codenames/codemasters/learned.py::LearnedCodemaster`'s `neutral_reward`
+`codenames/spymasters/learned.py::LearnedSpymaster`'s `neutral_reward`
 parameter both default from. Since none of the four reward values are
 baked into training (see the `(k, cause)` redesign entry), no checkpoint
 needed retraining -- this only changes default *scoring*-time behavior:
-what `LearnedCodemaster` picks when `neutral_reward` isn't explicitly
+what `LearnedSpymaster` picks when `neutral_reward` isn't explicitly
 overridden, and the reward value actually logged during real games
 (`codenames/game.py::play_turn`).
 
-**This does change the codemaster's actual clue choices**, though --
-`LearnedCodemaster` uses this reward when picking the best `(clue, n)`,
+**This does change the spymaster's actual clue choices**, though --
+`LearnedSpymaster` uses this reward when picking the best `(clue, n)`,
 so it's a real behavior change, not just a documentation update. The
 self-play tables already in the README / `docs/versions/v1.md` /
 `docs/versions/v1.1.md` were generated under the old `neutral_reward=0.0`
@@ -1864,11 +1864,11 @@ instead of the stale `neutral_reward=0.0` ones.
 entry) -- NOT the `noise_std=0.08` pool v1's checkpoint was actually
 trained and evaluated against (`cache/m9/pool_configs/noise_0_08.json`,
 a separate noise-specific copy `scripts/run_ablation_study.py` writes
-per level). Every codemaster's assassin-hit rate dropped far more than a
+per level). Every spymaster's assassin-hit rate dropped far more than a
 reward-table tweak could plausibly explain (centroid 12.0%->6.4%,
 linear_scorer 27.2%->11.7%) -- the tell that this was a guesser-pool
 mismatch, not the intended change, since a lower-noise pool makes
-guessing more accurate for every codemaster uniformly, reward table
+guessing more accurate for every spymaster uniformly, reward table
 irrelevant. Reran with the correct
 `cache/m9/pool_configs/noise_0_08.json`; results now move by a
 plausible, smaller amount.
@@ -1899,7 +1899,7 @@ point. 194 tests still pass (no test asserted these values).
 
 Picked up `docs/versions/v1.md`'s open question #1: let a guesser use
 misses from previous clues in its reasoning, guesser-side only, no
-codemaster or training changes.
+spymaster or training changes.
 
 **The mechanism, settled through discussion before building anything:**
 a miss ending a turn early (announced number `n`, only `k < n` correct
@@ -1967,14 +1967,14 @@ as the simpler first-pass version.
   bonus.
 - `codenames/game.py::play_turn`/`play_game`: thread `history` through
   (`budget = number + guesser.bonus_guesses(...)`); `codenames/scorer.py`
-  and `game.py`'s module docstrings updated to note the codemaster's own
+  and `game.py`'s module docstrings updated to note the spymaster's own
   reward math still assumes exactly `n` and is unaware of the bonus
   (real play with a bonus-claiming guesser slightly outperforms what
   that math predicted -- one-directional, harmless).
 - `codenames/gpu_arena.py::_play_batch_group`: mirrors the same
   history-threading per board (keyed by seed), so a `HistoryAwareGuesser`
   gets identical treatment whether evaluated via the GPU-batched path
-  (learned codemasters) or the plain CPU arena.
+  (learned spymasters) or the plain CPU arena.
 - `configs/guesser_pool_history_aware.json`: wraps the exact same base as
   `configs/guesser_pool_blend.json` (only difference: history-awareness),
   specifically so an arena comparison between the two pools isolates the
@@ -1997,7 +1997,7 @@ synthetic test fixtures.
 
 ## Web UI: a "Full Game" tab, playing both sides to completion
 
-Requested: a new UI mode/tab to pick a codemaster and a guesser and play
+Requested: a new UI mode/tab to pick a spymaster and a guesser and play
 a real game out to the end, rather than the existing tab's single-turn
 peeks.
 
@@ -2013,7 +2013,7 @@ peeks.
 - `scripts/webui/inspector.html`: added tab buttons (`#tabInspector`/
   `#tabGame`) toggling visibility between the existing content (wrapped
   in `#inspectorTab`, otherwise untouched) and a new `#gameTab` -- seed/
-  codemaster/guesser controls, the same 4 reward-override fields as the
+  spymaster/guesser controls, the same 4 reward-override fields as the
   main tab, a board render (colors shown upfront like the rest of this
   dev tool, not hidden), a win/loss/timeout banner, and a turn-by-turn
   log showing each clue/number/guesses/reward/ended_reason, with a
@@ -2021,14 +2021,14 @@ peeks.
   bonus mechanic from the history-aware work above is visible rather than
   a silent "why are there more guesses than the number" mystery.
 - Verified end-to-end against a live server (not just unit tests): all
-  new endpoints, an error case (unknown codemaster), a full game with
+  new endpoints, an error case (unknown spymaster), a full game with
   `learned:noise_0_08` + `history_aware_noisy_glove` showing real bonus
   guesses firing, and the HTML page itself loading. 207 tests still pass
   (no new automated tests -- this is a thin UI layer over already-tested
   `play_game`/`load_pool`, matching how `build_simulate_response` and the
   rest of this file were handled).
 
-## Real two-team play, without touching any codemaster, guesser, or the scorer
+## Real two-team play, without touching any spymaster, guesser, or the scorer
 
 Requested: the "Full Game" tab should have the opponent actually play
 with their own (red) cards, not sit as a pure distractor -- i.e. real
@@ -2038,10 +2038,10 @@ two-team Codenames.
 large scope expansion needing a `Role`/reward-semantics redesign,
 matching the "genuine second team" framing already flagged as out-of-
 scope in `docs/versions/v1.md`'s open questions. The user pushed back,
-correctly: every codemaster, guesser, and the scorer only ever touch a
+correctly: every spymaster, guesser, and the scorer only ever touch a
 board through `role_of`/`words_by_role`/`remaining`/`is_revealed`/
 `reveal`/`words` -- never `Card.role` directly (confirmed by grep, no
-exceptions in `codenames/features.py` or any codemaster). So a thin
+exceptions in `codenames/features.py` or any spymaster). So a thin
 read-only *view* that swaps OWN/OPPONENT while sharing the same
 underlying revealed-state is sufficient, and none of that code needs to
 change at all.
@@ -2051,8 +2051,8 @@ change at all.
   OWN/OPPONENT in `role_of`/`words_by_role`/`remaining`, delegates
   `words`/`is_revealed`/`reveal`/`seed`/`revealed` straight through to
   the same physical `Board` (one shared, mutable revealed-set, not a
-  copy). Hit one real gap while wiring it up: `codenames/codemasters/
-  _util.py::state_rng` and `LearnedCodemaster` both read `board.revealed`
+  copy). Hit one real gap while wiring it up: `codenames/spymasters/
+  _util.py::state_rng` and `LearnedSpymaster` both read `board.revealed`
   as a raw attribute rather than through a method -- added a `revealed`
   property to the view too (a straightforward miss from just grepping
   the public *method* surface, not every raw attribute access).
@@ -2067,9 +2067,9 @@ change at all.
   for free from checking both sides' remaining-OWN after every
   half-turn rather than just the mover's. Assassin ends the game
   immediately, other team wins.
-- Web UI: `/api/play_game` now takes a codemaster+guesser pair *per
+- Web UI: `/api/play_game` now takes a spymaster+guesser pair *per
   team* (`_a`/`_b` suffixed params, including separate reward overrides
-  per side -- noted that two sides picking the *same* learned codemaster
+  per side -- noted that two sides picking the *same* learned spymaster
   share one instance, so their overrides can't actually differ). Turn
   log is team-labeled (left border colored by team, own team-relative
   turn counter) instead of one flat list.
@@ -2078,7 +2078,7 @@ change at all.
   win-by-own-mistake, opponent's-mistake-wins, assassin ending, timeout,
   and per-team history independence (6 tests, `tests/test_game.py`). 221
   total, all passing. Verified live against a running server too: normal
-  play, an error case, and same-codemaster-both-sides reward overrides.
+  play, an error case, and same-spymaster-both-sides reward overrides.
 
 Next natural step, not done yet: the arena/self-play evaluation
 machinery (`codenames/arena.py`, `codenames/gpu_arena.py`) is still
@@ -2091,7 +2091,7 @@ separate, larger piece of work than the game engine + UI built here.
 
 Follow-up to the two-team game engine: bulk-run it for real stats, not
 just the one-off games the web UI plays. Discussed the metric question
-first -- since self-play means the *same* codemaster+guesser pair on
+first -- since self-play means the *same* spymaster+guesser pair on
 both sides, a symmetric win rate isn't informative (it's mostly just the
 9-vs-8 first-move edge, not a quality signal). Kept the same shape of
 metric the single-team arena already reports instead: assassin-hit rate
@@ -2102,7 +2102,7 @@ play, not the single-team framing's static distractors.
 `codenames/two_team_arena.py::run_two_team_self_play` -- mirrors
 `codenames/arena.py`'s process-parallel structure (same "spawn" worker
 fix, same construct-inside-the-worker pattern) but for one symmetric
-pair, not a codemaster x guesser cross-product. `scripts/
+pair, not a spymaster x guesser cross-product. `scripts/
 run_two_team_arena.py` is the CLI wrapper. No GPU-batched path (unlike
 `scripts/run_arena.py`) -- `codenames/gpu_arena.py`'s batching drives
 many *independent single-team* boards through one shared forward pass
@@ -2117,13 +2117,13 @@ across both teams) plus a real small-scale end-to-end run. 225 tests
 total, all passing. Smoke-tested against the real similarity tensor with
 both a baseline (`centroid`) and a learned checkpoint.
 
-## A real bug found by two-team play: LearnedCodemaster can't play the 8-card side
+## A real bug found by two-team play: LearnedSpymaster can't play the 8-card side
 
 While actually running the two-team self-play comparison (same
 `learned:noise_0_08` on both sides, matching the earlier single-team
 methodology), hit a `RuntimeError: mat1 and mat2 shapes cannot be
 multiplied (111440x106 and 103x256)` -- a real bug, not a fluke,
-correcting the earlier claim that no codemaster/guesser/scorer code
+correcting the earlier claim that no spymaster/guesser/scorer code
 needed to change for two-team play to work.
 
 **Root cause**: `codenames/features.py`'s feature vector has a *fixed*
@@ -2144,7 +2144,7 @@ this file's own module docstring warns about: "a bug here is silent and
 poisons everything built on top of it."
 
 This isn't fixable by retraining or a small tweak -- it's a genuine
-structural fact about the current model: `LearnedCodemaster`'s trained
+structural fact about the current model: `LearnedSpymaster`'s trained
 weights only ever saw "I am the 9-card team," never "I have 8 own words
 and 9 opponent words." Reusing it as the 8-card side would mean
 evaluating it well outside its trained distribution even if the input
@@ -2158,17 +2158,17 @@ and why, instead of a silent wrong-shaped array that only surfaces as a
 confusing crash several layers downstream. 5 new tests
 (`tests/test_features.py::TestRoleCapacityGuard`), 230 total passing.
 
-**Practical consequence**: a `LearnedCodemaster` can only play as team A
-(the 9-card side) in two-team mode; team B needs a baseline codemaster
+**Practical consequence**: a `LearnedSpymaster` can only play as team A
+(the 9-card side) in two-team mode; team B needs a baseline spymaster
 (random/centroid/oracle/linear_scorer -- none of which build a fixed-
 size feature vector, so none of them hit this). The two-team self-play
-comparison originally planned (same learned codemaster on both sides)
+comparison originally planned (same learned spymaster on both sides)
 isn't possible without retraining a symmetric-capacity model -- a real
 scope question for a future version, not attempted here.
 
 ## Bypassing the 9-vs-8 capacity mismatch with a one-word bootstrap reveal
 
-The previous entry's "practical consequence" (LearnedCodemaster can only
+The previous entry's "practical consequence" (LearnedSpymaster can only
 play team A) turned out to be avoidable, not fundamental -- user's
 suggestion: since the actual overflow is a single, specific mismatch
 (team B's OpponentBoardView-swapped "opponent" role is team A's real
@@ -2196,7 +2196,7 @@ exercises the guard directly against a bare `OpponentBoardView`, which
 remains valid since that test bypasses `play_two_team_game`'s bootstrap
 entirely).
 
-**Consequence**: `LearnedCodemaster` can now legitimately play *either*
+**Consequence**: `LearnedSpymaster` can now legitimately play *either*
 side of two-team mode, including the same checkpoint as both teams --
 the originally-planned pure self-play comparison the previous entry said
 was blocked is now possible after all.
@@ -2210,7 +2210,7 @@ opponent 0.5% / neutral 4.0% / assassin 0.0%. Substantially safer than
 the earlier `centroid`-opponent smoke test's 10.0% assassin-hit rate --
 expected, since a symmetric self-play matchup never has to contend with
 an erratic opposing clue-giver flooding the board with confusing
-reveals the way a noisier baseline codemaster does. Written up in
+reveals the way a noisier baseline spymaster does. Written up in
 `docs/versions/v1.md`'s open question #2.
 
 ## Superseded: decoupling real board counts from feature-vector slot widths
@@ -2260,20 +2260,20 @@ explicit raise, matching `features.py`'s `_check_capacity`.
 
 **Real cost, not swept under the rug**: this widens the model's input
 dimension (107 vs. the old 103, for 3 spaces), so every existing
-`LearnedCodemaster` checkpoint (5 noise-level ones plus the blend-pool
-one) is now incompatible and must be retrained before `LearnedCodemaster`
-works again *at all*, single-team included. No baseline codemaster
+`LearnedSpymaster` checkpoint (5 noise-level ones plus the blend-pool
+one) is now incompatible and must be retrained before `LearnedSpymaster`
+works again *at all*, single-team included. No baseline spymaster
 (random/centroid/oracle/linear_scorer) touches `features.py`, so none of
 them are affected or need retraining. 230 tests passing (rewrote several
 in `tests/test_features.py`/`tests/test_ablation.py` that hardcoded the
 old 25-wide role-block layout).
 
-Also ran real two-team self-play for every baseline codemaster (these
-were never affected by the feature-vector issue -- only `LearnedCodemaster`
+Also ran real two-team self-play for every baseline spymaster (these
+were never affected by the feature-vector issue -- only `LearnedSpymaster`
 touches `codenames/features.py`), 200 boards each, `noisy_glove` on both
 sides, real 9-vs-8 rules throughout:
 
-| codemaster    | assassin-hit rate | half-turns (all/clean) | own/opp/neutral/assassin  |
+| spymaster    | assassin-hit rate | half-turns (all/clean) | own/opp/neutral/assassin  |
 |---------------|-------------------:|-------------------------:|-----------------------------|
 | random        | 85.5%              | 9.71 / 15.48              | 33.6% / 32.0% / 27.7% / 6.7% |
 | oracle        | 56.0%              | 5.89 / 7.57                | 58.7% / 17.8% / 19.3% / 4.2% |
@@ -2289,7 +2289,7 @@ slow and overly conservative (18.71 half-turns/game, rarely finishing
 cleanly), not from being skilled. Written up in `docs/versions/v1.md`'s
 open question #2.
 
-Retraining `LearnedCodemaster`'s checkpoints for the new feature width,
+Retraining `LearnedSpymaster`'s checkpoints for the new feature width,
 and rerunning its two-team self-play numbers under the real (non-pre-
 revealed) 9-vs-8 rules, is the natural next step -- not done yet, since
 it's real compute time and worth confirming before spending it.
@@ -2312,7 +2312,7 @@ important as team B") between the real board and its `OpponentBoardView`-
 swapped counterpart, before any clue sampling or feature building
 happens. Every function downstream (clue sampling, guesser rollout,
 `build_features`) only ever touches the shared role_of/words_by_role/
-is_revealed/words/remaining interface, exactly like a codemaster or
+is_revealed/words/remaining interface, exactly like a spymaster or
 guesser does, so this needed no other change. One edge case handled: if
 the swap is drawn but team B's real own words (the physical OPPONENT
 role) are already fully revealed, that's an already-over-for-B state --
@@ -2381,7 +2381,7 @@ assassin-hit rate (5.0%) is worse than model 1's (0.0%), the opposite of
 their single-team ordering (model 1.1 was reported as comparable or
 slightly safer than model 1 there). Plausible hypothesis: a single,
 more-knowledgeable blended listener behaves more predictably than three
-diverse noisy ones, which may let the codemaster get away with -- and
+diverse noisy ones, which may let the spymaster get away with -- and
 therefore learn -- slightly more aggressive clues that occasionally
 backfire in real two-team play, where both sides are actually acting
 rather than one side facing static distractors. Not investigated further
@@ -2427,8 +2427,8 @@ Two small UI bugs, both user-reported, unrelated to each other:
    only ever applied to the Inspector tab's candidate-*listing* endpoint
    (`build_give_clue_response`'s own post-hoc filter over an over-fetched
    pool) -- real gameplay (`play_two_team_game` -> `play_turn` ->
-   `codemaster.give_clue()`) had no rarity knob at all. Fixed by giving
-   `LearnedCodemaster` itself an optional `max_rarity`/`rarity_percentile`
+   `spymaster.give_clue()`) had no rarity knob at all. Fixed by giving
+   `LearnedSpymaster` itself an optional `max_rarity`/`rarity_percentile`
    (class default `max_rarity=100.0` = no filtering, so arena/training
    scripts are unaffected unless they opt in) and a `_pick_legal_clue`
    helper mirroring the same over-fetch-then-filter pattern, falling back
@@ -2437,10 +2437,10 @@ Two small UI bugs, both user-reported, unrelated to each other:
    clue). Moved the rarity-percentile computation itself
    (`clue_rarity_percentile`, was `_build_clue_rarity_percentile`) from
    `scripts/web_inspector.py` into `codenames/clue_search.py` so both the
-   codemaster and the UI share one implementation. Added per-side
+   spymaster and the UI share one implementation. Added per-side
    `max rarity %` inputs to the Full Game tab, wired through the same
    `_apply_reward_overrides`-style per-request mechanism the 4 reward
-   fields already use. Web UI's own `LearnedCodemaster` instances are
+   fields already use. Web UI's own `LearnedSpymaster` instances are
    constructed with `max_rarity=50.0` as their starting point (a UI-only
    default, not a change to the class default); both the Inspector's
    existing field and the new Full Game fields default to 50 in the HTML
@@ -2533,7 +2533,7 @@ one history per game). Reuses `two_team_arena.py`'s stats bookkeeping
 unchanged. Wired into `scripts/run_two_team_arena.py` as the default
 path for `--checkpoint` (mirrors `run_arena.py`'s `--gpu-batch-size`;
 `--no-gpu-batch` reverts to the process-parallel path). Baseline
-codemasters are unaffected -- nothing here to batch for a codemaster
+spymasters are unaffected -- nothing here to batch for a spymaster
 that scores a handful of candidates instead of the whole vocabulary.
 
 Verified correctness before trusting the speedup: a manual comparison
@@ -2603,7 +2603,7 @@ draws its guesser, uniformly, from the whole pool, matching
 `generate_training_data.py`'s own `rng.choice(guesser_names)` sampling.
 Implemented for both the CPU path (`random.Random(seed).choice(...)` per
 task) and the GPU-batched path (a per-seed guesser dict -- the guesser
-only matters after the batched codemaster forward pass, so different
+only matters after the batched spymaster forward pass, so different
 games can use different guessers with no change to the batching itself).
 
 Also added two requested stats to `TwoTeamSelfPlayResult`: mean announced
@@ -2630,11 +2630,11 @@ the single-guesser ones from the previous entries.
 ## LLMGuesser: an external guesser for evaluation, not training
 
 User's concern, raised while discussing self-play evaluation: scoring a
-codemaster against a guesser pool it's also implicitly co-adapted to
+spymaster against a guesser pool it's also implicitly co-adapted to
 (the guesser pool the whole training signal is defined by) can't
-distinguish "this codemaster is genuinely good" from "this codemaster
+distinguish "this spymaster is genuinely good" from "this spymaster
 and this guesser just happen to share the same blind spots." There's no
-way to compare across codemaster/guesser pairs on that basis alone.
+way to compare across spymaster/guesser pairs on that basis alone.
 Proposed fix: use a real LLM as an *evaluation-only* guesser -- something
 that was never part of the training loop, so a high score against it
 means something closer to "would an actual, independent listener guess
@@ -2684,7 +2684,7 @@ worked around by creating a workspace-scoped key rather than plumbing
 the header). Assassin-hit rate came back dramatically worse than
 against the embedding guesser pool (~40% vs. 0-5%), which is the
 concerning signal this guesser was built to be able to surface -- a
-codemaster scored only against guessers it was co-adapted with can't
+spymaster scored only against guessers it was co-adapted with can't
 be told apart from one that's actually good. Spot-checked one
 suspicious assassin hit ("shores" picking `England` over `Port`) by
 replaying the exact same input outside the cache: got real run-to-run
@@ -2716,11 +2716,11 @@ well under a few hundred MB.
 
 Found and fixed a real parallelization gap ahead of a larger Sonnet 5
 run: `codenames/two_team_gpu_arena.py::_play_batch_group` batches the
-codemaster's GPU forward pass across every active game in a round, but
+spymaster's GPU forward pass across every active game in a round, but
 the guesser call right after it was a plain sequential `for` loop -- one
-blocking network round-trip at a time. With a learned codemaster (the
+blocking network round-trip at a time. With a learned spymaster (the
 only case that routes through this GPU path), that loop, not the
-codemaster batching, was the real bottleneck whenever the guesser is
+spymaster batching, was the real bottleneck whenever the guesser is
 `LLMGuesser`. Fixed by running each round's per-game guesser calls on a
 `ThreadPoolExecutor` (sized to the batch, created once per batch group
 and reused across rounds rather than per round) instead of a sequential
@@ -2734,14 +2734,14 @@ whole point. New tests prove the calls actually overlap (elapsed time
 for N concurrent slow fake calls stays well under N * delay, at both the
 `LLMGuesser` level and the `_play_batch_group` level) rather than just
 checking correctness. The CPU path (`two_team_arena.py`, used for
-baseline codemasters) was already parallel across worker processes and
+baseline spymasters) was already parallel across worker processes and
 didn't need this.
 
 Ran the first real multi-checkpoint Sonnet 5 trial (`noise_0_08`, 15
 boards): assassin-hit rate 20.0%, half-turns (all) 8.60, mean clue
 number 1.91, mean correct per clue 1.43 -- meaningfully safer than the
 earlier Haiku trial (~40% assassin-hit) but still far above the ~0-5%
-this codemaster gets against its own training-time guesser pool,
+this spymaster gets against its own training-time guesser pool,
 consistent with the original motivation for building `LLMGuesser` at
 all. Found mid-session that `LLMGuesser` was significantly more
 expensive than estimated: Sonnet 5 runs adaptive thinking by default
@@ -2762,5 +2762,33 @@ verified to not error on either). A `noise_0_0` trial started before
 this fix was killed partway through rather than let finish on the
 unfixed, more expensive path, given a real, small ($2.29) remaining API
 balance -- multi-checkpoint comparison resumes with the fixed guesser.
+
+## Renamed "codemaster" to "spymaster" throughout
+
+The clue-giving role had been called `codemaster` everywhere since the
+first commit; the actual Codenames rules call it the *spymaster*. Renamed
+it project-wide so the code matches the game's vocabulary: 715
+occurrences across 38 tracked files, plus the `codenames/codemasters/`
+package directory and two test modules (`test_codemasters.py`,
+`test_learned_codemaster.py`). Casing turned out to be uniform
+(`codemaster` / `Codemaster` / `CODEMASTER`, no `CodeMaster`), so three
+literal substitutions covered every case with no regex subtleties.
+
+Checked before starting that nothing serialized depends on the old
+module path: `LearnedSpymaster` checkpoints store a bare `model_state`
+state_dict of tensors, not a pickled class reference, so existing
+checkpoints under `cache/` still load unchanged. Verified afterwards by
+reconstructing every tracked file from its `HEAD` version with the same
+substitution applied to both path and contents and diffing against the
+working tree -- 96 files, zero mismatches, so the commit is provably
+nothing but the rename. Full suite passes (263 tests).
+
+Docs were renamed along with the code, including historical entries in
+this log and in `docs/versions/`. That does mean earlier entries now read
+as though the role was always called "spymaster", which is a small
+rewriting of the record; the alternative -- leaving history alone -- would
+have left the docs disagreeing with the code about what the role is
+called, which seemed worse for a project that has to be read and
+defended as a whole.
 
 ## Human evaluation (not started)

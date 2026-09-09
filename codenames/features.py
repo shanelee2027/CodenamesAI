@@ -166,7 +166,7 @@ def _check_capacity(n_words: int, pad_to: int) -> None:
     board count (8), and a swapped-perspective 9-word group would either
     silently overflow (a numpy assignment past an array's own length
     simply clips, or -- in the batched path -- there was no bounds check
-    at all) or, once a bounds check existed, hard-crash a codemaster that
+    at all) or, once a bounds check existed, hard-crash a spymaster that
     could otherwise play fine. See docs/log.md for that history. Raising
     immediately here, with a clear message, stays the module docstring's
     own standard regardless: "a bug here is silent and poisons everything
