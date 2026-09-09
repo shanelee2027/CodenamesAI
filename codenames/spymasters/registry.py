@@ -8,7 +8,8 @@ stance codenames/guessers/registry.py already takes for the guesser pool
 spymaster spec *from* a config; it has no opinion on which spymasters
 should exist.
 
-Config format: {"spymasters": [{"name", "type", "params", "trained"}, ...]}.
+Config format: {"spymasters": [{"name", "type", "params", "trained",
+"roles"}, ...]}.
 `type` selects a class from SPYMASTER_CLASSES. `params` are passed as
 keyword args to that class's constructor. `trained` marks whether this
 entry expects a trained artifact (a checkpoint) to exist before it can be
@@ -18,6 +19,15 @@ may assume every entry has one. `configs/spymasters.json` only lists the
 baselines, which need no checkpoint; a `learned` entry's `params` would
 need a real `checkpoint_path` (produced by a specific training run, not a
 fixed config value) filled in by the caller -- see `spec()`'s `overrides`.
+
+`roles` is how a script says *which kind* of spymaster it wants without
+naming names: `scripts/run_arena.py` takes the "baseline" role, and
+`scripts/run_two_team_arena.py` additionally takes "exploration" (its
+`oracle` entry -- an upper-bound exploration tool, not a realistic
+baseline, per the README). Adding a spymaster is then a config entry and
+nothing else: it appears everywhere its roles say it belongs, with no
+script edited. `roles` defaults to ("baseline",) precisely so a new entry
+shows up by default rather than being silently invisible.
 
 **Picklability.** `codenames/arena.py:188` constructs spymasters *inside*
 spawned worker processes -- it needs a `(class, kwargs)` spec, not a live
@@ -58,6 +68,7 @@ class SpymasterEntry:
     cls: type[Spymaster]
     params: dict
     trained: bool
+    roles: tuple[str, ...]
 
     @property
     def spec(self) -> tuple[type[Spymaster], dict]:
@@ -79,6 +90,7 @@ def _build_entry(entry_config: dict) -> SpymasterEntry:
         cls=SPYMASTER_CLASSES[spymaster_type],
         params=dict(entry_config.get("params", {})),
         trained=entry_config.get("trained", False),
+        roles=tuple(entry_config.get("roles", ("baseline",))),
     )
 
 
@@ -108,3 +120,12 @@ def spymaster_spec(
         raise KeyError(f"unknown spymaster {name!r}, must be one of {list(entries)}")
     entry = entries[name]
     return entry.cls, {**entry.params, **overrides}
+
+
+def spymaster_names(*roles: str, config: Path | dict = DEFAULT_SPYMASTER_CONFIG) -> list[str]:
+    """Names of every entry carrying at least one of `roles`, in config
+    order -- what a script asks for instead of hardcoding a name list, so
+    a newly-added config entry needs no script change to show up. See
+    this module's docstring on `roles`."""
+    wanted = set(roles)
+    return [name for name, entry in load_spymasters(config).items() if wanted & set(entry.roles)]

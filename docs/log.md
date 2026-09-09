@@ -2891,4 +2891,46 @@ and an abstractness test for the new `top_clues` requirement). Steps 4-7
 (rollout caching, frozen eval suite, eval store, naming/layout) are
 untouched, per the assigned scope.
 
+## Review of steps 1-3: spymasters selected by role, not by name
+
+Steps 1-3 were implemented by a delegated agent against
+`docs/iteration-architecture.md`; this entry records the review.
+
+Steps 1 and 3 held up. The GPU arenas now reach the model only through
+`score_batch`/`to_device`, there is a single scoring implementation per
+model, and the device branch inside `LearnedSpymaster.score_batch` is
+right for a non-obvious reason: using the multi-board GPU feature builder
+on CPU would materialize the whole similarity tensor in every spawned
+worker, which is exactly the RSS failure `design-decisions.md`'s memory
+note warns about.
+
+Step 2 was the miss, and it was a miss against the *goal* rather than the
+letter of the spec. The registry and config landed correctly, but each
+arena script kept its own hardcoded list of names
+(`BASE_SPYMASTER_NAMES = ["random", "centroid", "linear_scorer", ...]`) --
+so adding a spymaster would still have meant editing two scripts, which
+is the exact hand-editing the registry existed to remove. The reasoning
+behind it was sound in isolation: the two scripts genuinely never had the
+same set (`run_two_team_arena.py` also offers `oracle`), and consuming
+one shared config wholesale would have silently added `oracle` to
+`run_arena.py`'s cross-play output, which would not have been a pure
+refactor.
+
+The fix keeps that distinction but moves it into the config as data: each
+entry carries `roles`, and scripts ask for a role rather than a list of
+names -- `spymaster_names("baseline")` for `run_arena.py`,
+`spymaster_names("baseline", "exploration")` for
+`run_two_team_arena.py`, `oracle` being the sole "exploration" entry.
+Both lists reproduce the previous sets exactly, verified by comparison.
+`roles` defaults to `("baseline",)` so an entry that omits the field
+appears in the arenas rather than being silently invisible -- confirmed
+by adding a roles-less entry to an in-memory config and checking it is
+picked up. 277 tests pass.
+
+The general lesson for delegating the remaining steps: a brief that
+states the requirement ("no other file changes to make a model
+runnable") gets checked against the letter of each numbered step, not
+against the requirement. Worth stating the acceptance test, not just the
+task.
+
 ## Human evaluation (not started)

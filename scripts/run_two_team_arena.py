@@ -29,7 +29,7 @@ import torch
 
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
-from codenames.spymasters.registry import load_spymasters, spymaster_spec
+from codenames.spymasters.registry import load_spymasters, spymaster_names, spymaster_spec
 from codenames.two_team_arena import run_two_team_self_play
 from codenames.two_team_gpu_arena import run_two_team_self_play_gpu
 
@@ -37,7 +37,11 @@ from codenames.two_team_gpu_arena import run_two_team_self_play_gpu
 # Names into configs/spymasters.json; "learned" is built separately since
 # it needs a --checkpoint, supplied per invocation rather than fixed in
 # that config.
-BASE_SPYMASTER_NAMES = ["random", "centroid", "linear_scorer", "oracle"]
+# Selected by role from configs/spymasters.json rather than by name, so a
+# new entry needs no edit here. This script offers the "exploration"
+# role (oracle) on top of the standard baselines; scripts/run_arena.py
+# does not -- that difference is the only reason the two lists differ.
+BASE_SPYMASTER_NAMES = spymaster_names("baseline", "exploration")
 
 
 def main() -> None:

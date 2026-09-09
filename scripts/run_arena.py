@@ -30,14 +30,13 @@ from codenames.arena import run_arena
 from codenames.gpu_arena import run_arena_gpu
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
-from codenames.spymasters.registry import load_spymasters, spymaster_spec
+from codenames.spymasters.registry import load_spymasters, spymaster_names, spymaster_spec
 
-# This script's baseline set (unchanged from before the registry existed --
-# "oracle" is a scripts/run_two_team_arena.py-only exploration tool, not
-# part of this cross-play diagnostic). Names into configs/spymasters.json;
-# "learned" is built separately since it needs a --checkpoint, supplied per
-# invocation rather than fixed in that config.
-BASE_SPYMASTER_NAMES = ["random", "centroid", "linear_scorer"]
+# This script's spymasters, selected by role from configs/spymasters.json
+# rather than by name, so a new entry needs no edit here. "oracle" is
+# role "exploration" (a scripts/run_two_team_arena.py-only upper-bound
+# tool) and so stays out of this cross-play diagnostic, exactly as before.
+BASE_SPYMASTER_NAMES = spymaster_names("baseline")
 
 
 def main() -> None:
