@@ -201,19 +201,18 @@ conditionally independent given \(D\), and the expectation splits:</p>
 <p class="noindent">The first factor is again a probability for the Bernoulli sum of Section 3. It
 remains to compute \(\bar c(d)\), for which we need \(\Pr(W^\ast = w \mid D = d)\).</p>
 
-<p class="noindent">Since \(D\) is continuous, \(\Pr(D = d) = 0\) and the conditional
-probability is a ratio of densities rather than of probabilities. Writing \(g_w\) for the joint
-density of \(W^\ast = w\) and \(D\) at \(d\),</p>
+<p class="noindent">Writing \(g_w\) for the joint density of \(W^\ast = w\) and \(D\) at
+\(d\),</p>
 
 \[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{g_w(d)}{f_D(d)}. \]
 
-<p class="noindent">Take the numerator first. \(W^\ast = w\) and \(D = d\) means \(\hat z_w = d\)
-and \(\hat z_v &lt; d\) for every other \(v \in B\). The \(\hat z\) are independent, so</p>
+<p class="noindent">\(W^\ast = w\) and \(D = d\) means \(\hat z_w = d\) and \(\hat z_v &lt; d\) for
+every other \(v \in B\). The \(\hat z\) are independent, so</p>
 
 \[ g_w(d) \;=\; f_{\hat z_w}(d) \prod_{v \ne w} F_{\hat z_v}(d). \]
 
 <p class="noindent">The events \(\{W^\ast = w\}\), \(w \in B\), are disjoint and exhaust the
-possibilities, so the denominator is</p>
+possibilities, so</p>
 
 \[ f_D(d) \;=\; \sum_{w \in B} g_w(d). \]
 
