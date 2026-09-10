@@ -153,7 +153,7 @@ distribution function of a standard normal. Each \(\hat z_w\) is \(N(b_w, \sigma
 
 <p class="noindent">Since \(D\) is a maximum of independent variables,</p>
 
-\[ F(d) \;=\; \Pr(D \le d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
+\[ F_D(d) \;=\; \Pr(D \le d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
 
 <h2><span class="n">3</span>Conditional distribution</h2>
 
@@ -179,7 +179,7 @@ Bernoulli variables, the \(i\)-th with success probability \(p_i(d)\).</p>
 <p class="noindent">Since \(\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}\), taking expectations
 and conditioning on \(D\) gives</p>
 
-\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF(d). \]
+\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF_D(d). \]
 
 <p class="noindent">Each \(\Pr(N \ge j \mid D = d)\) follows from the Bernoulli sum of Section 3,
 and the integral is one-dimensional in \(d\). Section 6 computes both. It remains to find
@@ -194,7 +194,7 @@ the count \(N = \#\{i \in A : z_i + \varepsilon_i &gt; d\}\) is a function of
 \((\varepsilon_w)_{w \in B}\). The two families are independent, so \(N\) and \(W^\ast\) are
 conditionally independent given \(D\), and the expectation splits:</p>
 
-\[ P(k) \;=\; \int \Pr(N &lt; k \mid D = d)\; \bar c(d) \,\, dF(d), \qquad
+\[ P(k) \;=\; \int \Pr(N &lt; k \mid D = d)\; \bar c(d) \,\, dF_D(d), \qquad
    \bar c(d) = \mathbb E\bigl[\, c_{W^\ast} \mid D = d \,\bigr]. \]
 
 <p class="noindent">The first factor is again a probability for the Bernoulli sum of Section 3. It
@@ -208,19 +208,19 @@ each other \(\hat z_v\) falls below \(d\). Both were given in Section 2, so this
 \[ \sigma^{-1}\varphi\!\left(\frac{d - b_w}{\sigma}\right)
    \prod_{v \ne w} \Phi\!\left(\frac{d - b_v}{\sigma}\right). \]
 
-<p class="noindent">The product over \(v \ne w\) is \(F(d)\) with the \(w\)-th factor removed, so
-it equals \(F(d) \big/ \Phi\bigl((d - b_w)/\sigma\bigr)\). Set</p>
+<p class="noindent">The product over \(v \ne w\) is \(F_D(d)\) with the \(w\)-th factor removed, so
+it equals \(F_D(d) \big/ \Phi\bigl((d - b_w)/\sigma\bigr)\). Set</p>
 
 \[ h_w(d) \;=\; \frac{\varphi\bigl((d - b_w)/\sigma\bigr)}{\Phi\bigl((d - b_w)/\sigma\bigr)}, \]
 
-<p class="noindent">so the density above is \(\sigma^{-1} F(d)\, h_w(d)\). The events
+<p class="noindent">so the density above is \(\sigma^{-1} F_D(d)\, h_w(d)\). The events
 \(\{W^\ast = w\}\) are disjoint and cover everything, so summing over \(w\) gives the density of
 \(D\) at \(d\),</p>
 
-\[ f(d) \;=\; \sigma^{-1} F(d) \sum_v h_v(d). \]
+\[ f_D(d) \;=\; \sigma^{-1} F_D(d) \sum_v h_v(d). \]
 
-<p class="noindent">Dividing the joint density by \(f(d)\), the factors \(\sigma^{-1}\) and
-\(F(d)\) cancel:</p>
+<p class="noindent">Dividing the joint density by \(f_D(d)\), the factors \(\sigma^{-1}\) and
+\(F_D(d)\) cancel:</p>
 
 \[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}, \qquad
    \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}. \]
@@ -247,7 +247,7 @@ of claiming one more word is exactly the probability of reaching it. Note that r
 first term then grows by 1 for each additional word while \(P\) is bounded.</p>
 
 <p>If \(b_w \to -\infty\) with all else fixed, then \(h_w \to 0\) and
-\(\Phi\bigl((d - b_w)/\sigma\bigr) \to 1\) wherever \(F\) has mass, so both \(G\) and \(P\)
+\(\Phi\bigl((d - b_w)/\sigma\bigr) \to 1\) wherever \(F_D\) has mass, so both \(G\) and \(P\)
 converge to their values with \(w\) removed from \(B\). Thus a sufficiently dissimilar word does
 not affect the objective, and only the weakest word of \(A\) being claimed and the strongest
 word of \(B\) carry weight.</p>
@@ -258,7 +258,7 @@ of mistake differently from another requires only changing the constants.</p>
 <h2><span class="n">6</span>Computation</h2>
 
 <p class="noindent">Both integrals are one-dimensional and require no density. Partition the line
-into cells \([d_m, d_{m+1}]\). The mass of each cell is \(F(d_{m+1}) - F(d_m)\), which we have
+into cells \([d_m, d_{m+1}]\). The mass of each cell is \(F_D(d_{m+1}) - F_D(d_m)\), which we have
 from Section 2, and we evaluate the conditional factors at the midpoint. The only error is
 discretization.</p>
 
