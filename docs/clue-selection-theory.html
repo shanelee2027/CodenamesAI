@@ -75,15 +75,18 @@
   .tablenote { font-size: 0.82rem; margin: 4px 0 0; text-indent: 0; text-align: left; }
 
   figure { margin: 20px 0 10px; }
-  figure svg { width: 100%; height: auto; display: block; }
+  /* Scoped to .chart, never a bare `figure svg`: MathJax renders inline
+     math as <svg> as well, so an unscoped rule stretches the sigma and
+     the -10 in the caption to full column width. */
+  svg.chart { width: 100%; height: auto; display: block; }
   figcaption { font-size: 0.82rem; margin-top: 6px; text-align: left; }
-  svg .grid { stroke: var(--rule); stroke-width: 0.6; }
-  svg .axis { stroke: var(--ink); stroke-width: 0.8; }
-  svg .err { stroke: var(--rule); stroke-width: 1.4; }
-  svg .line { fill: none; stroke: var(--ink); stroke-width: 1.4; }
-  svg .dot { fill: var(--ink); }
-  svg .peak { stroke: var(--rule); stroke-width: 0.8; stroke-dasharray: 3 3; }
-  svg .lab, svg .tick { fill: var(--ink); font-family: "Source Serif 4", Georgia, serif; font-size: 11px; }
+  svg.chart .grid { stroke: var(--rule); stroke-width: 0.6; }
+  svg.chart .axis { stroke: var(--ink); stroke-width: 0.8; }
+  svg.chart .err { stroke: var(--rule); stroke-width: 1.4; }
+  svg.chart .line { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+  svg.chart .dot { fill: var(--ink); }
+  svg.chart .peak { stroke: var(--rule); stroke-width: 0.8; stroke-dasharray: 3 3; }
+  svg.chart .lab, svg.chart .tick { fill: var(--ink); font-family: "Source Serif 4", Georgia, serif; font-size: 11px; }
 
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 
@@ -262,7 +265,7 @@ is the number of words of \(A\) the guesser actually took; the last four columns
 turn ended.</p>
 
 <figure>
-<svg viewBox="0 0 520 232" role="img" aria-label="Realized reward per turn against sigma">
+<svg class="chart" viewBox="0 0 520 232" role="img" aria-label="Realized reward per turn against sigma">
 <title>Realized reward per turn against sigma</title>
 <line x1="46.0" y1="196.0" x2="500.0" y2="196.0" class="grid"/>
 <text x="38.0" y="199.5" class="tick" text-anchor="end">0.0</text>
