@@ -13,17 +13,37 @@ just swaps OWN/OPPONENT while sharing the same underlying revealed-state,
 so handing the second team's spymaster/guesser that view instead of the
 real `Board` is enough.
 
-Legality's "morphological variants" rule is deliberately narrow. Regular
-English suffixation (plural -s/-es, -ing, -ed) is *already* a substring
-relationship -- "apple" is a substring of "apples", "run" is a substring of
-"running" -- so the substring check below catches those for free. The only
-common case substring misses is a stem-spelling change: y -> i before a
-suffix ("happy"/"happier", "city"/"cities"). _stem_variants() adds exactly
-that one variant per word. This will NOT catch irregular forms (mouse/mice,
-go/went) -- a full lemmatizer would, at the cost of a new dependency and
-much less predictable/testable behavior for a rule where false negatives
-(illegal clues let through) silently inflate every downstream score --
-predictable and testable beats broad coverage.
+Legality has two rules, both deliberately narrow.
+
+**Substring over stem variants.** Regular English suffixation (plural
+-s/-es, -ing, -ed) is *already* a substring relationship -- "apple" is a
+substring of "apples", "run" is a substring of "running" -- so a plain
+substring check catches those for free. _stem_variants() adds the cases
+substring alone misses: y -> i before a suffix ("happy"/"happier"),
+British/American spelling ("centre"/"center", "colour"/"color"), and
+suffix stripping where the stem changes shape ("coding"/"code",
+"batter"/"bat").
+
+**Shared prefix.** Substring cannot see derivational morphology, because
+neither word contains the other: "Mexico"/"mexican", "Canada"/"canadian",
+"Change"/"changing". Measured on 60 boards, 10% of the baseline's chosen
+clues were of exactly this kind, every one illegal at a real table and
+every one scoring z > +8 precisely *because* it was the same word. A
+five-character shared prefix catches them. Five was chosen by measurement
+(see docs/log.md): it puts 1.0% of the admissible clue pool out of reach,
+against 5.2% at four characters, while four caught nothing extra. Both
+rules together rule out a mean 2.4% of the pool per board (min 1.6%, max
+3.4%), and cut near-identical clues from 6 of 60 boards to 1.
+
+A fuzzy string-similarity threshold was tried and rejected. At the level
+needed to catch "led"/"lead" it also forbade "able"/Marble,
+"after"/Water, "agree"/Green and "am"/Arm -- coincidental letter overlap,
+not shared roots -- taking 7.0% of the pool with it.
+
+Neither rule catches irregular forms (mouse/mice, go/went, lead/led). A
+full lemmatizer would, at the cost of a new dependency and much less
+predictable behavior for a rule where false negatives silently inflate
+every downstream score. Predictable and testable beats broad coverage.
 """
 
 from __future__ import annotations
@@ -227,30 +247,110 @@ def _normalize(word: str) -> str:
     return re.sub(r"[^a-z0-9]", "", word.lower())
 
 
+# Suffixes stripped when deriving stem variants. Order matters only in
+# that longer suffixes are tried first, so "changes" yields "chang"/"change"
+# rather than stopping at "change" -- both are kept anyway.
+_SUFFIXES = ("ing", "ers", "est", "ies", "ed", "er", "es", "ly", "s")
+
+# A stem shorter than this is dropped rather than compared. Stripping
+# leaves fragments ("bring" -> "br") that would match unrelated words as
+# substrings, and a rule that silently forbids good clues is worse than
+# one that misses a rare bad one. Three keeps the stems that carry a real
+# word -- "batter" -> "bat", "coding" -> "cod" -> "code" -- while dropping
+# two-letter debris.
+_MIN_STEM = 3
+
+# Shared-prefix length that makes two words the same root. Five puts 1.0%
+# of the admissible clue pool out of reach; four takes 5.2% while catching
+# nothing extra. See the module docstring.
+_MIN_SHARED_PREFIX = 5
+
+
+def _spelling_normalized(norm: str) -> str:
+    """Fold British spellings onto their American counterparts, so
+    "centre"/"Center" and "colour"/"Color" compare equal. Applied to both
+    sides, so the direction of the fold doesn't matter."""
+    if norm.endswith("re") and len(norm) > 3:
+        norm = norm[:-2] + "er"
+    norm = norm.replace("our", "or")
+    if norm.endswith("ise") or norm.endswith("isation"):
+        norm = norm.replace("isation", "ization").replace("ise", "ize")
+    return norm
+
+
 def _stem_variants(word: str) -> set[str]:
+    """Surface forms, compared by substring. These are whole words, so
+    containment between them means something: "run" inside "running"."""
     norm = _normalize(word)
-    variants = {norm}
+    variants = {norm, _spelling_normalized(norm)}
     if norm.endswith("y") and len(norm) > 1:
         variants.add(norm[:-1] + "i")
-    return variants
+    return {v for v in variants if v}
+
+
+def _stems(word: str) -> set[str]:
+    """Surface forms plus suffix-stripped stems, compared only by equality
+    and shared prefix -- never by substring.
+
+    A stripped stem is a fragment, and fragments land inside unrelated
+    words by coincidence: "amazing" strips to "amaz", which sits inside
+    "amazon" while sharing no root with it. Equality still catches the
+    cases stripping exists for, since both sides get stripped: "coding"
+    and "Code" both reach "code"."""
+    variants = _stem_variants(word)
+    stems = set(variants)
+    for base in variants:
+        for suffix in _SUFFIXES:
+            if not base.endswith(suffix) or len(base) - len(suffix) < _MIN_STEM:
+                continue
+            stem = base[: -len(suffix)]
+            # "coding" -> "cod" -> "code": the silent -e dropped before a
+            # vowel-initial suffix. "batter" -> "batt" -> "bat": the
+            # consonant doubled before one.
+            found = {stem, stem + "e"}
+            if len(stem) > 1 and stem[-1] == stem[-2]:
+                found.add(stem[:-1])
+            # Spelling has to be folded *after* stripping as well as
+            # before: "centres" only reaches "centre" once the plural is
+            # gone, and only then can it fold to "center".
+            stems |= found | {_spelling_normalized(s) for s in found}
+    return {s for s in stems if s}
+
+
+def _shares_root(clue_variants: set[str], board_variants: set[str]) -> bool:
+    """True when any variant pair agrees on its first `_MIN_SHARED_PREFIX`
+    characters -- the derivational cases substring cannot see, since
+    neither "mexico" nor "mexican" contains the other."""
+    for c in clue_variants:
+        if len(c) < _MIN_SHARED_PREFIX:
+            continue
+        head = c[:_MIN_SHARED_PREFIX]
+        for b in board_variants:
+            if len(b) >= _MIN_SHARED_PREFIX and b.startswith(head):
+                return True
+    return False
 
 
 def is_legal_clue(clue: str, board_words: Iterable[str]) -> bool:
     """A clue is illegal if it or any board word contains the other as a
-    substring, checked over both words' y->i stem variants (see module
-    docstring). This covers exact matches, regular plurals/verb forms in
-    either direction, hyphenated/multi-word board entries (normalization
-    strips non-alphanumerics), and case differences.
+    substring, or if the two share a five-character prefix, both checked
+    over the words' stem variants (see the module docstring).
+
+    Substring covers exact matches, regular plurals/verb forms in either
+    direction, hyphenated/multi-word board entries (normalization strips
+    non-alphanumerics), and case differences. The prefix rule covers
+    derivational forms, where neither word contains the other.
     """
     clue_variants = _stem_variants(clue)
+    clue_stems = _stems(clue)
     for board_word in board_words:
-        board_variants = _stem_variants(board_word)
-        for c in clue_variants:
-            if not c:
-                continue
-            for b in board_variants:
-                if not b:
-                    continue
+        for b in _stem_variants(board_word):
+            for c in clue_variants:
                 if c in b or b in c:
                     return False
+        board_stems = _stems(board_word)
+        if clue_stems & board_stems:
+            return False
+        if _shares_root(clue_stems, board_stems):
+            return False
     return True

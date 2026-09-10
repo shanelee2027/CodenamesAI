@@ -3471,3 +3471,56 @@ exact model pinning. `CLAUDE.md` already names `cache/llm_store.db` as
 the only thing making past evaluations reproducible; "Messages API,
 model=claude-opus-5, effort=medium" is defensible in a viva, "shelled out
 to my IDE assistant" is not.
+
+## Clue legality was letting near-identical clues through
+
+Found while reading the first live Opus responses: for the clue `centre`
+the guesser answered `["Center"]` -- the board word, in British spelling.
+`is_legal_clue` only rejected substring/stem overlap, and neither
+"centre" nor "center" contains the other.
+
+Not a one-off. Over 60 fresh holdout boards, **6 (10%)** of the
+baseline's chosen clues were forms of an intended word: `mexican`/Mexico,
+`canadian`/Canada (x2), `changing`/Change, `led`/Lead, plus
+`centre`/Center from the probe. Every one is illegal at a real table, and
+every one scored **z between +8.8 and +12.5** against a typical winning
+clue of +4 to +6 -- they win *because* they are the same word. Left in,
+they would have inflated the paid evaluation by ~10% of turns, and Opus
+takes them instantly.
+
+**Rejected: fuzzy string similarity.** `SequenceMatcher(...).ratio() >=
+0.8` was the obvious catch-all and is badly wrong here. It forbade
+`able`/Marble, `after`/Water, `agree`/Green, `am`/Arm, `bar`/Bear,
+`bat`/Beat -- coincidental letter overlap, not shared roots -- putting
+**7.0%** of the admissible pool out of reach to catch two extra cases.
+Short words are where it fails worst, since a single shared letter pair
+moves the ratio a long way.
+
+**Taken: shared prefix, plus targeted normalization.** Measured over the
+full 11,145-clue admissible pool x 400 board words:
+
+| rule | catches | pool affected |
+|---|---|---|
+| prefix >= 4 | 4/6 | 5.16% |
+| **prefix >= 5 + spelling fold** | **4/6** | **1.04%** |
+| prefix >= 6 + spelling fold | 1/6 | 0.18% |
+| prefix >= 5 or ratio >= 0.8 | 5/6 | 6.99% |
+
+Five characters is the knee. Added alongside it: British/American folding
+(`-re`->`-er`, `-our`->`-or`, `-ise`->`-ize`) and suffix stripping with
+`-e` restoration and consonant de-doubling, which reaches `coding`/Code
+and `batter`/Bat.
+
+Two mistakes worth recording, both caught by tests rather than by
+reasoning. First, stripped stems were initially compared by *substring*,
+which made `amazing`/Amazon illegal -- "amaz" sits inside "amazon"
+sharing no root. Stems now participate only in equality and prefix
+comparisons; whole surface forms keep the substring rule, where
+containment means something. Second, spelling was folded before stripping
+but not after, so `centres` never reached `center` and survived the first
+fix; the fold now runs on both.
+
+**Result:** 6/60 boards -> 1/60. The survivor is `led`/Lead, an irregular
+past tense no dependency-free rule sees, documented as a known gap
+alongside mouse/mice. Cost is a mean 2.4% of the clue pool per board
+(min 1.6%, max 3.4%). 376 tests pass.

@@ -275,3 +275,86 @@ class TestOpponentBoardView:
         board.reveal(word)
         assert word in view.revealed
         assert view.revealed is board.revealed
+
+
+class TestLegalityDerivationalForms:
+    """The shared-prefix rule. Substring cannot see these: neither
+    "mexico" nor "mexican" contains the other, yet on 60 measured boards
+    10% of the baseline's chosen clues were of exactly this kind, each
+    scoring z > +8 precisely because it was the same word."""
+
+    @pytest.mark.parametrize(
+        "clue,word",
+        [
+            ("mexican", "Mexico"),
+            ("canadian", "Canada"),
+            ("changing", "Change"),
+            ("charging", "Charge"),
+            ("australian", "Australia"),
+        ],
+    )
+    def test_derivational_forms_are_illegal(self, clue, word):
+        assert not is_legal_clue(clue, [word])
+
+    @pytest.mark.parametrize(
+        "clue,word",
+        [
+            ("centre", "Center"),
+            ("colour", "Color"),
+            ("theatre", "Theater"),
+        ],
+    )
+    def test_british_spellings_are_illegal(self, clue, word):
+        assert not is_legal_clue(clue, [word])
+
+    @pytest.mark.parametrize(
+        "clue,word",
+        [
+            ("coding", "Code"),   # silent -e dropped before a vowel suffix
+            ("batter", "Bat"),    # consonant doubled before one
+            ("happier", "Happy"),  # y -> i
+            ("cities", "City"),
+        ],
+    )
+    def test_stem_spelling_changes_are_illegal(self, clue, word):
+        assert not is_legal_clue(clue, [word])
+
+    @pytest.mark.parametrize(
+        "clue,word",
+        [
+            # Coincidental letter overlap. A fuzzy-similarity rule forbade
+            # every one of these, which is why the rule is prefix-based.
+            ("able", "Marble"),
+            ("after", "Water"),
+            ("agree", "Green"),
+            ("am", "Arm"),
+            ("bar", "Bear"),
+            ("bat", "Beat"),
+            # Real clues the baseline picks; none may become illegal.
+            ("artillery", "Mount"),
+            ("gospel", "Cricket"),
+            ("aviation", "Pilot"),
+            ("cartoon", "Paper"),
+        ],
+    )
+    def test_unrelated_words_stay_legal(self, clue, word):
+        assert is_legal_clue(clue, [word])
+
+    def test_short_stems_do_not_leak(self):
+        """Stripping "bring" must not yield "br" and match everything
+        starting with those letters."""
+        assert is_legal_clue("bring", ["Brick"])
+        assert is_legal_clue("bring", ["Bread"])
+
+    def test_prefix_rule_needs_five_characters(self):
+        """Four-character agreement is not enough -- at four the rule puts
+        5.2% of the clue pool out of reach while catching nothing extra."""
+        assert is_legal_clue("agenda", ["Agent"])       # "agen"
+        assert is_legal_clue("amazing", ["Amazon"])     # "amaz"
+        assert not is_legal_clue("charging", ["Charge"])  # "charg"
+
+    def test_known_gap_irregular_forms(self):
+        """Irregular morphology is out of scope: no dependency-free rule
+        sees "led" as a form of "lead". Documented so the gap is a choice
+        rather than a surprise."""
+        assert is_legal_clue("led", ["Lead"])
