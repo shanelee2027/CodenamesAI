@@ -124,7 +124,7 @@ variable \(D\) accounts for all of \(B\). Since \(D\) is a maximum of independen
 
 <p class="noindent">\(D\) is a function of \((\varepsilon_w)_{w \in B}\) only, which is
 independent of \((\varepsilon_i)_{i \in A}\). Thus conditioning on \(D = d\) does not change the
-law of the \(\hat z_i\), and each \(i \in A\) independently satisfies \(\hat z_i > d\) with
+distribution of the \(\hat z_i\), and each \(i \in A\) independently satisfies \(\hat z_i > d\) with
 probability</p>
 
 \[ p_i(d) \;=\; \Phi\!\left(\frac{a_i - d}{\sigma}\right). \]
@@ -142,8 +142,8 @@ the expected cost incurred. From Section 2 the guesser reveals \(\min(k, N)\) wo
 \[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF(d). \]
 
 <p class="noindent">A cost is incurred if and only if \(N < k\), and that cost is \(c_{W^\ast}\),
-so we need the law of \(W^\ast\) given \(D = d\). The joint density of \(W^\ast = w\) and
-\(D = d\) is</p>
+so we need the conditional distribution of \(W^\ast\) given \(D = d\). The joint density of
+\(W^\ast = w\) and \(D = d\) is</p>
 
 \[ \sigma^{-1}\varphi\!\left(\frac{d - b_w}{\sigma}\right)
    \prod_{v \ne w} \Phi\!\left(\frac{d - b_v}{\sigma}\right)
@@ -154,7 +154,7 @@ Dividing by \(f(d) = \sigma^{-1} F(d) \sum_{v} h_v(d)\) gives</p>
 
 \[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}. \]
 
-<p class="noindent">Letting \(\bar c(d)\) be the expected cost under this law,</p>
+<p class="noindent">Letting \(\bar c(d)\) be the expected cost under this distribution,</p>
 
 \[ \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}, \qquad
    P(k) \;=\; \int \Pr(N < k \mid D = d)\, \bar c(d) \,\, dF(d). \]
