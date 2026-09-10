@@ -153,7 +153,7 @@ distribution function of a standard normal. Each \(\hat z_w\) is \(N(b_w, \sigma
 
 <p class="noindent">Since \(D\) is a maximum of independent variables,</p>
 
-\[ F_D(d) \;=\; \Pr(D \le d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
+\[ F_D(d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
 
 <h2><span class="n">3</span>Conditional distribution</h2>
 
@@ -200,30 +200,35 @@ conditionally independent given \(D\), and the expectation splits:</p>
 <p class="noindent">The first factor is again a probability for the Bernoulli sum of Section 3. It
 remains to compute \(\bar c(d)\), for which we need \(\Pr(W^\ast = w \mid D = d)\).</p>
 
-<p class="noindent">The event that \(W^\ast = w\) with \(D\) near \(d\) is the event that
-\(\hat z_w\) lies near \(d\) and every other \(\hat z_v\) is below \(d\). The \(\hat z\) are
-independent, so its density is the density of \(\hat z_w\) at \(d\) times the probability that
-each other \(\hat z_v\) falls below \(d\). Both were given in Section 2, so this density is</p>
+<p class="noindent">Since \(D\) is continuous, \(\Pr(D = d) = 0\) and the conditional
+probability is a ratio of densities rather than of probabilities. Writing \(g_w\) for the joint
+density of \(W^\ast = w\) and \(D\) at \(d\),</p>
 
-\[ \sigma^{-1}\varphi\!\left(\frac{d - b_w}{\sigma}\right)
-   \prod_{v \ne w} \Phi\!\left(\frac{d - b_v}{\sigma}\right). \]
+\[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{g_w(d)}{f_D(d)}. \]
 
-<p class="noindent">The product over \(v \ne w\) is \(F_D(d)\) with the \(w\)-th factor removed, so
-it equals \(F_D(d) \big/ \Phi\bigl((d - b_w)/\sigma\bigr)\). Set</p>
+<p class="noindent">Take the numerator first. \(W^\ast = w\) and \(D = d\) means \(\hat z_w = d\)
+and \(\hat z_v &lt; d\) for every other \(v \in B\). The \(\hat z\) are independent, so</p>
 
-\[ h_w(d) \;=\; \frac{\varphi\bigl((d - b_w)/\sigma\bigr)}{\Phi\bigl((d - b_w)/\sigma\bigr)}, \]
+\[ g_w(d) \;=\; f_{\hat z_w}(d) \prod_{v \ne w} F_{\hat z_v}(d). \]
 
-<p class="noindent">so the density above is \(\sigma^{-1} F_D(d)\, h_w(d)\). The events
-\(\{W^\ast = w\}\) are disjoint and cover everything, so summing over \(w\) gives the density of
-\(D\) at \(d\),</p>
+<p class="noindent">The events \(\{W^\ast = w\}\), \(w \in B\), are disjoint and exhaust the
+possibilities, so the denominator is</p>
 
-\[ f_D(d) \;=\; \sigma^{-1} F_D(d) \sum_v h_v(d). \]
+\[ f_D(d) \;=\; \sum_{w \in B} g_w(d). \]
 
-<p class="noindent">Dividing the joint density by \(f_D(d)\), the factors \(\sigma^{-1}\) and
-\(F_D(d)\) cancel:</p>
+<p class="noindent">Both simplify. From Section 2, \(F_D(d) = \prod_{v \in B} F_{\hat z_v}(d)\), so
+the product over \(v \ne w\) is \(F_D(d) \big/ F_{\hat z_w}(d)\). Set</p>
+
+\[ h_w(d) \;=\; \frac{f_{\hat z_w}(d)}{F_{\hat z_w}(d)}
+   \;=\; \frac{\sigma^{-1}\varphi\bigl((d - b_w)/\sigma\bigr)}
+              {\Phi\bigl((d - b_w)/\sigma\bigr)}, \]
+
+<p class="noindent">so that \(g_w(d) = F_D(d)\, h_w(d)\) and
+\(f_D(d) = F_D(d) \sum_v h_v(d)\). The \(F_D(d)\) cancels in the ratio:</p>
 
 \[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}, \qquad
    \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}. \]
+
 
 <p class="noindent">Thus \(\bar c(d)\) is a weighted average of the costs. The weight \(h_w(d)\) is
 large when \(b_w\) is near \(d\) and small when \(b_w\) lies well below it, so the average is over
