@@ -3424,3 +3424,50 @@ Fixed by running with `PYTHONPATH=.` from the repo root rather than
 editing `sys.path` in the script itself. 340 tests pass (335 - 17
 deleted z_threshold tests + 19 new expected_words tests + 3 pre-existing
 uncommitted changes already in this worktree at session start).
+
+## Sizing the first paid evaluation
+
+Before spending anything on the LLM guesser, measured what 50 two-team
+games (baseline spymaster on both sides) would actually cost. Simulated
+the games locally with a wrapper guesser that builds the exact prompt
+`LLMGuesser` would send, records its size, then delegates the ranking to
+`noisy_numberbatch` -- so the call count and prompt sizes are real
+without spending anything.
+
+**Measured:** 14.3 guesser calls per game (min 10, max 22), **715 calls**
+for 50 games; mean 17.0 candidate words per call (not 25 -- most turns
+happen after some words are revealed); prompt 533 chars ~ 165 tokens.
+`LLMGuesser.max_tokens` is 512, which bounds worst-case output at 366k
+tokens for the whole run regardless of how much the model thinks.
+
+Priced the proposal to have the model return only the `n` words it would
+guess instead of the full ranking. The full JSON array averages **158
+chars ~ 44 tokens**; top-n only averages 11 chars ~ 3 tokens. Saving is
+~41 tokens/call, **~$2.20 of a ~$20-27 run (~10%)**, because thinking
+tokens bill as output and don't shrink when the answer does -- the model
+still weighs all 17 words to name 1. Not taken: the full ranking is the
+only way to see *where* the assassin sat when a clue fails, which is the
+data that calibrates sigma, and `_parse_ranking`'s board-order fallback
+would silently become the normal path for the unranked words. The
+non-cost argument for top-n (it's the task a real guesser performs) is a
+separate methodology question, not a budget one.
+
+Note these dollar figures assume $15/$75 per Mtok and, more importantly,
+*estimate* the thinking/text split rather than measuring it.
+`scripts/tools/probe_llm_cost.py` settles it for a few cents: it runs
+real board positions through the API, splits `usage.output_tokens` into
+visible text (measured with the free `count_tokens` endpoint) and
+inferred thinking, and projects to 715 calls. It also doubles as the
+first live exercise of the eval path, which until now has only ever run
+against mocks -- its last stage makes one real `LLMGuesser` call and
+checks that the response parses, the disk cache writes, and a fresh
+instance reads the same ranking back.
+
+Rejected using the Claude subscription (`claude -p` / the Agent SDK)
+instead of the API. It would be free at the margin, but ships the harness
+system prompt and tool definitions with every 165-token request, spawns a
+process per call, and -- the reason that actually decides it -- gives up
+exact model pinning. `CLAUDE.md` already names `cache/llm_store.db` as
+the only thing making past evaluations reproducible; "Messages API,
+model=claude-opus-5, effort=medium" is defensible in a viva, "shelled out
+to my IDE assistant" is not.

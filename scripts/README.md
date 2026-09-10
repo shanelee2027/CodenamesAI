@@ -46,4 +46,4 @@ Evaluation proper — the LLM guesser, against frozen board seeds — lives in
 | `inspector.py` | CLI single-turn inspector |
 | `check_clue.py` | look up one clue's similarities |
 | `dump_game_records.py` | human-readable view of recorded games |
-| `scratch_llm_transcripts.py` | one-off LLM transcript prints (needs `ANTHROPIC_API_KEY`; no CLI args) |
+| `probe_llm_cost.py` | price an LLM guesser turn on real positions (**spends money**; `--dry-run` is free) |
