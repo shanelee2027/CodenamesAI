@@ -132,13 +132,6 @@ probability</p>
 <p class="noindent">Given \(D = d\), the count \(N\) is therefore a sum of independent Bernoulli
 variables, that is, Poisson–binomial with parameters \(\{p_i(d)\}_{i \in A}\).</p>
 
-<p>We condition on \(D\) rather than multiplying marginal probabilities because the events
-\(\{\hat z_i > \hat z_w\}\) are not independent. For fixed \(i\) they share \(\varepsilon_i\),
-and for fixed \(w\) they share \(\varepsilon_w\). Both dependencies are positive, so
-\(\prod_w \Phi\bigl((a_i - b_w)/\sigma\sqrt 2\bigr)\) is a strict lower bound on
-\(\Pr(\hat z_i > D)\) rather than an approximation to it. Conditioning on \(D\) removes both,
-since \(D\) is the only quantity the two groups share.</p>
-
 <h2><span class="n">4</span>Objective</h2>
 
 <p class="noindent">Let \(G(k)\) be the expected number of words of \(A\) revealed and \(P(k)\)
@@ -146,22 +139,25 @@ the expected cost incurred. From Section 2 the guesser reveals \(\min(k, N)\) wo
 \(\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}\). Taking expectations and conditioning on
 \(D\),</p>
 
-\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \; dF(d). \]
+\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF(d). \]
 
 <p class="noindent">A cost is incurred if and only if \(N < k\), and that cost is \(c_{W^\ast}\),
-so we need the law of \(W^\ast\) given \(D = d\). The density of \(\{W^\ast = w,\, D \in dd\}\)
-is</p>
+so we need the law of \(W^\ast\) given \(D = d\). The joint density of \(W^\ast = w\) and
+\(D = d\) is</p>
 
-\[ \sigma^{-1}\varphi\!\left(\frac{d - b_w}{\sigma}\right) \prod_{v \ne w} \Phi\!\left(\frac{d - b_v}{\sigma}\right)
-   \;=\; \sigma^{-1} F(d)\, h_w(d), \qquad
-   h_w(d) = \frac{\varphi\bigl((d - b_w)/\sigma\bigr)}{\Phi\bigl((d - b_w)/\sigma\bigr)}. \]
+\[ \sigma^{-1}\varphi\!\left(\frac{d - b_w}{\sigma}\right)
+   \prod_{v \ne w} \Phi\!\left(\frac{d - b_v}{\sigma}\right)
+   \;=\; \sigma^{-1} F(d)\, h_w(d), \]
 
-<p class="noindent">Dividing by \(f(d) = \sigma^{-1} F(d) \sum_{v} h_v(d)\) gives
-\(\Pr(W^\ast = w \mid D = d) = h_w(d) / \sum_v h_v(d)\). Letting \(\bar c(d)\) be the expected
-cost under this law,</p>
+<p class="noindent">where \(h_w(d) = \varphi\bigl((d - b_w)/\sigma\bigr) / \Phi\bigl((d - b_w)/\sigma\bigr)\).
+Dividing by \(f(d) = \sigma^{-1} F(d) \sum_{v} h_v(d)\) gives</p>
+
+\[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}. \]
+
+<p class="noindent">Letting \(\bar c(d)\) be the expected cost under this law,</p>
 
 \[ \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}, \qquad
-   P(k) \;=\; \int \Pr(N < k \mid D = d)\; \bar c(d) \; dF(d). \]
+   P(k) \;=\; \int \Pr(N < k \mid D = d)\, \bar c(d) \,\, dF(d). \]
 
 <p class="noindent">Note that \(\bar c(d)\) is not the same as summing \(c_w\) over every \(w\)
 that might outrank \(a_k\), since only one word of \(B\) is ever selected. We then choose</p>
