@@ -53,6 +53,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from codenames.board import Board, load_holdout_wordlist
+from codenames.env import load_env
 from codenames.guessers.llm import _PROMPT_TEMPLATE, LLMGuesser
 from codenames.similarity import SimilarityTensor
 from codenames.spymasters.base import TurnContext
@@ -236,8 +237,12 @@ def main() -> None:
         print(f"\nDry run: no requests sent. Drop --dry-run to send {n_requests}.")
         return
 
+    load_env()
     if not os.environ.get("ANTHROPIC_API_KEY"):
-        sys.exit("ANTHROPIC_API_KEY is not set; nothing was sent.")
+        sys.exit(
+            "ANTHROPIC_API_KEY is not set; nothing was sent. Put it in .env "
+            "(see .env.example) or export it for one command."
+        )
 
     import anthropic
 

@@ -52,6 +52,11 @@ it is the only thing making past evaluations reproducible. Back it up.
 ## Conventions
 
 - Python 3.11+, type hints on public functions, pytest for tests.
+- `ANTHROPIC_API_KEY` lives in a gitignored `.env` at the repo root (see
+  `.env.example`), loaded by `codenames/env.py` where a client is built.
+  Do **not** export it from the shell profile: Claude Code reads the same
+  variable, and a global export can move Claude Code itself onto API
+  billing instead of the subscription.
 - One module at a time — do not build several at once on a fresh codebase.
 - Commit at every meaningful step. Keep `docs/log.md` updated as work
   proceeds, recording what was expected and what actually happened —

@@ -108,6 +108,16 @@ class LLMGuesser(Guesser):
 
                 import anthropic
 
+                from codenames.env import load_env
+
+                # The key lives in a gitignored .env rather than the shell
+                # profile, so that a global ANTHROPIC_API_KEY can't move
+                # Claude Code itself onto API billing -- see
+                # codenames/env.py. Loaded here, at the same lazy point the
+                # client is built, so importing this module still needs no
+                # key at all.
+                load_env()
+
                 # Some API keys are "identity-linked" (Console access tied
                 # to an org/SSO identity rather than a plain personal
                 # account) and are rejected with a 400 unless every request
