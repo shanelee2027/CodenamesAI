@@ -3580,3 +3580,50 @@ does not have the empirical support claimed here. If anything the
 opposite is worth chasing: 76-81% agreement with our own z-ordering
 suggests **sigma = 2.5 is too pessimistic**, and is the first real
 evidence available for choosing it.
+
+## Polysemy is where a static embedding can't follow the guesser
+
+Chased the one interesting divergence from the model comparison. On seed
+5021, clue `TROUSERS 2`, the guesser took **Fly** (+0.9) over **Suit**
+(+5.1) -- the zip on a pair of trousers. All three spaces rank it the
+same way, so this is not a Numberbatch quirk:
+
+| space | Pants | Suit | Fly |
+|---|---|---|---|
+| numberbatch | +10.32 | +5.15 | +0.88 |
+| glove | +7.79 | +3.72 | +0.60 |
+| wikipedia2vec | +7.50 | +3.44 | +0.62 |
+
+Probing `Fly` against clues aimed at each of its senses shows why (z,
+numberbatch / glove / wikipedia2vec): airplane 4.79/3.60/3.51, mosquito
+4.56/2.03/2.93, insect 4.46/1.97/2.09, wing 4.29/2.03/2.53, fishing
+2.86/2.34/2.44 -- against zipper 1.70/0.21/0.90, pants 1.11/0.77/0.83,
+trousers 0.88/0.60/0.62, button -0.22/0.40/0.39.
+
+Five senses (insect, aviation, fly-fishing, a baseball fly ball, the
+garment) share one vector, which sits near the centroid of the frequent
+ones. The garment sense is the rarest and contributes almost nothing --
+even `zipper`, the most direct probe available, reaches only +1.70 in the
+best space. The association is not absent, it is swamped. An LLM
+disambiguates from context and simply does not have this failure.
+
+Two consequences:
+
+**The cross-space veto will not address this class of error.** It targets
+spaces *disagreeing*; here all three agree and are all wrong together,
+because they share the one-vector-per-type limitation and similar
+training corpora. Still worth building for the assassin problem -- just
+not for this.
+
+**It is a structured deviation, not the noise the model assumes.**
+`expected_words` posits zhat = z + eps with eps ~ N(0, sigma^2)
+independent across words. Polysemy produces word-specific systematic
+offsets: `Fly` is reliably underrated under any garment clue, in every
+space, every time. This is the weakest assumption in
+docs/clue-selection-theory.html and the one most likely to be challenged;
+better to have measured it than to be asked about it cold.
+
+It cuts favourably too. When the guesser sees a connection we don't, we
+collect a word we didn't plan for -- and since 783f7da the objective
+scores *any* own word clearing D, so that upside is counted. Before it,
+it was not.
