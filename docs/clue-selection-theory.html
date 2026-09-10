@@ -175,7 +175,8 @@ and conditioning on \(D\) gives</p>
 
 \[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF(d), \]
 
-<p class="noindent">with each term the Poisson–binomial tail of Section 3.</p>
+<p class="noindent">where each \(\Pr(N \ge j \mid D = d)\) is given by the
+Poisson–binomial distribution of Section 3.</p>
 
 <p class="noindent">Given \(D = d\), the count \(N\) is determined by
 \((\varepsilon_i)_{i \in A}\) and the identity \(W^\ast\) by \((\varepsilon_w)_{w \in B}\). These
@@ -185,7 +186,7 @@ Thus</p>
 \[ P(k) \;=\; \int \Pr(N &lt; k \mid D = d)\; \bar c(d) \,\, dF(d), \qquad
    \bar c(d) = \mathbb E\bigl[\, c_{W^\ast} \mid D = d \,\bigr]. \]
 
-<p class="noindent">The first factor is again the tail of Section 3. It remains to compute
+<p class="noindent">The first factor comes from that same distribution. It remains to compute
 \(\bar c\).</p>
 
 <p class="noindent">\(W^\ast = w\) with \(D\) near \(d\) requires \(\hat z_w \approx d\) and
@@ -241,7 +242,8 @@ into cells \([d_m, d_{m+1}]\). The mass of each cell is \(F(d_{m+1}) - F(d_m)\),
 from Section 2, and we evaluate the conditional factors at the midpoint. The only error is
 discretization.</p>
 
-<p>Given \(d\), the Poisson–binomial tail follows from the standard recursion over \(A\). Letting
+<p>Given \(d\), the probabilities \(\Pr(N \ge j \mid D = d)\) follow from the standard
+recursion over \(A\). Letting
 \(q^{(m)}_r = \Pr(N = r)\) after the first \(m\) words of \(A\),</p>
 
 \[ q^{(0)}_0 = 1, \qquad
