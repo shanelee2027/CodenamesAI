@@ -183,7 +183,7 @@ and conditioning on \(D\) gives</p>
 \[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF_D(d). \]
 
 <p class="noindent">Each \(\Pr(N \ge j \mid D = d)\) follows from the Bernoulli sum of Section 3,
-and the integral is one-dimensional in \(d\). Section 6 computes both. It remains to find
+and the integral is one-dimensional in \(d\). Section 5 computes both. It remains to find
 \(P\).</p>
 
 <p class="noindent">In \(P\) the cost \(c_{W^\ast}\) and the event \(\{N &lt; k\}\) both depend on
@@ -211,12 +211,11 @@ every other \(v \in B\). The \(\hat z\) are independent, so</p>
 
 \[ g_w(d) \;=\; f_{\hat z_w}(d) \prod_{v \ne w} F_{\hat z_v}(d). \]
 
-<p class="noindent">The events \(\{W^\ast = w\}\), \(w \in B\), are disjoint and exhaust the
-possibilities, so</p>
+<p class="noindent">The events \(\{W^\ast = w\}\), \(w \in B\), are disjoint and exhaustive, so</p>
 
 \[ f_D(d) \;=\; \sum_{w \in B} g_w(d). \]
 
-<p class="noindent">Both simplify. From Section 2, \(F_D(d) = \prod_{v \in B} F_{\hat z_v}(d)\), so
+<p class="noindent">From Section 2, \(F_D(d) = \prod_{v \in B} F_{\hat z_v}(d)\), so
 the product over \(v \ne w\) is \(F_D(d) \big/ F_{\hat z_w}(d)\). Set</p>
 
 \[ h_w(d) \;=\; \frac{f_{\hat z_w}(d)}{F_{\hat z_w}(d)}
@@ -229,56 +228,57 @@ the product over \(v \ne w\) is \(F_D(d) \big/ F_{\hat z_w}(d)\). Set</p>
 \[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}, \qquad
    \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}. \]
 
-
-<p class="noindent">Thus \(\bar c(d)\) is a weighted average of the costs. The weight \(h_w(d)\) is
-large when \(b_w\) is near \(d\) and small when \(b_w\) lies well below it, so the average is over
-the words of \(B\) that can be the one selected. Note that the costs are averaged and not summed:
-only one word of \(B\) is ever selected, however many of them outrank \(a_k\).</p>
-
 <p class="noindent">We choose the clue maximizing the value,</p>
 
 \[ \text{clue}^\ast \;=\; \operatorname*{arg\,max}_{\text{word},\; 1 \le k \le K}
    \bigl[\, G(k) - P(k) \,\bigr]. \]
 
-<h2><span class="n">5</span>Properties</h2>
+<h2><span class="n">5</span>Computation</h2>
 
-<p class="noindent">From the sum defining \(G\),</p>
+<p class="noindent">Both \(G\) and \(P\) have the form \(\int \psi(d)\, dF_D(d)\) for a bounded
+\(\psi\):</p>
 
-\[ G(k) - G(k-1) \;=\; \Pr(N \ge k), \]
+\[ \psi_G(d) = \sum_{j=1}^{k} \Pr(N \ge j \mid D = d), \qquad
+   \psi_P(d) = \Pr(N &lt; k \mid D = d)\, \bar c(d). \]
 
-<p class="noindent">which is non-increasing in \(k\). Thus \(G\) is concave, and the marginal value
-of claiming one more word is exactly the probability of reaching it. Note that replacing
-\(G(k)\) with \(k\) gives an objective whose maximizer is \(k = K\) for every board, since the
-first term then grows by 1 for each additional word while \(P\) is bounded.</p>
+<p class="noindent">Integrating against \(dF_D\) needs no density. Partition an interval
+\([d_0, d_M]\) into cells \([d_m, d_{m+1}]\) and let</p>
 
-<p>If \(b_w \to -\infty\) with all else fixed, then \(h_w \to 0\) and
-\(F_{\hat z_w}(d) \to 1\) wherever \(F_D\) has mass, so both \(G\) and \(P\)
-converge to their values with \(w\) removed from \(B\). Thus a sufficiently dissimilar word does
-not affect the objective, and only the weakest word of \(A\) being claimed and the strongest
-word of \(B\) carry weight.</p>
+\[ u_m \;=\; F_D(d_{m+1}) - F_D(d_m), \qquad
+   \bar d_m \;=\; \tfrac{1}{2}(d_m + d_{m+1}), \]
 
-<p>The costs \(c_w\) enter only through \(\bar c\), and not through \(G\). Thus pricing one kind
-of mistake differently from another requires only changing the constants.</p>
+<p class="noindent">so that \(u_m\) is the mass \(F_D\) assigns to the \(m\)-th cell, a difference
+of two products from Section 2. Evaluating \(\psi\) at the midpoint of each cell,</p>
 
-<h2><span class="n">6</span>Computation</h2>
+\[ \int \psi(d) \, dF_D(d) \;\approx\; \sum_{m} \psi(\bar d_m)\, u_m. \]
 
-<p class="noindent">Both integrals are one-dimensional and require no density. Partition the line
-into cells \([d_m, d_{m+1}]\). The mass of each cell is \(F_D(d_{m+1}) - F_D(d_m)\), which we have
-from Section 2, and we evaluate the conditional factors at the midpoint. The only error is
-discretization.</p>
+<p class="noindent">The cell masses are exact, so the only error is the variation of \(\psi\)
+across a cell. Note that \(f_D\) is never formed: it appeared in Section 4 only as an intermediate
+that cancelled.</p>
 
-<p>Given \(d\), the probabilities \(\Pr(N \ge j \mid D = d)\) follow from the standard
-recursion over \(A\). Letting
-\(q^{(m)}_r = \Pr(N = r)\) after the first \(m\) words of \(A\),</p>
+<p>Take \(d_0\) below every \(b_w\) and \(d_M\) above every \(b_w\), each by several \(\sigma\),
+so that \(F_D(d_0)\) and \(1 - F_D(d_M)\) are negligible and no mass falls outside the grid. The
+same grid and the same \(u_m\) serve both integrals, so one pass over the cells gives \(G(k)\) and
+\(P(k)\) together, and for every \(k \le K\) at once.</p>
+
+<p>Within a cell, \(\bar c(\bar d_m)\) is immediate from its definition, at a cost of \(|B|\)
+terms. The probabilities \(\Pr(N \ge j \mid D = \bar d_m)\) follow from the standard recursion for
+a sum of independent Bernoulli variables. Letting \(q^{(i)}_r\) be \(\Pr(N = r)\) after the first
+\(i\) words of \(A\),</p>
 
 \[ q^{(0)}_0 = 1, \qquad
-   q^{(m)}_r \;=\; q^{(m-1)}_r\bigl(1 - p_m(d)\bigr) \;+\; q^{(m-1)}_{r-1}\,p_m(d), \]
+   q^{(i)}_r \;=\; q^{(i-1)}_r\bigl(1 - p_i(\bar d_m)\bigr) \;+\; q^{(i-1)}_{r-1}\,p_i(\bar d_m), \]
 
-<p class="noindent">and \(\Pr(N \ge j \mid D = d) = 1 - \sum_{r < j} q_r\). Counts above \(k\) are
-never used, so the recursion may be truncated there, giving cost linear in \(|A|\) and in
-\(k\).</p>
+<p class="noindent">and \(\Pr(N \ge j \mid D = \bar d_m) = 1 - \sum_{r &lt; j} q_r\). Counts above
+\(K\) are never used, so the recursion may be truncated there, costing \(|A|K\) per cell rather
+than \(|A|^2\).</p>
 
-<h2><span class="n">7</span>Results</h2>
+<p>The total is \(O\bigl(M(|A|K + |B|)\bigr)\) per clue, with \(M\) the number of cells. Every
+step is a fixed sequence of arithmetic on arrays of the same shape, so the whole clue vocabulary is
+scored at once rather than one clue at a time.</p>
+
+
+<h2><span class="n">6</span>Results</h2>
 
 <p class="noindent">The model above has one free parameter. To choose it, \(\sigma\) was swept over
 three orders of magnitude and each value was made to play the same 100 positions, drawn from
@@ -365,7 +365,7 @@ turn ended.</p>
 \(\sigma\) are assassin turns, each costing \(-10\).</figcaption>
 </figure>
 
-<p class="noindent">Both limits behave as Section 5 requires. As \(\sigma \to 0\) the model
+<p class="noindent">Both limits saturate. As \(\sigma \to 0\) the model
 treats the guesser as a copy of itself and announces \(k = K\) on nearly every board, and as
 \(\sigma\) grows it announces \(k = 1\) and stops responding to further increases. Neither end
 is optimal, and the reward curve is single-peaked between them.</p>
