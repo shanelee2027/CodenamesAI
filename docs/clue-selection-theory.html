@@ -241,23 +241,16 @@ the product over \(v \ne w\) is \(F_D(d) \big/ F_{\hat z_w}(d)\). Set</p>
 \[ \psi_G(d) = \sum_{j=1}^{k} \Pr(N \ge j \mid D = d), \qquad
    \psi_P(d) = \Pr(N &lt; k \mid D = d)\, \bar c(d). \]
 
-<p class="noindent">Each is an integral against the distribution function \(F_D\), that is, an
-average of \(\psi\) over the distribution of \(D\). What such an integral asks for is the mass
-\(F_D\) places on each part of the line, and that mass is a difference of two values of \(F_D\),
-so \(F_D\) is evaluated but never differentiated. Partition an interval \([d_0, d_M]\) into cells
-\([d_m, d_{m+1}]\) and let</p>
+<p class="noindent">Both are evaluated by numerical integration. Partition an interval
+\([d_0, d_M]\) into cells \([d_m, d_{m+1}]\), take \(\psi\) at the midpoint
+\(\bar d_m = \tfrac{1}{2}(d_m + d_{m+1})\) of each, and weight it by the probability that \(D\)
+lands in that cell:</p>
 
 \[ u_m \;=\; F_D(d_{m+1}) - F_D(d_m), \qquad
-   \bar d_m \;=\; \tfrac{1}{2}(d_m + d_{m+1}), \]
+   \int \psi(d) \, dF_D(d) \;\approx\; \sum_m \psi(\bar d_m)\, u_m. \]
 
-<p class="noindent">so that \(u_m = \Pr(d_m &lt; D \le d_{m+1})\), obtained from two evaluations of
-the product in Section 2. Holding \(\psi\) at its midpoint value across each cell,</p>
-
-\[ \int \psi(d) \, dF_D(d) \;\approx\; \sum_{m} \psi(\bar d_m)\, u_m. \]
-
-<p class="noindent">The \(u_m\) are exact, so the only error is the variation of \(\psi\) within a
-cell, and refining the grid reduces it. The density \(f_D\) is never needed; it appeared in
-Section 4 only as an intermediate that cancelled.</p>
+<p class="noindent">The \(u_m\) are exact, being differences of the product in Section 2, so the
+only error is the variation of \(\psi\) within a cell.</p>
 
 <p>Take \(d_0\) below every \(b_w\) and \(d_M\) above every \(b_w\), each by several \(\sigma\),
 so that \(F_D(d_0)\) and \(1 - F_D(d_M)\) are negligible and no mass falls outside the grid. The
