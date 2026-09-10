@@ -153,7 +153,8 @@ distribution function of a standard normal. Each \(\hat z_w\) is \(N(b_w, \sigma
 
 <p class="noindent">Since \(D\) is a maximum of independent variables,</p>
 
-\[ F_D(d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
+\[ F_D(d) \;=\; \prod_{w \in B} F_{\hat z_w}(d)
+   \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
 
 <h2><span class="n">3</span>Conditional distribution</h2>
 
@@ -252,7 +253,7 @@ of claiming one more word is exactly the probability of reaching it. Note that r
 first term then grows by 1 for each additional word while \(P\) is bounded.</p>
 
 <p>If \(b_w \to -\infty\) with all else fixed, then \(h_w \to 0\) and
-\(\Phi\bigl((d - b_w)/\sigma\bigr) \to 1\) wherever \(F_D\) has mass, so both \(G\) and \(P\)
+\(F_{\hat z_w}(d) \to 1\) wherever \(F_D\) has mass, so both \(G\) and \(P\)
 converge to their values with \(w\) removed from \(B\). Thus a sufficiently dissimilar word does
 not affect the objective, and only the weakest word of \(A\) being claimed and the strongest
 word of \(B\) carry weight.</p>
