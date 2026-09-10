@@ -163,57 +163,53 @@ variables, that is, Poisson–binomial with parameters \(\{p_i(d)\}_{i \in A}\).
 <h2><span class="n">4</span>Objective</h2>
 
 <p class="noindent">From Section 2 the guesser reveals \(\min(k, N)\) words of \(A\), and selects
-one word of \(B\), namely \(W^\ast\), exactly when \(N &lt; k\). Write</p>
+\(W^\ast\) exactly when \(N &lt; k\). Let</p>
 
 \[ G(k) = \mathbb E\bigl[\min(k, N)\bigr], \qquad
-   P(k) = \mathbb E\bigl[\, c_{W^\ast}\,\mathbf 1\{N &lt; k\} \,\bigr], \]
+   P(k) = \mathbb E\bigl[\, c_{W^\ast}\,\mathbf 1\{N &lt; k\} \,\bigr]. \]
 
-<p class="noindent">so that announcing \(k\) is worth \(G(k) - P(k)\). We compute the two in
-turn.</p>
+<p class="noindent">Announcing \(k\) is worth \(G(k) - P(k)\).</p>
 
-<p class="noindent">For \(G\), write \(\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}\) and take
-expectations, conditioning on \(D\):</p>
+<p class="noindent">Since \(\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}\), taking expectations
+and conditioning on \(D\) gives</p>
 
-\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF(d). \]
+\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF(d), \]
 
-<p class="noindent">Every term is the Poisson–binomial tail of Section 3, so \(G\) is done.</p>
+<p class="noindent">with each term the Poisson–binomial tail of Section 3.</p>
 
-<p>For \(P\), note first that \(N\) and \(W^\ast\) are conditionally independent given \(D\).
-Indeed, given \(D = d\), the count \(N\) is determined by \((\varepsilon_i)_{i \in A}\) and the
-identity \(W^\ast\) by \((\varepsilon_w)_{w \in B}\), and those two families are independent.
-The expectation therefore factors:</p>
+<p class="noindent">Given \(D = d\), the count \(N\) is determined by
+\((\varepsilon_i)_{i \in A}\) and the identity \(W^\ast\) by \((\varepsilon_w)_{w \in B}\). These
+two families are independent, so \(N\) and \(W^\ast\) are conditionally independent given \(D\).
+Thus</p>
 
 \[ P(k) \;=\; \int \Pr(N &lt; k \mid D = d)\; \bar c(d) \,\, dF(d), \qquad
    \bar c(d) = \mathbb E\bigl[\, c_{W^\ast} \mid D = d \,\bigr]. \]
 
-<p class="noindent">This is what makes the cost computable: without it the joint distribution of
-\((N, W^\ast)\) would be needed, whereas the first factor is again the tail from Section 3 and the
-second involves only \(B\).</p>
+<p class="noindent">The first factor is again the tail of Section 3. It remains to compute
+\(\bar c\).</p>
 
-<p>It remains to find \(\bar c\). The event that \(W^\ast = w\) with \(D\) near \(d\) requires
-\(\hat z_w \approx d\) and \(\hat z_v &lt; d\) for every other \(v \in B\), so its density is</p>
+<p class="noindent">\(W^\ast = w\) with \(D\) near \(d\) requires \(\hat z_w \approx d\) and
+\(\hat z_v &lt; d\) for every other \(v \in B\). The density of this event is</p>
 
 \[ \sigma^{-1}\varphi\!\left(\frac{d - b_w}{\sigma}\right)
    \prod_{v \ne w} \Phi\!\left(\frac{d - b_v}{\sigma}\right). \]
 
-<p class="noindent">The product equals \(F(d) \big/ \Phi\bigl((d - b_w)/\sigma\bigr)\), so writing</p>
+<p class="noindent">The product equals \(F(d) \big/ \Phi\bigl((d - b_w)/\sigma\bigr)\). Set</p>
 
-\[ h_w(d) \;=\; \frac{\varphi\bigl((d - b_w)/\sigma\bigr)}{\Phi\bigl((d - b_w)/\sigma\bigr)} \]
+\[ h_w(d) \;=\; \frac{\varphi\bigl((d - b_w)/\sigma\bigr)}{\Phi\bigl((d - b_w)/\sigma\bigr)}, \]
 
-<p class="noindent">the density is \(\sigma^{-1} F(d)\, h_w(d)\). Note that \(F(d)\) does not depend
-on \(w\). Summing over \(w\) gives the density of \(D\), and dividing, the \(F(d)\) cancels:</p>
+<p class="noindent">so the density is \(\sigma^{-1} F(d)\, h_w(d)\). Summing over \(w\) gives the
+density of \(D\), and \(F(d)\) cancels in the ratio:</p>
 
-\[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)},
-   \qquad\text{hence}\qquad
+\[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}, \qquad
    \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}. \]
 
-<p class="noindent">So \(\bar c(d)\) is a weighted average of the costs, with weight \(h_w(d)\) on
-each word. That weight is large when \(b_w\) is close to \(d\) and small when \(b_w\) lies well
-below it, so the average is taken over the words of \(B\) that could plausibly be the one
-selected. In particular \(\bar c\) averages the costs rather than summing them, since only one word
-of \(B\) is ever selected however many of them outrank \(a_k\).</p>
+<p class="noindent">Thus \(\bar c(d)\) is a weighted average of the costs. The weight \(h_w(d)\) is
+large when \(b_w\) is near \(d\) and small when \(b_w\) lies well below it, so the average is over
+the words of \(B\) that can be the one selected. Note that the costs are averaged and not summed:
+only one word of \(B\) is ever selected, however many of them outrank \(a_k\).</p>
 
-<p class="noindent">Both pieces are now in hand, and we choose</p>
+<p class="noindent">We choose</p>
 
 \[ (\text{clue}^\ast, k^\ast) \;=\; \operatorname*{arg\,max}_{\text{clue},\; 1 \le k \le K}
    \bigl[\, G(k) - P(k) \,\bigr]. \]
