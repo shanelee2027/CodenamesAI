@@ -116,10 +116,11 @@
 <h2><span class="n">1</span>Setup</h2>
 
 <p>Let \(A\) be the set of board words we want the guesser to select and \(B\) the set we want
-them to avoid. Fix a clue, and let \(a_i\) be its similarity to word \(i \in A\) and \(b_w\) its
-similarity to word \(w \in B\), where the \(a_i\) are sorted so that \(a_1 \ge a_2 \ge \dots\).
-Let \(c_w > 0\) be the cost incurred if the guesser selects \(w\). Announcing the number \(k\)
-allows the guesser \(k\) selections. We want to choose both the clue and \(k\).</p>
+them to avoid. A clue is a clue word together with a number \(k\), and announcing it allows the
+guesser \(k\) selections. Fix a clue word, and let \(a_i\) be its similarity to word \(i \in A\)
+and \(b_w\) its similarity to word \(w \in B\), where the \(a_i\) are sorted so that
+\(a_1 \ge a_2 \ge \dots\). Selecting a word of \(A\) is worth \(1\), and selecting \(w \in B\)
+costs \(c_w > 0\). We want to choose both parts of the clue.</p>
 
 <p>We assume the guesser perceives word \(x\) as \(\hat z_x = z_x + \varepsilon_x\), where
 \(z_x\) is our similarity to \(x\) and the \(\varepsilon_x\) are independent \(N(0, \sigma^2)\). 
@@ -144,7 +145,10 @@ the \((N+1)\)-th word is \(W^\ast\). This means the guesser reveals \(\min(k, N)
 \(W^\ast\).</p>
 
 <p>Note that no word of \(B\) other than \(W^\ast\) can be selected, so the single random
-variable \(D\) accounts for all of \(B\). Since \(D\) is a maximum of independent normals,</p>
+variable \(D\) accounts for all of \(B\). Each \(\hat z_w\) is \(N(b_w, \sigma^2)\), so
+\(\Pr(\hat z_w \le d) = \Phi\bigl((d - b_w)/\sigma\bigr)\) and \(\hat z_w\) has density
+\(\sigma^{-1}\varphi\bigl((d - b_w)/\sigma\bigr)\) at \(d\). Since \(D\) is a maximum of
+independent variables,</p>
 
 \[ F(d) \;=\; \Pr(D \le d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
 
@@ -157,50 +161,63 @@ probability</p>
 
 \[ p_i(d) \;=\; \Phi\!\left(\frac{a_i - d}{\sigma}\right). \]
 
-<p class="noindent">Given \(D = d\), the count \(N\) is therefore a sum of independent Bernoulli
-variables, that is, Poisson–binomial with parameters \(\{p_i(d)\}_{i \in A}\).</p>
+<p class="noindent">Given \(D = d\), the count \(N\) is therefore a sum of \(|A|\) independent
+Bernoulli variables, the \(i\)-th with success probability \(p_i(d)\).</p>
 
 <h2><span class="n">4</span>Objective</h2>
 
 <p class="noindent">From Section 2 the guesser reveals \(\min(k, N)\) words of \(A\), and selects
-\(W^\ast\) exactly when \(N &lt; k\). Let</p>
+\(W^\ast\) exactly when \(N &lt; k\). Each word of \(A\) is worth \(1\) and \(W^\ast\) costs
+\(c_{W^\ast}\), so the value of announcing \(k\) is \(G(k) - P(k)\), where</p>
 
 \[ G(k) = \mathbb E\bigl[\min(k, N)\bigr], \qquad
    P(k) = \mathbb E\bigl[\, c_{W^\ast}\,\mathbf 1\{N &lt; k\} \,\bigr]. \]
 
-<p class="noindent">Announcing \(k\) is worth \(G(k) - P(k)\).</p>
-
 <p class="noindent">Since \(\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}\), taking expectations
 and conditioning on \(D\) gives</p>
 
-\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF(d), \]
+\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF(d). \]
 
-<p class="noindent">where each \(\Pr(N \ge j \mid D = d)\) is given by the
-Poisson–binomial distribution of Section 3.</p>
+<p class="noindent">Each \(\Pr(N \ge j \mid D = d)\) follows from the Bernoulli sum of Section 3,
+and the integral is one-dimensional in \(d\). Section 6 computes both. It remains to find
+\(P\).</p>
 
-<p class="noindent">Given \(D = d\), the count \(N\) is determined by
-\((\varepsilon_i)_{i \in A}\) and the identity \(W^\ast\) by \((\varepsilon_w)_{w \in B}\). These
-two families are independent, so \(N\) and \(W^\ast\) are conditionally independent given \(D\).
-Thus</p>
+<p class="noindent">In \(P\) the cost \(c_{W^\ast}\) and the event \(\{N &lt; k\}\) both depend on
+the noise, but they become independent once \(D\) is fixed. To see this, note that \(D\) is a
+function of \((\varepsilon_w)_{w \in B}\) alone, so conditioning on \(D = d\) constrains that
+family and leaves \((\varepsilon_i)_{i \in A}\) with its original distribution. Given \(D = d\),
+the count \(N = \#\{i \in A : z_i + \varepsilon_i &gt; d\}\) is a function of
+\((\varepsilon_i)_{i \in A}\), while the identity \(W^\ast\) is a function of
+\((\varepsilon_w)_{w \in B}\). The two families are independent, so \(N\) and \(W^\ast\) are
+conditionally independent given \(D\), and the expectation splits:</p>
 
 \[ P(k) \;=\; \int \Pr(N &lt; k \mid D = d)\; \bar c(d) \,\, dF(d), \qquad
    \bar c(d) = \mathbb E\bigl[\, c_{W^\ast} \mid D = d \,\bigr]. \]
 
-<p class="noindent">The first factor comes from that same distribution. It remains to compute
-\(\bar c\).</p>
+<p class="noindent">The first factor is again a probability for the Bernoulli sum of Section 3. It
+remains to compute \(\bar c(d)\), for which we need \(\Pr(W^\ast = w \mid D = d)\).</p>
 
-<p class="noindent">\(W^\ast = w\) with \(D\) near \(d\) requires \(\hat z_w \approx d\) and
-\(\hat z_v &lt; d\) for every other \(v \in B\). The density of this event is</p>
+<p class="noindent">The event that \(W^\ast = w\) with \(D\) near \(d\) is the event that
+\(\hat z_w\) lies near \(d\) and every other \(\hat z_v\) is below \(d\). The \(\hat z\) are
+independent, so its density is the density of \(\hat z_w\) at \(d\) times the probability that
+each other \(\hat z_v\) falls below \(d\). Both were given in Section 2, so this density is</p>
 
 \[ \sigma^{-1}\varphi\!\left(\frac{d - b_w}{\sigma}\right)
    \prod_{v \ne w} \Phi\!\left(\frac{d - b_v}{\sigma}\right). \]
 
-<p class="noindent">The product equals \(F(d) \big/ \Phi\bigl((d - b_w)/\sigma\bigr)\). Set</p>
+<p class="noindent">The product over \(v \ne w\) is \(F(d)\) with the \(w\)-th factor removed, so
+it equals \(F(d) \big/ \Phi\bigl((d - b_w)/\sigma\bigr)\). Set</p>
 
 \[ h_w(d) \;=\; \frac{\varphi\bigl((d - b_w)/\sigma\bigr)}{\Phi\bigl((d - b_w)/\sigma\bigr)}, \]
 
-<p class="noindent">so the density is \(\sigma^{-1} F(d)\, h_w(d)\). Summing over \(w\) gives the
-density of \(D\), and \(F(d)\) cancels in the ratio:</p>
+<p class="noindent">so the density above is \(\sigma^{-1} F(d)\, h_w(d)\). The events
+\(\{W^\ast = w\}\) are disjoint and cover everything, so summing over \(w\) gives the density of
+\(D\) at \(d\),</p>
+
+\[ f(d) \;=\; \sigma^{-1} F(d) \sum_v h_v(d). \]
+
+<p class="noindent">Dividing the joint density by \(f(d)\), the factors \(\sigma^{-1}\) and
+\(F(d)\) cancel:</p>
 
 \[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}, \qquad
    \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}. \]
@@ -210,9 +227,9 @@ large when \(b_w\) is near \(d\) and small when \(b_w\) lies well below it, so t
 the words of \(B\) that can be the one selected. Note that the costs are averaged and not summed:
 only one word of \(B\) is ever selected, however many of them outrank \(a_k\).</p>
 
-<p class="noindent">We choose</p>
+<p class="noindent">We choose the clue maximizing the value,</p>
 
-\[ (\text{clue}^\ast, k^\ast) \;=\; \operatorname*{arg\,max}_{\text{clue},\; 1 \le k \le K}
+\[ \text{clue}^\ast \;=\; \operatorname*{arg\,max}_{\text{word},\; 1 \le k \le K}
    \bigl[\, G(k) - P(k) \,\bigr]. \]
 
 <h2><span class="n">5</span>Properties</h2>
