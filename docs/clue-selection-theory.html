@@ -122,7 +122,7 @@ and \(b_w\) its similarity to word \(w \in B\), where the \(a_i\) are sorted so 
 \(a_1 \ge a_2 \ge \dots\). Selecting a word of \(A\) is worth \(1\), and selecting \(w \in B\)
 costs \(c_w > 0\). We want to choose both parts of the clue.</p>
 
-<p>We assume the guesser perceives word \(x\) as \(\hat z_x = z_x + \varepsilon_x\), where
+<p>We assume the guesser perceives word \(x\)'s similarity with the clue word as \(\hat z_x = z_x + \varepsilon_x\), where
 \(z_x\) is our similarity to \(x\) and the \(\varepsilon_x\) are independent \(N(0, \sigma^2)\). 
 This models differences between our interpreted embeddings and the guesser's - higher \(\sigma\) means a larger gap between the two.
 We also assume the guesser selects unrevealed words in decreasing order of \(\hat z\), stopping
@@ -148,12 +148,10 @@ the \((N+1)\)-th word is \(W^\ast\). This means the guesser reveals \(\min(k, N)
 variable \(D\) accounts for all of \(B\). Write \(\varphi\) and \(\Phi\) for the density and the
 distribution function of a standard normal. Each \(\hat z_w\) is \(N(b_w, \sigma^2)\), so</p>
 
-\[ \Pr(\hat z_w \le d) \;=\; \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
+\[ F_{\hat z_w}(x) = \Phi\!\left(\frac{x - b_w}{\sigma}\right), \qquad
+   f_{\hat z_w}(x) = \sigma^{-1}\varphi\!\left(\frac{x - b_w}{\sigma}\right). \]
 
-<p class="noindent">Differentiating in \(d\) gives the density of \(\hat z_w\) at \(d\), namely
-\(\sigma^{-1}\varphi\bigl((d - b_w)/\sigma\bigr)\), the factor \(\sigma^{-1}\) being the
-derivative of the argument. Note that the distribution function carries no such factor, being a
-probability rather than a density. Since \(D\) is a maximum of independent variables,</p>
+<p class="noindent">Since \(D\) is a maximum of independent variables,</p>
 
 \[ F(d) \;=\; \Pr(D \le d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
 
