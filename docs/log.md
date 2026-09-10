@@ -3554,10 +3554,29 @@ strongest available guesser" is the more defensible claim when the number
 is being defended orally. Sonnet is the right choice for development
 runs, where the same positions get replayed often.
 
-**Incidental validation of the Poisson-binomial change.** Only 11 of the
-34-35 own words revealed (**~32%**) were the spymaster's intended top-k;
-two thirds of the yield came from own words *outside* the intended set.
-That is precisely the event the pre-`783f7da` code failed to score -- it
-computed P(the top j own words all clear D) rather than P(at least j own
-words clear D). The guesser genuinely does not reveal the words we meant,
-and the objective is right not to care which ones it takes.
+**Correction: a claimed validation of the Poisson-binomial change was a
+bug in the reporting script.** The first version of this entry reported
+that only ~32% of revealed own words were the spymaster's intended top-k,
+and read that as evidence for scoring N rather than a fixed top-k set.
+Wrong. `collect_positions` built `intended` as `own[:number]` in *board
+order*, never sorting by similarity -- so for the clue HILARIOUS it named
+Ketchup (z -0.1) as intended while Comic sat at z +9.5. Almost every
+"surprise" was the script mislabelling the correct answer.
+
+Corrected: the intended hit rate is **76% (Opus) / 81% (Sonnet)**, and
+only **2 of 25** positions had any unintended own word taken:
+
+- `EXTREME 3` (seed 5008): took Cold +4.0, Scale +3.7, Center +2.3 where
+  Nut +2.6 was intended -- a 0.3 near-tie, yield unchanged at 3/3.
+- `TROUSERS 2` (seed 5021): took Pants +10.3 and **Fly +0.9** over Suit
+  +5.1. Fly is the zip on a pair of trousers; Numberbatch has the
+  category relation to Suit but not the part-of relation to Fly. Yield
+  unchanged at 2/2.
+
+The Poisson-binomial fix stands on its own terms -- it is verified
+against a 3M-sample Monte Carlo to +/-0.002 (see 783f7da), which is a
+mathematical result and does not depend on this measurement. It simply
+does not have the empirical support claimed here. If anything the
+opposite is worth chasing: 76-81% agreement with our own z-ordering
+suggests **sigma = 2.5 is too pessimistic**, and is the first real
+evidence available for choosing it.

@@ -48,6 +48,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from codenames.board import MAX_CLUE_NUMBER, Board, Role, load_holdout_wordlist
+from codenames.clue_stats import ClueStats
 from codenames.env import load_env
 from codenames.guessers.llm import LLMGuesser
 from codenames.similarity import SimilarityTensor
@@ -55,6 +56,27 @@ from codenames.spymasters.base import TurnContext
 from codenames.spymasters.registry import spymaster_spec
 
 CACHE_PATH = PROJECT_ROOT / "cache" / "llm_store.db"
+
+
+def _z_for(clue: str, words: list[str], sims: SimilarityTensor) -> dict[str, float]:
+    """Per-clue standardized similarity -- the quantity the spymaster
+    scores on, so "what it intended" is read off the same scale it used."""
+    stats = _clue_stats()
+    ci = sims.clue_index[clue.lower()]
+    si = stats.space_index(spymaster_spec("expected_words")[1].get("space", "numberbatch"))
+    mu, sd = float(stats.mean[ci, si]), float(stats.std[ci, si])
+    return {w: (float(sims.tensor[ci, sims.board_index[w.lower()], si]) - mu) / sd
+            for w in words}
+
+
+_STATS: ClueStats | None = None
+
+
+def _clue_stats() -> ClueStats:
+    global _STATS
+    if _STATS is None:
+        _STATS = ClueStats.load()
+    return _STATS
 
 
 @dataclass
@@ -85,9 +107,13 @@ def collect_positions(n: int, sims: SimilarityTensor, seed0: int = 5000) -> list
         ctx = TurnContext(board=board, turn_index=len(board.revealed))
         clue, number, _ = spymaster.top_clues(ctx, sims, 1)[0]
         candidates = [w for w in board.words if not board.is_revealed(w)]
-        # What the spymaster was aiming at: its own top-`number` own words
-        # under the clue. Used only for reporting, never for scoring.
-        own = [w for w in candidates if board.role_of(w) is Role.OWN]
+        # What the spymaster was aiming at: the `number` own words the
+        # clue scores highest, ranked by the same per-clue z the spymaster
+        # scores on. Ranking by z is the whole point -- board order says
+        # nothing about what the clue meant. Reporting only, never scoring.
+        z = _z_for(clue, candidates, sims)
+        own = sorted((w for w in candidates if board.role_of(w) is Role.OWN),
+                     key=lambda w: -z[w])
         out.append(Position(board=board, clue=clue, number=number,
                             candidates=candidates, intended=own[:number]))
     return out
