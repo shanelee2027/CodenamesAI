@@ -1,0 +1,213 @@
+<title>Clue Selection Under Noise</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap">
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(', '\\)']], displayMath: [['\\[', '\\]']] },
+    svg: { fontCache: 'global' },
+    options: { menuOptions: { settings: { inTabOrder: false } } }
+  };
+</script>
+<script id="MathJax-script" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js"></script>
+<style>
+  :root {
+    --paper: #FFFFFF;
+    --ink: #111111;
+    --rule: #D8D8D4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14161A;
+      --ink: #E8E6E2;
+      --rule: #2E3238;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14161A;
+    --ink: #E8E6E2;
+    --rule: #2E3238;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 18px;
+    line-height: 1.58;
+    margin: 0;
+    padding: 60px 24px 120px;
+  }
+  article { max-width: 34em; margin: 0 auto; }
+
+  .titleblock { text-align: center; margin-bottom: 44px; }
+  .titleblock h1 { font-size: 1.6rem; font-weight: 600; margin: 0 0 14px; line-height: 1.25; }
+  .titleblock .date { margin: 0; }
+
+  h2 {
+    font-size: 1.16rem; font-weight: 600; margin: 34px 0 12px; line-height: 1.3;
+  }
+  h2 .n { margin-right: 0.9em; }
+
+  p { margin: 0 0 12px; text-align: justify; hyphens: auto; }
+  p + p { text-indent: 1.4em; }
+  p.noindent { text-indent: 0; }
+
+  mjx-container[display="true"] { overflow-x: auto; overflow-y: hidden; padding: 4px 0; margin: 4px 0 !important; }
+  mjx-container { min-width: 0 !important; }
+
+  footer {
+    margin-top: 42px; padding-top: 14px; border-top: 1px solid var(--rule);
+    font-size: 0.86rem; text-align: left;
+  }
+  footer p { text-align: left; text-indent: 0; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  /* Print to PDF: force the light palette regardless of the viewer's theme
+     (a dark ground prints as a solid black page), set page margins rather
+     than body padding, and keep equations off page breaks. */
+  @media print {
+    :root, :root[data-theme="dark"] { --paper: #FFFFFF; --ink: #000000; --rule: #BBBBBB; }
+    @page { margin: 2.4cm 2.6cm; }
+    body { font-size: 11pt; line-height: 1.5; padding: 0; background: #FFFFFF; color: #000000; }
+    article { max-width: none; }
+    .titleblock { margin-bottom: 2em; }
+    h2 { break-after: avoid; page-break-after: avoid; margin-top: 1.6em; }
+    p, mjx-container { break-inside: avoid; page-break-inside: avoid; }
+    footer { break-before: avoid; page-break-before: avoid; }
+  }
+</style>
+
+<article>
+
+<div class="titleblock">
+  <h1>Clue Selection Under Noise</h1>
+  <p class="date">Codenames spymaster, baseline model</p>
+</div>
+
+<h2><span class="n">1</span>Setup</h2>
+
+<p>Let \(A\) be the set of board words we want the guesser to select and \(B\) the set we want
+them to avoid. Fix a clue, and let \(a_i\) be its similarity to word \(i \in A\) and \(b_w\) its
+similarity to word \(w \in B\), where the \(a_i\) are sorted so that \(a_1 \ge a_2 \ge \dots\).
+Let \(c_w > 0\) be the cost incurred if the guesser selects \(w\). Announcing the number \(k\)
+allows the guesser \(k\) selections. We want to choose both the clue and \(k\).</p>
+
+<p>We assume the guesser perceives word \(x\) as \(\hat z_x = z_x + \varepsilon_x\), where
+\(z_x\) is our similarity to \(x\) and the \(\varepsilon_x\) are independent \(N(0, \sigma^2)\).
+We also assume the guesser selects unrevealed words in decreasing order of \(\hat z\), stopping
+after \(k\) selections or upon selecting a word of \(B\), whichever comes first.</p>
+
+<p>In words, the guesser ranks the board the same way we do, perturbed by independent noise of a
+single scale, and then guesses greedily. \(\sigma\) is the only free parameter.</p>
+
+<h2><span class="n">2</span>Reduction</h2>
+
+<p class="noindent">Let</p>
+
+\[ D = \max_{w \in B} \hat z_w, \qquad W^\ast = \operatorname*{arg\,max}_{w \in B} \hat z_w,
+   \qquad N = \#\{\, i \in A : \hat z_i > D \,\}. \]
+
+<p class="noindent">Every word ranked above \(D\) is in \(A\), since \(D\) is the maximum of
+\(\hat z\) over \(B\). Thus the guesser's ordering begins with the \(N\) words counted above, and
+the \((N+1)\)-th word is \(W^\ast\). This means the guesser reveals \(\min(k, N)\) words of
+\(A\), and selects a word of \(B\) if and only if \(N < k\), in which case that word is
+\(W^\ast\).</p>
+
+<p>Note that no word of \(B\) other than \(W^\ast\) can be selected, so the single random
+variable \(D\) accounts for all of \(B\). Since \(D\) is a maximum of independent normals,</p>
+
+\[ F(d) \;=\; \Pr(D \le d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
+
+<h2><span class="n">3</span>Conditional distribution</h2>
+
+<p class="noindent">\(D\) is a function of \((\varepsilon_w)_{w \in B}\) only, which is
+independent of \((\varepsilon_i)_{i \in A}\). Thus conditioning on \(D = d\) does not change the
+law of the \(\hat z_i\), and each \(i \in A\) independently satisfies \(\hat z_i > d\) with
+probability</p>
+
+\[ p_i(d) \;=\; \Phi\!\left(\frac{a_i - d}{\sigma}\right). \]
+
+<p class="noindent">Given \(D = d\), the count \(N\) is therefore a sum of independent Bernoulli
+variables, that is, Poisson–binomial with parameters \(\{p_i(d)\}_{i \in A}\).</p>
+
+<p>We condition on \(D\) rather than multiplying marginal probabilities because the events
+\(\{\hat z_i > \hat z_w\}\) are not independent. For fixed \(i\) they share \(\varepsilon_i\),
+and for fixed \(w\) they share \(\varepsilon_w\). Both dependencies are positive, so
+\(\prod_w \Phi\bigl((a_i - b_w)/\sigma\sqrt 2\bigr)\) is a strict lower bound on
+\(\Pr(\hat z_i > D)\) rather than an approximation to it. Conditioning on \(D\) removes both,
+since \(D\) is the only quantity the two groups share.</p>
+
+<h2><span class="n">4</span>Objective</h2>
+
+<p class="noindent">Let \(G(k)\) be the expected number of words of \(A\) revealed and \(P(k)\)
+the expected cost incurred. From Section 2 the guesser reveals \(\min(k, N)\) words of \(A\), and
+\(\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}\). Taking expectations and conditioning on
+\(D\),</p>
+
+\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \; dF(d). \]
+
+<p class="noindent">A cost is incurred if and only if \(N < k\), and that cost is \(c_{W^\ast}\),
+so we need the law of \(W^\ast\) given \(D = d\). The density of \(\{W^\ast = w,\, D \in dd\}\)
+is</p>
+
+\[ \sigma^{-1}\varphi\!\left(\frac{d - b_w}{\sigma}\right) \prod_{v \ne w} \Phi\!\left(\frac{d - b_v}{\sigma}\right)
+   \;=\; \sigma^{-1} F(d)\, h_w(d), \qquad
+   h_w(d) = \frac{\varphi\bigl((d - b_w)/\sigma\bigr)}{\Phi\bigl((d - b_w)/\sigma\bigr)}. \]
+
+<p class="noindent">Dividing by \(f(d) = \sigma^{-1} F(d) \sum_{v} h_v(d)\) gives
+\(\Pr(W^\ast = w \mid D = d) = h_w(d) / \sum_v h_v(d)\). Letting \(\bar c(d)\) be the expected
+cost under this law,</p>
+
+\[ \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}, \qquad
+   P(k) \;=\; \int \Pr(N < k \mid D = d)\; \bar c(d) \; dF(d). \]
+
+<p class="noindent">Note that \(\bar c(d)\) is not the same as summing \(c_w\) over every \(w\)
+that might outrank \(a_k\), since only one word of \(B\) is ever selected. We then choose</p>
+
+\[ (\text{clue}^\ast, k^\ast) \;=\; \operatorname*{arg\,max}_{\text{clue},\; 1 \le k \le K}
+   \bigl[\, G(k) - P(k) \,\bigr]. \]
+
+<h2><span class="n">5</span>Properties</h2>
+
+<p class="noindent">From the sum defining \(G\),</p>
+
+\[ G(k) - G(k-1) \;=\; \Pr(N \ge k), \]
+
+<p class="noindent">which is non-increasing in \(k\). Thus \(G\) is concave, and the marginal value
+of claiming one more word is exactly the probability of reaching it. Note that replacing
+\(G(k)\) with \(k\) gives an objective whose maximizer is \(k = K\) for every board, since the
+first term then grows by 1 for each additional word while \(P\) is bounded.</p>
+
+<p>If \(b_w \to -\infty\) with all else fixed, then \(h_w \to 0\) and
+\(\Phi\bigl((d - b_w)/\sigma\bigr) \to 1\) wherever \(F\) has mass, so both \(G\) and \(P\)
+converge to their values with \(w\) removed from \(B\). Thus a sufficiently dissimilar word does
+not affect the objective, and only the weakest word of \(A\) being claimed and the strongest
+word of \(B\) carry weight.</p>
+
+<p>The costs \(c_w\) enter only through \(\bar c\), and not through \(G\). Thus pricing one kind
+of mistake differently from another requires only changing the constants.</p>
+
+<h2><span class="n">6</span>Computation</h2>
+
+<p class="noindent">Both integrals are one-dimensional and require no density. Partition the line
+into cells \([d_m, d_{m+1}]\). The mass of each cell is \(F(d_{m+1}) - F(d_m)\), which we have
+from Section 2, and we evaluate the conditional factors at the midpoint. The only error is
+discretization.</p>
+
+<p>Given \(d\), the Poisson–binomial tail follows from the standard recursion over \(A\). Letting
+\(q^{(m)}_r = \Pr(N = r)\) after the first \(m\) words of \(A\),</p>
+
+\[ q^{(0)}_0 = 1, \qquad
+   q^{(m)}_r \;=\; q^{(m-1)}_r\bigl(1 - p_m(d)\bigr) \;+\; q^{(m-1)}_{r-1}\,p_m(d), \]
+
+<p class="noindent">and \(\Pr(N \ge j \mid D = d) = 1 - \sum_{r < j} q_r\). Counts above \(k\) are
+never used, so the recursion may be truncated there, giving cost linear in \(|A|\) and in
+\(k\).</p>
+
+<footer>
+  <p>Here \(a_i\) and \(b_w\) are similarities standardized per clue, \(c_w\) are the costs of
+  the words to avoid, and \(\sigma\) is the guesser's per-word perturbation.</p>
+</footer>
+
+</article>
