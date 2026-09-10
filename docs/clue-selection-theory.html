@@ -145,10 +145,15 @@ the \((N+1)\)-th word is \(W^\ast\). This means the guesser reveals \(\min(k, N)
 \(W^\ast\).</p>
 
 <p>Note that no word of \(B\) other than \(W^\ast\) can be selected, so the single random
-variable \(D\) accounts for all of \(B\). Each \(\hat z_w\) is \(N(b_w, \sigma^2)\), so
-\(\Pr(\hat z_w \le d) = \Phi\bigl((d - b_w)/\sigma\bigr)\) and \(\hat z_w\) has density
-\(\sigma^{-1}\varphi\bigl((d - b_w)/\sigma\bigr)\) at \(d\). Since \(D\) is a maximum of
-independent variables,</p>
+variable \(D\) accounts for all of \(B\). Write \(\varphi\) and \(\Phi\) for the density and the
+distribution function of a standard normal. Each \(\hat z_w\) is \(N(b_w, \sigma^2)\), so</p>
+
+\[ \Pr(\hat z_w \le d) \;=\; \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
+
+<p class="noindent">Differentiating in \(d\) gives the density of \(\hat z_w\) at \(d\), namely
+\(\sigma^{-1}\varphi\bigl((d - b_w)/\sigma\bigr)\), the factor \(\sigma^{-1}\) being the
+derivative of the argument. Note that the distribution function carries no such factor, being a
+probability rather than a density. Since \(D\) is a maximum of independent variables,</p>
 
 \[ F(d) \;=\; \Pr(D \le d) \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
 
