@@ -3524,3 +3524,40 @@ fix; the fold now runs on both.
 past tense no dependency-free rule sees, documented as a known gap
 alongside mouse/mice. Cost is a mean 2.4% of the clue pool per board
 (min 1.6%, max 3.4%). 376 tests pass.
+
+## Sonnet vs. Opus as the evaluation guesser
+
+Asked whether the cheaper model would be much worse. Measured rather than
+assumed: 25 real positions spanning openings through late game, each
+model handed the exact prompt `LLMGuesser` sends, each ranking scored the
+way `play_turn` would (walk it, count own words until the first non-own
+word). `scripts/tools/compare_guesser_models.py`.
+
+| model | own/turn | assassin | opponent | neutral | clean |
+|---|---|---|---|---|---|
+| claude-opus-5, medium | 1.36 | 0 | 2 | 4 | 19 |
+| claude-sonnet-5, medium | 1.40 | 0 | 1 | 4 | 20 |
+
+Paired difference **-0.04 own/turn, se 0.091, t = -0.44**, 95% CI
+[-0.22, +0.14]. They produced identical guess sequences on 18/25
+positions and the same top word on 22/25; of the 5 positions where yield
+differed, Sonnet was ahead on 3. Assassin rank was median 12 for both,
+reaching the top 3 twice for Opus and once for Sonnet.
+
+No detectable difference, at roughly a fifth the cost (~$3.20 vs ~$16 per
+50 games). **The sample cannot rule out a small gap** -- +/-0.22 on a base
+of 1.4 is +/-16%, so this excludes "a lot worse", not "slightly worse".
+
+Kept Opus for the headline evaluation anyway. Cost is not the binding
+constraint at $16 paid once into a cache, and "evaluated against the
+strongest available guesser" is the more defensible claim when the number
+is being defended orally. Sonnet is the right choice for development
+runs, where the same positions get replayed often.
+
+**Incidental validation of the Poisson-binomial change.** Only 11 of the
+34-35 own words revealed (**~32%**) were the spymaster's intended top-k;
+two thirds of the yield came from own words *outside* the intended set.
+That is precisely the event the pre-`783f7da` code failed to score -- it
+computed P(the top j own words all clear D) rather than P(at least j own
+words clear D). The guesser genuinely does not reveal the words we meant,
+and the objective is right not to care which ones it takes.
