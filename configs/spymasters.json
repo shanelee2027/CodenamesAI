@@ -55,7 +55,7 @@
       "type": "expected_words",
       "params": {
         "space": "numberbatch",
-        "sigma": 1.8,
+        "sigma": 2.5,
         "max_rarity": 10.0
       },
       "trained": false,

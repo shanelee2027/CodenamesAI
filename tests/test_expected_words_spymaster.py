@@ -101,8 +101,9 @@ class TestGainAndPenaltyFormula:
         order'. Simulate that guesser directly and check the claim, rather
         than re-encoding the formula as its own expected value -- which
         would only prove the code matches itself. The previous version of
-        this test did exactly that, and locked in an independence
-        approximation that was low by 0.37 expected words."""
+        this test did exactly that, and locked in two errors: an
+        independence approximation low by 0.37 expected words, and
+        scoring P(the top j own words clear D) rather than P(N >= j)."""
         rng = np.random.default_rng(0)
         a = np.array([[3.0, 1.0]])
         b = np.array([[0.5, -0.4, 1.2]])
@@ -121,18 +122,18 @@ class TestGainAndPenaltyFormula:
         dis = b[0][None, :] + rng.normal(0, sigma, (n, b.shape[1]))
         worst = dis.argmax(axis=1)
         D = dis.max(axis=1)
+        # N counts EVERY own word the guesser reaches, not the top k by our
+        # ordering: it has no idea which words we intended, so any own word
+        # above D counts toward the k it is allowed.
+        N = (own > D[:, None]).sum(axis=1)
         for k in (1, 2):
-            survives = own[:, :k].min(axis=1) > D
-            # gain(k) = expected own words revealed = sum over j<=k of
-            # P(the top j intended words all outrank every distractor).
-            per_j = [(own[:, :j].min(axis=1) > D) for j in range(1, k + 1)]
-            expected_gain = sum(x.mean() for x in per_j)
-            gain_se = np.sqrt(sum(x.std() ** 2 for x in per_j) / n)
-            assert abs(gain[0, k - 1] - expected_gain) < 5 * gain_se + 1e-3
-            # A miss costs whatever the guesser actually picks, which is
-            # the strongest distractor -- not every distractor that could
-            # have broken through.
-            miss_cost = costs[worst] * ~survives
+            revealed = np.minimum(k, N)
+            gain_se = revealed.std() / np.sqrt(n)
+            assert abs(gain[0, k - 1] - revealed.mean()) < 5 * gain_se + 1e-3
+            # A miss is N < k, and costs whatever the guesser actually picks,
+            # which is the strongest distractor -- not every distractor that
+            # could have broken through.
+            miss_cost = costs[worst] * (N < k)
             pen_se = miss_cost.std() / np.sqrt(n)
             assert abs(penalty[0, k - 1] - miss_cost.mean()) < 5 * pen_se + 1e-3
 

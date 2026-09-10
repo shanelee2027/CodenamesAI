@@ -94,7 +94,8 @@ Let \(c_w > 0\) be the cost incurred if the guesser selects \(w\). Announcing th
 allows the guesser \(k\) selections. We want to choose both the clue and \(k\).</p>
 
 <p>We assume the guesser perceives word \(x\) as \(\hat z_x = z_x + \varepsilon_x\), where
-\(z_x\) is our similarity to \(x\) and the \(\varepsilon_x\) are independent \(N(0, \sigma^2)\).
+\(z_x\) is our similarity to \(x\) and the \(\varepsilon_x\) are independent \(N(0, \sigma^2)\). 
+This models differences between our interpreted embeddings and the guesser's - higher \(\sigma\) means a larger gap between the two.
 We also assume the guesser selects unrevealed words in decreasing order of \(\hat z\), stopping
 after \(k\) selections or upon selecting a word of \(B\), whichever comes first.</p>
 

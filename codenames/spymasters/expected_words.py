@@ -24,28 +24,39 @@ of any single word is," in z units -- a statement about a listener, which
 can be judged by watching clues, rather than a free-floating shape
 constant.
 
-Everything follows from conditioning on `D`, the perceived score of the
-strongest distractor:
+Let `D` be the perceived score of the strongest non-own word and
+`N = #{own words with zhat above D}`. Since the guesser works strictly
+downward, every word it reaches before `D` is an own word, so it reveals
+`min(k, N)` of them and errs exactly when `N < k`. Everything follows from
+conditioning on `D`:
 
     F(d)   = prod_w Phi((d - b_w) / sigma)      # exact CDF of D
-    P(all of 1..j survive | D = d) = prod_{i<=j} Phi((a_i - d) / sigma)
-    gain(k)    = INT F'(d) * sum_{j<=k} prod_{i<=j} Phi((a_i - d)/sigma) dd
-    penalty(k) = INT F'(d) * (1 - prod_{i<=k} Phi((a_i - d)/sigma)) * cbar(d) dd
+    p_i(d) = Phi((a_i - d) / sigma)             # own word i clears d
+    N | D=d ~ PoissonBinomial({p_i(d)})         # given d, the a_i are independent
+    gain(k)    = INT F'(d) * sum_{j<=k} P(N >= j | d) dd
+    penalty(k) = INT F'(d) * P(N < k | d) * cbar(d) dd
     score(clue, k) = gain(k) - penalty(k)
 
-Given `d` the intended words are independent, which is the entire reason
-for conditioning on it: the obvious formulation -- multiply each word's
-survival probability together -- is wrong twice over, since comparisons
-against one intended word share that word's `eps`, and all intended words
-face the same distractor draws. Both dependencies are positive, so the
-naive product *understates* survival, measured at 0.37 expected words too
-low at sigma=1.8. See `gain_and_penalty` and the version doc.
+Two things this gets right that the obvious formulations do not. First,
+multiplying each word's survival probability together is wrong twice over,
+since comparisons against one own word share that word's `eps`, and all own
+words face the same distractor draws; both dependencies are positive, so
+the naive product *understates* survival, measured 0.37 expected words too
+low at sigma=1.8. Conditioning on `D` removes both, because it is the only
+quantity the two groups share.
 
-`gain(k)` is deliberately *sub-linear* in k: the k-th word's marginal
-contribution is `P(all of 1..k survive) <= 1`, so claiming more only helps
-when the words involved are far enough clear of the distractors to keep
-that probability near 1. A plain `k - penalty` was tried and always picked
-k=4 -- see the version doc -- which is why that shortcut is refused here.
+Second, `N` counts *every* own word above `D`, not the top k by our own
+similarity. The guesser has no idea which words we intended -- it takes own
+words as it meets them -- so scoring `P(the top k all clear D)` computes a
+strictly smaller quantity, low by up to 0.30 expected words at k=4. Hence
+the Poisson-binomial over all own words rather than a running product over
+four of them.
+
+`gain(k)` is *sub-linear* in k: its k-th increment is `P(N >= k) <= 1` and
+non-increasing, so claiming more only helps when the words are far enough
+clear of the distractors to keep that probability near 1. A plain
+`k - penalty` was tried and always picked k=4 -- see the version doc --
+which is why that shortcut is refused here.
 
 `penalty(k)` charges the cost of the word the guesser would *actually*
 pick on a miss. Since it works down its own order, that word is by
@@ -114,9 +125,10 @@ def gain_and_penalty(
     a: np.ndarray, b: np.ndarray, costs: np.ndarray, sigma: float, cells: int = GRID_CELLS
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(gain, penalty)`, each `(n_cand, K_max)`, from `a` (`(n_cand,
-    K_max)`, descending own z-scores per candidate), `b` (`(n_cand,
-    n_non_own)`, non-own z-scores) and `costs` (`(n_non_own,)`,
-    `abs(ROLE_REWARD[role(w)])`). Column `m` is `k = m + 1`.
+    n_own)`, **all** descending own z-scores per candidate -- not just the
+    top K_max, see below), `b` (`(n_cand, n_non_own)`, non-own z-scores) and
+    `costs` (`(n_non_own,)`, `abs(ROLE_REWARD[role(w)])`). Column `m` of the
+    result is `k = m + 1`.
 
     Both terms are exact expectations under the guesser model (the module
     docstring derives it): the guesser perceives word `i` as `z_i + eps_i`
@@ -133,17 +145,19 @@ def gain_and_penalty(
     expected words at sigma=1.8 (see docs/versions/expected_words.md).
 
     Conditioning on `D = d` removes both at once, because given `d` each
-    intended word independently survives with probability
-    `Phi((a_i - d) / sigma)`. `D` is a maximum of independents, so its CDF
-    is available in closed form, `F(d) = prod_w Phi((d - b_w) / sigma)`,
-    and a grid over `d` taking each cell's mass as `F(d_hi) - F(d_lo)`
-    integrates it without needing the density. This reproduces Monte Carlo
-    to 3-4 decimals.
+    own word independently clears the bar with probability
+    `Phi((a_i - d) / sigma)`, making `N` Poisson-binomial. `D` is a maximum
+    of independents, so its CDF is available in closed form,
+    `F(d) = prod_w Phi((d - b_w) / sigma)`, and a grid over `d` taking each
+    cell's mass as `F(d_hi) - F(d_lo)` integrates it without needing the
+    density. Verified against Monte Carlo on real boards: agreement to
+    +/-0.002 expected words at 3M samples.
 
     Pure function (no `ClueStats`/board lookups) so the algebra can be
     unit-tested directly against hand-computed z-scores.
     """
-    n_cand, k_max = a.shape
+    n_cand, n_own = a.shape
+    k_max = min(n_own, MAX_CLUE_NUMBER)
 
     # One grid per candidate clue, spanning where that clue's own D can
     # plausibly land. Padding by GRID_PAD sigma on each side puts the
@@ -158,12 +172,31 @@ def gain_and_penalty(
     mass = np.diff(F, axis=1)  # (n_cand, cells)
     mid = 0.5 * (edges[:, :-1] + edges[:, 1:])  # (n_cand, cells)
 
-    # surv[:, c, m] = P(intended word m+1 outranks D | D = mid_c)
-    surv = _ndtr((a[:, None, :] - mid[:, :, None]) / sigma)  # (n_cand, cells, K_max)
-    joint = np.cumprod(surv, axis=2)  # all of 1..k survive, given d
+    # surv[:, c, i] = P(own word i outranks D | D = mid_c), for EVERY own
+    # word, not just the k we would nominally be claiming. The guesser has
+    # no idea which words we intended; it takes own words as it meets them,
+    # so what the game scores is N = #{own words above D}, and any k of them
+    # count. Restricting to the top k by our own similarity computes
+    # P(those particular k all clear D), a strictly smaller quantity.
+    surv = _ndtr((a[:, None, :] - mid[:, :, None]) / sigma)  # (n_cand, cells, n_own)
 
-    # gain(k) = sum_{j<=k} P(all of 1..j survive), integrated over d.
-    per_j = np.einsum("nc,nck->nk", mass, joint)
+    # Given d the own words are independent (see docstring), so N is
+    # Poisson-binomial. Standard recursion, truncated at k_max: counts at or
+    # above it are never needed, since P(N >= j) for j <= k_max only reads
+    # the probabilities below j.
+    q = np.zeros((n_cand, cells, k_max), dtype=np.float32)
+    q[:, :, 0] = 1.0
+    for i in range(n_own):
+        p = surv[:, :, i][:, :, None]
+        prev = q
+        q = prev * (1.0 - p)
+        q[:, :, 1:] += prev[:, :, :-1] * p
+
+    # tail[:, :, m] = P(N >= m+1 | d) = 1 - P(N <= m | d)
+    tail = 1.0 - np.cumsum(q, axis=2)
+
+    # gain(k) = sum_{j<=k} P(N >= j), integrated over d.
+    per_j = np.einsum("nc,nck->nk", mass, tail)
     gain = np.cumsum(per_j, axis=1)
 
     # A miss happens exactly when some intended word fails to outrank D,
@@ -175,7 +208,8 @@ def gain_and_penalty(
     hazard /= np.maximum(_ndtr((mid[:, :, None] - b[:, None, :]) / sigma), 1e-12)
     resp = hazard / np.maximum(hazard.sum(axis=2, keepdims=True), 1e-12)  # (n_cand, cells, n_non_own)
     cost_at_d = resp @ costs  # (n_cand, cells): expected cost of a miss at D = d
-    penalty = np.einsum("nc,nck->nk", mass * cost_at_d, 1.0 - joint)
+    # A miss is exactly N < k, whose probability is 1 - tail.
+    penalty = np.einsum("nc,nck->nk", mass * cost_at_d, 1.0 - tail)
 
     return gain.astype(np.float32), penalty.astype(np.float32)
 
@@ -251,7 +285,9 @@ class ExpectedWordsSpymaster(Spymaster):
 
         n_cand = len(candidate_idx)
         K_max = min(len(own), MAX_CLUE_NUMBER)
-        a = -np.sort(-z_own, axis=1)[:, :K_max]  # (n_cand, K_max): a[:, m] is a_{m+1}, descending
+        # All own words, not just the top K_max: N counts every own word
+        # the guesser reaches, so the tail below k depends on all of them.
+        a = -np.sort(-z_own, axis=1)  # (n_cand, n_own), descending
         b = z_non_own  # (n_cand, n_non_own)
 
         gain, penalty = gain_and_penalty(a, b, costs, self.sigma)
@@ -261,7 +297,7 @@ class ExpectedWordsSpymaster(Spymaster):
             max_b = np.max(b, axis=1)  # (n_cand,)
         else:
             max_b = np.full(n_cand, -np.inf, dtype=np.float32)
-        margin = a - max_b[:, None]  # (n_cand, K_max)
+        margin = a[:, :K_max] - max_b[:, None]  # (n_cand, K_max)
 
         # Reduce each clue to its own best k -- see module docstring:
         # since s_j doesn't depend on the outer k, this is exact, not an
