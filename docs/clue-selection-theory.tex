@@ -40,39 +40,13 @@
 \section{Introduction}
 \label{sec:intro}
 
-A clue in Codenames is a word together with a number. The teammate hears it,
-ranks the unrevealed board words by how well each fits the clue word, and
-selects from the top of that ranking, stopping when they reach the announced
-number or when they select a word that is not ours. A clue therefore earns
-whatever it collects before the first wrong selection, and choosing one means
-choosing where that selection is likely to fall.
+Whenever we give a clue to a teammate with clue number $k$, they rank the unrevealed board words by how well each fits the clue word, and
+chooses words from the top, stopping when they reach $k$ words or when they select a word that is not ours, whichever comes first.
 
-Suppose we score words by cosine similarity in an embedding space and assume
-the teammate ranks by the same scores. Their ordering is then known to us, and
-the value of a clue word is the length of the initial run of our team's words
-in that ordering: announce that length as the number and the teammate takes
-exactly those words and stops. Choosing a clue is then a search over the clue
-vocabulary for the word with the longest run, solved by enumerating the
-vocabulary and reading off the answer. Nothing in the problem is uncertain,
-and on a typical board many clue words attain the same run length.
+Suppose we and our teammate order words by cosine similarities from the same embedding space. Then, choosing the optimal clue is just a search over the clue
+vocabulary for the word with the longest starting run of our team's words in the list sorted by similarity. In this case, our teammate chooses only the words that we intend, and never chooses a word that is not ours. This solution is trivial to find and is non-unique.
 
-The assumption is false. The teammate does not hold our embedding --- they are
-a person, or a language model, and their sense of which words belong together
-is related to ours without being equal to it. One position out of place near
-the top of the ordering changes the run length, so the quantity being
-maximized is not one we can observe. The clue that looks best under our own
-scores is also disproportionately one whose score we have overstated, since
-maximizing over a large vocabulary selects for favorable error as much as for
-genuine fit.
-
-This document keeps our ranking and models the teammate's as ours perturbed by
-independent noise of a single scale $\sigma$. The run length becomes a random
-variable, the number is a bet on how far the teammate will get, and a word of
-the opposing team or the assassin carries a cost rather than merely ending the
-turn. Sections \ref{sec:setup}--\ref{sec:computation} derive the expected value
-of a clue under that model and reduce it to a one-dimensional integral, which
-is evaluated for the whole clue vocabulary at once. Section \ref{sec:results}
-fits $\sigma$ against a real guesser.
+However, in practice, our perceived similarities is related to but different from our teammate's, which significantly changes the algorithm in which we find the optimal clue. In particular, this scenario is now probabilistic, whereas previously it was entirely deterministic, and we now need to deal with the possibility of our teammate choosing a neutral, opponent's, or the assassin word. This paper describes one algorithm in which we can find an optimal clue under these conditions. 
 
 \section{Setup}
 \label{sec:setup}
