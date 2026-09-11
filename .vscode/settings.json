@@ -1,0 +1,21 @@
+{
+  // LaTeX Workshop, driven by Tectonic (~/.local/bin/tectonic).
+  // Tectonic fetches whatever packages a document needs on first build and
+  // caches them, so there is no TeX distribution to install or maintain.
+  "latex-workshop.latex.tools": [
+    {
+      "name": "tectonic",
+      "command": "tectonic",
+      "args": ["--synctex", "--keep-logs", "%DOC%.tex"],
+      "env": {}
+    }
+  ],
+  "latex-workshop.latex.recipes": [
+    { "name": "tectonic", "tools": ["tectonic"] }
+  ],
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.view.pdf.viewer": "tab",
+  // Tectonic writes the PDF next to the source; these are its leftovers.
+  "latex-workshop.latex.autoClean.run": "onBuilt",
+  "latex-workshop.latex.clean.fileTypes": ["*.aux", "*.log", "*.synctex.gz", "*.out"]
+}

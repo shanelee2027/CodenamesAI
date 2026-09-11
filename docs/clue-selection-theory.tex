@@ -1,0 +1,310 @@
+% Clue Selection Under Noise
+%
+% Build:  tectonic docs/clue-selection-theory.tex
+% Output: docs/clue-selection-theory.pdf
+%
+% Tectonic downloads whatever packages this file needs on the first build
+% and caches them, so there is no TeX distribution to install or maintain.
+
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{caption}
+\usepackage{float}          % [H] pins the table and figure where they are written
+\usepackage{microtype}
+\usepackage[T1]{fontenc}
+\usepackage{libertinus}          % swap for \usepackage{lmodern} to fall back
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+
+% arg max with the limits set underneath, as in the display.
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+% Digits line up in columns in the results table.
+\usepackage{siunitx}
+\sisetup{table-number-alignment=right}
+
+\begin{document}
+
+% Title block by hand: \maketitle leaves a gap where the empty author
+% would go, and the subtitle belongs directly under the title.
+\begin{center}
+  {\LARGE Clue Selection Under Noise}\\[0.7em]
+  Codenames spymaster, baseline model
+\end{center}
+\vspace{1.5em}
+
+\section{Setup}
+
+Let $A$ be the set of board words we want the guesser to select and $B$ the
+set we want them to avoid. A clue is a clue word together with a number $k$,
+and announcing it allows the guesser $k$ selections. Fix a clue word, and let
+$a_i$ be its similarity to word $i \in A$ and $b_w$ its similarity to word
+$w \in B$, where the $a_i$ are sorted so that $a_1 \ge a_2 \ge \dots$.
+Selecting a word of $A$ is worth $1$, and selecting $w \in B$ costs
+$c_w > 0$. We want to choose both parts of the clue.
+
+We assume the guesser perceives word $x$'s similarity with the clue word as
+$\hat z_x = z_x + \varepsilon_x$, where $z_x$ is our similarity to $x$ and the
+$\varepsilon_x$ are independent $N(0, \sigma^2)$. This models differences
+between our interpreted embeddings and the guesser's --- higher $\sigma$ means
+a larger gap between the two. We also assume the guesser selects unrevealed
+words in decreasing order of $\hat z$, stopping after $k$ selections or upon
+selecting a word of $B$, whichever comes first.
+
+In words, the guesser ranks the board the same way we do, perturbed by
+independent noise of a single scale, and then guesses greedily. $\sigma$ is
+the only free parameter.
+
+\section{Reduction}
+
+Let
+\[ D = \max_{w \in B} \hat z_w, \qquad W^\ast = \argmax_{w \in B} \hat z_w,
+   \qquad N = \#\{\, i \in A : \hat z_i > D \,\}. \]
+Every word ranked above $D$ is in $A$, since $D$ is the maximum of $\hat z$
+over $B$. Thus the guesser's ordering begins with the $N$ words counted above,
+and the $(N+1)$-th word is $W^\ast$. This means the guesser reveals
+$\min(k, N)$ words of $A$, and selects a word of $B$ if and only if $N < k$,
+in which case that word is $W^\ast$.
+
+Note that no word of $B$ other than $W^\ast$ can be selected, so the single
+random variable $D$ accounts for all of $B$. Write $\varphi$ and $\Phi$ for
+the density and the distribution function of a standard normal. Each
+$\hat z_w$ is $N(b_w, \sigma^2)$, so
+\[ F_{\hat z_w}(x) = \Phi\!\left(\frac{x - b_w}{\sigma}\right), \qquad
+   f_{\hat z_w}(x) = \sigma^{-1}\varphi\!\left(\frac{x - b_w}{\sigma}\right). \]
+Since $D$ is a maximum of independent variables,
+\[ F_D(d) \;=\; \prod_{w \in B} F_{\hat z_w}(d)
+   \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
+
+\section{Conditional distribution}
+
+$D$ is a function of $(\varepsilon_w)_{w \in B}$ only, which is independent of
+$(\varepsilon_i)_{i \in A}$. Thus conditioning on $D = d$ does not change the
+distribution of the $\hat z_i$, and each $i \in A$ independently satisfies
+$\hat z_i > d$ with probability
+\[ p_i(d) \;=\; \Phi\!\left(\frac{a_i - d}{\sigma}\right). \]
+Given $D = d$, the count $N$ is therefore a sum of $|A|$ independent Bernoulli
+variables, the $i$-th with success probability $p_i(d)$.
+
+\section{Objective}
+
+From Section 2 the guesser reveals $\min(k, N)$ words of $A$, and selects
+$W^\ast$ exactly when $N < k$. Each word of $A$ is worth $1$ and $W^\ast$
+costs $c_{W^\ast}$, so the value of announcing $k$ is $G(k) - P(k)$, where
+\[ G(k) = \mathbb E\bigl[\min(k, N)\bigr], \qquad
+   P(k) = \mathbb E\bigl[\, c_{W^\ast}\,\mathbf 1\{N < k\} \,\bigr]. \]
+Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$, taking expectations
+and conditioning on $D$ gives
+\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF_D(d). \]
+Each $\Pr(N \ge j \mid D = d)$ follows from the Bernoulli sum of Section 3,
+and the integral is one-dimensional in $d$. Section 5 computes both. It
+remains to find $P$.
+
+In $P$ the cost $c_{W^\ast}$ and the event $\{N < k\}$ both depend on the
+noise, but they become independent once $D$ is fixed. To see this, note that
+$D$ is a function of $(\varepsilon_w)_{w \in B}$ alone, so conditioning on
+$D = d$ constrains that family and leaves $(\varepsilon_i)_{i \in A}$ with its
+original distribution. Given $D = d$, the count
+$N = \#\{i \in A : z_i + \varepsilon_i > d\}$ is a function of
+$(\varepsilon_i)_{i \in A}$, while the identity $W^\ast$ is a function of
+$(\varepsilon_w)_{w \in B}$. The two families are independent, so $N$ and
+$W^\ast$ are conditionally independent given $D$, and the expectation splits:
+\[ P(k) \;=\; \int \Pr(N < k \mid D = d)\; \bar c(d) \,\, dF_D(d), \qquad
+   \bar c(d) = \mathbb E\bigl[\, c_{W^\ast} \mid D = d \,\bigr]. \]
+The first factor is again a probability for the Bernoulli sum of Section 3.
+It remains to compute $\bar c(d)$, for which we need
+$\Pr(W^\ast = w \mid D = d)$.
+
+Writing $g_w$ for the joint density of $W^\ast = w$ and $D$ at $d$,
+\[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{g_w(d)}{f_D(d)}. \]
+$W^\ast = w$ and $D = d$ means $\hat z_w = d$ and $\hat z_v < d$ for every
+other $v \in B$. The $\hat z$ are independent, so
+\[ g_w(d) \;=\; f_{\hat z_w}(d) \prod_{v \ne w} F_{\hat z_v}(d). \]
+The events $\{W^\ast = w\}$, $w \in B$, are disjoint and exhaustive, so
+\[ f_D(d) \;=\; \sum_{w \in B} g_w(d). \]
+From Section 2, $F_D(d) = \prod_{v \in B} F_{\hat z_v}(d)$, so the product
+over $v \ne w$ is $F_D(d) \big/ F_{\hat z_w}(d)$. Set
+\[ h_w(d) \;=\; \frac{f_{\hat z_w}(d)}{F_{\hat z_w}(d)}
+   \;=\; \frac{\sigma^{-1}\varphi\bigl((d - b_w)/\sigma\bigr)}
+              {\Phi\bigl((d - b_w)/\sigma\bigr)}, \]
+so that $g_w(d) = F_D(d)\, h_w(d)$ and $f_D(d) = F_D(d) \sum_v h_v(d)$. The
+$F_D(d)$ cancels in the ratio:
+\[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}, \qquad
+   \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}. \]
+We choose the clue maximizing the value,
+\[ \text{clue}^\ast \;=\; \argmax_{\text{word},\; 1 \le k \le K}
+   \bigl[\, G(k) - P(k) \,\bigr]. \]
+
+\section{Computation}
+
+Both $G$ and $P$ have the form $\int \psi(d)\, dF_D(d)$ for a bounded $\psi$:
+\[ \psi_G(d) = \sum_{j=1}^{k} \Pr(N \ge j \mid D = d), \qquad
+   \psi_P(d) = \Pr(N < k \mid D = d)\, \bar c(d). \]
+Both are evaluated by numerical integration. Partition an interval
+$[d_0, d_M]$ into cells $[d_m, d_{m+1}]$, take $\psi$ at the midpoint
+$\bar d_m = \tfrac{1}{2}(d_m + d_{m+1})$ of each, and weight it by the
+probability that $D$ lands in that cell:
+\[ u_m \;=\; F_D(d_{m+1}) - F_D(d_m), \qquad
+   \int \psi(d) \, dF_D(d) \;\approx\; \sum_m \psi(\bar d_m)\, u_m. \]
+The $u_m$ are exact, being differences of the product in Section 2, so the
+only error is the variation of $\psi$ within a cell.
+
+Take $d_0$ below every $b_w$ and $d_M$ above every $b_w$, each by several
+$\sigma$, so that $F_D(d_0)$ and $1 - F_D(d_M)$ are negligible and no mass
+falls outside the grid. The same grid and the same $u_m$ serve both integrals,
+so one pass over the cells gives $G(k)$ and $P(k)$ together, and for every
+$k \le K$ at once.
+
+Within a cell, $\bar c(\bar d_m)$ is immediate from its definition, at a cost
+of $|B|$ terms. The probabilities $\Pr(N \ge j \mid D = \bar d_m)$ follow from
+the standard recursion for a sum of independent Bernoulli variables. Letting
+$q^{(i)}_r$ be $\Pr(N = r)$ after the first $i$ words of $A$,
+\[ q^{(0)}_0 = 1, \qquad
+   q^{(i)}_r \;=\; q^{(i-1)}_r\bigl(1 - p_i(\bar d_m)\bigr)
+                \;+\; q^{(i-1)}_{r-1}\,p_i(\bar d_m), \]
+and $\Pr(N \ge j \mid D = \bar d_m) = 1 - \sum_{r < j} q_r$. Counts above $K$
+are never used, so the recursion may be truncated there, costing $|A|K$ per
+cell rather than $|A|^2$.
+
+The total is $O\bigl(M(|A|K + |B|)\bigr)$ per clue, with $M$ the number of
+cells. Every step is a fixed sequence of arithmetic on arrays of the same
+shape, so the whole clue vocabulary is scored at once rather than one clue at
+a time.
+
+\section{Results}
+
+The model above has one free parameter. To choose it, $\sigma$ was swept over
+three orders of magnitude and each value was made to play the same 100
+positions, drawn from held-out board words and spanning openings through
+endgames. Each turn was scored as the game scores it: the guesser's ranking is
+walked, own words are counted until the first word of $B$, and the reward is
+$+1$ per own word with $-0.2$, $-1$ and $-10$ for a neutral, opponent and
+assassin word respectively. The guesser was an external language model, not
+the similarity ranking the spymaster itself uses, so the numbers measure the
+model against a listener it has no access to.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{
+  S[table-format=2.2]
+  S[table-format=1.2] S[table-format=1.2] S[table-format=-1.2]
+  S[table-format=1.3] S[table-format=1.3]
+  S[table-format=2.0] S[table-format=2.0] S[table-format=2.0] S[table-format=2.0]}
+\toprule
+{$\sigma$} & {announced} & {revealed} & {gap} & {reward} & {s.e.}
+  & {asn} & {opp} & {neu} & {clean} \\
+\midrule
+ 0.25 & 3.96 & 1.55 & -2.41 & 0.448 & 0.228 & 5 & 53 & 36 &  6 \\
+ 0.5  & 3.91 & 1.60 & -2.31 & 0.698 & 0.202 & 3 & 53 & 36 &  8 \\
+ 1.0  & 3.45 & 1.74 & -1.71 & 0.852 & 0.241 & 4 & 43 & 29 & 24 \\
+ 1.5  & 2.79 & 1.72 & -1.07 & 0.698 & 0.299 & 7 & 28 & 21 & 44 \\
+ 2.0  & 2.33 & 1.69 & -0.64 & 1.172 & 0.205 & 3 & 19 & 14 & 64 \\
+\midrule
+ 2.5  & 1.72 & 1.41 & -0.31 & 1.314 & 0.069 & 0 &  7 & 13 & 80 \\
+\midrule
+ 3.0  & 1.40 & 1.22 & -0.18 & 1.174 & 0.054 & 0 &  3 &  8 & 89 \\
+ 4.0  & 1.21 & 1.10 & -0.11 & 1.060 & 0.038 & 0 &  3 &  5 & 92 \\
+ 6.0  & 1.16 & 1.05 & -0.11 & 1.008 & 0.035 & 0 &  3 &  6 & 91 \\
+10.0  & 1.13 & 0.99 & -0.14 & 0.918 & 0.048 & 0 &  6 &  6 & 88 \\
+\bottomrule
+\end{tabular}
+\caption*{\footnotesize Per turn, over 100 positions. \emph{announced} is
+$k$; \emph{revealed} is the number of words of $A$ the guesser actually took;
+the last four columns count how each turn ended.}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\linewidth, height=6cm,
+  xmode=log, log basis x=10,
+  xtick={0.25,0.5,1,2,4,10},
+  xticklabels={0.25,0.5,1,2,4,10},
+  xlabel={$\sigma$}, ylabel={reward per turn},
+  xmin=0.21, xmax=12,
+  ymin=-0.15, ymax=1.85,
+  ytick={0,0.5,1.0,1.5},
+  grid=major, grid style={gray!25, thin},
+  axis lines=left,
+  tick label style={font=\footnotesize},
+  label style={font=\small},
+  every axis plot/.append style={thick},
+]
+% sigma  reward  95% half-width (1.96 * s.e.)
+\addplot+[
+  mark=*, mark size=1.6pt, black, mark options={fill=black, draw=black},
+  error bars/.cd, y dir=both, y explicit,
+  error bar style={gray!60, thin}, error mark options={gray!60},
+] table[x=sigma, y=reward, y error=ci] {
+sigma reward ci
+0.25  0.448  0.447
+0.5   0.698  0.396
+1.0   0.852  0.472
+1.5   0.698  0.586
+2.0   1.172  0.402
+2.5   1.314  0.135
+3.0   1.174  0.106
+4.0   1.060  0.074
+6.0   1.008  0.069
+10.0  0.918  0.094
+};
+\draw[gray!50, dashed] (axis cs:2.5,-0.15) -- (axis cs:2.5,1.6);
+\node[anchor=south, font=\footnotesize] at (axis cs:2.5,1.6) {$\sigma = 2.5$};
+\end{axis}
+\end{tikzpicture}
+\caption*{\footnotesize Realized reward per turn. Bars are 95\% confidence
+intervals; the wide bars at small $\sigma$ are assassin turns, each costing
+$-10$.}
+\end{figure}
+
+Both limits saturate. As $\sigma \to 0$ the model treats the guesser as a copy
+of itself and announces $k = K$ on nearly every board, and as $\sigma$ grows
+it announces $k = 1$ and stops responding to further increases. Neither end is
+optimal, and the reward curve is single-peaked between them.
+
+Note that the number of words revealed and the reward earned are maximized at
+different $\sigma$. Revealed words peak at $\sigma = 1.0$ with $1.74$ per
+turn, where reward is only $0.852$; reward peaks at $\sigma = 2.5$ with
+$1.314$, where $1.41$ words are revealed. The difference is entirely risk. At
+$\sigma = 1.0$ the guesser reaches a word of $B$ on 76 of 100 turns and the
+assassin on 4; at $\sigma = 2.5$ it reaches $B$ on 20 and the assassin on
+none. Thus the gain from claiming an extra word is real but is more than
+repaid, and an objective fitted on revealed words alone would choose a value
+that loses games.
+
+The assassin is what makes the left half of the curve hard to measure. It is
+worth $-10$, so a handful of assassin turns dominate the variance: the
+standard error is $0.2$ to $0.3$ for $\sigma \le 2.0$ and $0.035$ to $0.069$
+for $\sigma \ge 2.5$, where no assassin was reached at all. Comparing paired
+by board, $\sigma = 2.5$ beats every other value tested at the 5\% level
+except $\sigma = 2.0$ $(+0.14 \pm 0.21)$ and $\sigma = 1.0$
+$(+0.46 \pm 0.49)$, both of which are indistinguishable only because their own
+assassin losses are so noisy.
+
+Note also that the gap between announced and revealed is negative everywhere
+and closes monotonically, reaching $-0.11$ at $\sigma = 4$. The model
+therefore remains optimistic at its own optimum, announcing $1.72$ where
+$1.41$ is delivered. Calibrating $G$ and maximizing reward are different
+objectives: only the ordering of $G(k) - P(k)$ across clues and $k$ affects
+the choice made, so a bias shared by every candidate leaves the argmax
+unchanged. Fitting $\sigma$ to close the gap would report $\sigma \approx 4$
+and cost $0.25$ reward per turn.
+
+We therefore take $\sigma = 2.5$. The positions used here are disjoint from
+the evaluation boards, so the value was not chosen on the boards it is later
+reported on.
+
+\vspace{1.2em}
+\hrule
+\vspace{0.7em}
+\noindent\footnotesize Here $a_i$ and $b_w$ are similarities standardized per
+clue, $c_w$ are the costs of the words to avoid, and $\sigma$ is the guesser's
+per-word perturbation.
+
+\end{document}

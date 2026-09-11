@@ -13,3 +13,10 @@ __pycache__/
 .ipynb_checkpoints/
 .env
 !.env.example
+
+# LaTeX build artifacts (docs/clue-selection-theory.tex)
+docs/*.pdf
+docs/*.aux
+docs/*.log
+docs/*.synctex.gz
+docs/*.out
