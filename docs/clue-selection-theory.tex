@@ -6,9 +6,9 @@
 % Tectonic downloads whatever packages this file needs on the first build
 % and caches them, so there is no TeX distribution to install or maintain.
 
-\documentclass[11pt]{article}
+\documentclass[12pt]{article}
 
-\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage[a4paper,margin=3.2cm]{geometry}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{booktabs}
@@ -41,12 +41,12 @@
 \label{sec:intro}
 
 Whenever we give a clue to a teammate with clue number $k$, they rank the unrevealed board words by how well each fits the clue word, and
-chooses words from the top, stopping when they reach $k$ words or when they select a word that is not ours, whichever comes first.
+choose words from the top, stopping when they reach $k$ words or when they select a word that is not ours, whichever comes first.
 
 Suppose we and our teammate order words by cosine similarities from the same embedding space. Then, choosing the optimal clue is just a search over the clue
 vocabulary for the word with the longest starting run of our team's words in the list sorted by similarity. In this case, our teammate chooses only the words that we intend, and never chooses a word that is not ours. This solution is trivial to find and is non-unique.
 
-However, in practice, our perceived similarities is related to but different from our teammate's, which significantly changes the algorithm in which we find the optimal clue. In particular, this scenario is now probabilistic, whereas previously it was entirely deterministic, and we now need to deal with the possibility of our teammate choosing a neutral, opponent's, or the assassin word. This paper describes one algorithm in which we can find an optimal clue under these conditions. 
+However, in practice, our perceived similarities are related to but different from our teammate's, which significantly changes the algorithm in which we find the optimal clue. In particular, this scenario is now probabilistic, whereas previously it was entirely deterministic, and we now need to deal with the possibility of our teammate choosing a neutral, opponent's, or the assassin word. This paper describes one algorithm in which we can find an optimal clue under these conditions. 
 
 \section{Setup}
 \label{sec:setup}
