@@ -51,15 +51,15 @@ However, in practice, our perceived similarities are related to but different fr
 \section{Setup}
 \label{sec:setup}
 
-Let $A$ be the set of our team's board words and $B$ the set of all other board words. For any fixed clue word, let
-$a_i$ be its similarity to word $i \in A$ and $b_w$ its similarity to word
-$w \in B$, where the $a_i$ are sorted so that $a_1 \ge a_2 \ge \dots$.
-Selecting a word of $A$ is worth $1$, and selecting $w \in B$ costs
-$c_w > 0$. We want to choose both parts of the clue.
+Let $A$ be the set of our team's board words and $B$ the set of all other board
+words. For any fixed clue word, let $z_x$ be its similarity to board word $x$.
+Throughout, $i$ indexes $A$ and $w$ indexes $B$. Selecting a word of $A$ is
+worth $1$, and selecting $w \in B$ costs $c_w > 0$. We want to choose both
+parts of the clue.
 
-We assume the guesser perceives word $x$'s similarity with the clue word as
-$\hat z_x = z_x + \varepsilon_x$, where $z_x$ is our similarity to $x$ and the
-$\varepsilon_x$ are independent $N(0, \sigma^2)$. This models differences
+We assume the guesser perceives board word $x$'s similarity with the clue word
+as $\hat z_x = z_x + \varepsilon_x$, where the $\varepsilon_x$ are independent
+$\mathcal N(0, \sigma^2)$. This models differences
 between our interpreted embeddings and the guesser's --- higher $\sigma$ means
 a larger gap between the two. We also assume the guesser selects unrevealed
 words in decreasing order of $\hat z$, stopping after $k$ selections or upon
@@ -73,34 +73,34 @@ the only free parameter.
 \label{sec:reduction}
 
 Let
-\[ D = \max_{w \in B} \hat z_w, \qquad W^\ast = \argmax_{w \in B} \hat z_w,
-   \qquad N = \#\{\, i \in A : \hat z_i > D \,\}. \]
-Every word ranked above $D$ is in $A$, since $D$ is the maximum of $\hat z$
+\[ T = \max_{w \in B} \hat z_w, \qquad W^\ast = \argmax_{w \in B} \hat z_w,
+   \qquad N = \#\{\, i \in A : \hat z_i > T \,\}. \]
+Every word ranked above $T$ is in $A$, since $T$ is the maximum of $\hat z$
 over $B$. Thus the guesser's ordering begins with the $N$ words counted above,
 and the $(N+1)$-th word is $W^\ast$. This means the guesser reveals
 $\min(k, N)$ words of $A$, and selects a word of $B$ if and only if $N < k$,
 in which case that word is $W^\ast$.
 
 Note that no word of $B$ other than $W^\ast$ can be selected, so the single
-random variable $D$ accounts for all of $B$. Write $\varphi$ and $\Phi$ for
+random variable $T$ accounts for all of $B$. Write $\varphi$ and $\Phi$ for
 the density and the distribution function of a standard normal. Each
-$\hat z_w$ is $N(b_w, \sigma^2)$, so
-\[ F_{\hat z_w}(x) = \Phi\!\left(\frac{x - b_w}{\sigma}\right), \qquad
-   f_{\hat z_w}(x) = \sigma^{-1}\varphi\!\left(\frac{x - b_w}{\sigma}\right). \]
-Since $D$ is a maximum of independent variables,
-\[ F_D(d) \;=\; \prod_{w \in B} F_{\hat z_w}(d)
-   \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
+$\hat z_w$ is $\mathcal N(z_w, \sigma^2)$, so
+\[ F_{\hat z_w}(t) = \Phi\!\left(\frac{t - z_w}{\sigma}\right), \qquad
+   f_{\hat z_w}(t) = \sigma^{-1}\varphi\!\left(\frac{t - z_w}{\sigma}\right). \]
+Since $T$ is a maximum of independent variables,
+\[ F_T(t) \;=\; \prod_{w \in B} F_{\hat z_w}(t)
+   \;=\; \prod_{w \in B} \Phi\!\left(\frac{t - z_w}{\sigma}\right). \]
 
 \section{Conditional distribution}
 \label{sec:conditional}
 
-$D$ is a function of $(\varepsilon_w)_{w \in B}$ only, which is independent of
-$(\varepsilon_i)_{i \in A}$. Thus conditioning on $D = d$ does not change the
+$T$ is a function of $(\varepsilon_w)_{w \in B}$ only, which is independent of
+$(\varepsilon_i)_{i \in A}$. Thus conditioning on $T = t$ does not change the
 distribution of the $\hat z_i$, and each $i \in A$ independently satisfies
-$\hat z_i > d$ with probability
-\[ p_i(d) \;=\; \Phi\!\left(\frac{a_i - d}{\sigma}\right). \]
-Given $D = d$, the count $N$ is therefore a sum of $|A|$ independent Bernoulli
-variables, the $i$-th with success probability $p_i(d)$.
+$\hat z_i > t$ with probability
+\[ p_i(t) \;=\; \Phi\!\left(\frac{z_i - t}{\sigma}\right). \]
+Given $T = t$, the count $N$ is therefore a sum of $|A|$ independent Bernoulli
+variables, the $i$-th with success probability $p_i(t)$.
 
 \section{Objective}
 \label{sec:objective}
@@ -111,44 +111,44 @@ costs $c_{W^\ast}$, so the value of announcing $k$ is $G(k) - P(k)$, where
 \[ G(k) = \mathbb E\bigl[\min(k, N)\bigr], \qquad
    P(k) = \mathbb E\bigl[\, c_{W^\ast}\,\mathbf 1\{N < k\} \,\bigr]. \]
 Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$, taking expectations
-and conditioning on $D$ gives
-\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF_D(d). \]
-Each $\Pr(N \ge j \mid D = d)$ follows from the Bernoulli sum of
-Section~\ref{sec:conditional}, and the integral is one-dimensional in $d$. Section~\ref{sec:computation} computes both. It
+and conditioning on $T$ gives
+\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid T = t) \,\, dF_T(t). \]
+Each $\Pr(N \ge j \mid T = t)$ follows from the Bernoulli sum of
+Section~\ref{sec:conditional}, and the integral is one-dimensional in $t$. Section~\ref{sec:computation} computes both. It
 remains to find $P$.
 
 In $P$ the cost $c_{W^\ast}$ and the event $\{N < k\}$ both depend on the
-noise, but they become independent once $D$ is fixed. To see this, note that
-$D$ is a function of $(\varepsilon_w)_{w \in B}$ alone, so conditioning on
-$D = d$ constrains that family and leaves $(\varepsilon_i)_{i \in A}$ with its
-original distribution. Given $D = d$, the count
-$N = \#\{i \in A : z_i + \varepsilon_i > d\}$ is a function of
+noise, but they become independent once $T$ is fixed. To see this, note that
+$T$ is a function of $(\varepsilon_w)_{w \in B}$ alone, so conditioning on
+$T = t$ constrains that family and leaves $(\varepsilon_i)_{i \in A}$ with its
+original distribution. Given $T = t$, the count
+$N = \#\{i \in A : z_i + \varepsilon_i > t\}$ is a function of
 $(\varepsilon_i)_{i \in A}$, while the identity $W^\ast$ is a function of
 $(\varepsilon_w)_{w \in B}$. The two families are independent, so $N$ and
-$W^\ast$ are conditionally independent given $D$, and the expectation splits:
-\[ P(k) \;=\; \int \Pr(N < k \mid D = d)\; \bar c(d) \,\, dF_D(d), \qquad
-   \bar c(d) = \mathbb E\bigl[\, c_{W^\ast} \mid D = d \,\bigr]. \]
+$W^\ast$ are conditionally independent given $T$, and the expectation splits:
+\[ P(k) \;=\; \int \Pr(N < k \mid T = t)\; \bar c(t) \,\, dF_T(t), \qquad
+   \bar c(t) = \mathbb E\bigl[\, c_{W^\ast} \mid T = t \,\bigr]. \]
 The first factor is again a probability for the Bernoulli sum of
 Section~\ref{sec:conditional}.
-It remains to compute $\bar c(d)$, for which we need
-$\Pr(W^\ast = w \mid D = d)$.
+It remains to compute $\bar c(t)$, for which we need
+$\Pr(W^\ast = w \mid T = t)$.
 
-Writing $g_w$ for the joint density of $W^\ast = w$ and $D$ at $d$,
-\[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{g_w(d)}{f_D(d)}. \]
-$W^\ast = w$ and $D = d$ means $\hat z_w = d$ and $\hat z_v < d$ for every
+Writing $g_w$ for the joint density of $W^\ast = w$ and $T$ at $t$,
+\[ \Pr(W^\ast = w \mid T = t) \;=\; \frac{g_w(t)}{f_T(t)}. \]
+$W^\ast = w$ and $T = t$ means $\hat z_w = t$ and $\hat z_v < t$ for every
 other $v \in B$. The $\hat z$ are independent, so
-\[ g_w(d) \;=\; f_{\hat z_w}(d) \prod_{v \ne w} F_{\hat z_v}(d). \]
+\[ g_w(t) \;=\; f_{\hat z_w}(t) \prod_{v \ne w} F_{\hat z_v}(t). \]
 The events $\{W^\ast = w\}$, $w \in B$, are disjoint and exhaustive, so
-\[ f_D(d) \;=\; \sum_{w \in B} g_w(d). \]
-From Section~\ref{sec:reduction}, $F_D(d) = \prod_{v \in B} F_{\hat z_v}(d)$, so the product
-over $v \ne w$ is $F_D(d) \big/ F_{\hat z_w}(d)$. Set
-\[ h_w(d) \;=\; \frac{f_{\hat z_w}(d)}{F_{\hat z_w}(d)}
-   \;=\; \frac{\sigma^{-1}\varphi\bigl((d - b_w)/\sigma\bigr)}
-              {\Phi\bigl((d - b_w)/\sigma\bigr)}, \]
-so that $g_w(d) = F_D(d)\, h_w(d)$ and $f_D(d) = F_D(d) \sum_v h_v(d)$. The
-$F_D(d)$ cancels in the ratio:
-\[ \Pr(W^\ast = w \mid D = d) \;=\; \frac{h_w(d)}{\sum_v h_v(d)}, \qquad
-   \bar c(d) \;=\; \frac{\sum_w c_w\, h_w(d)}{\sum_w h_w(d)}. \]
+\[ f_T(t) \;=\; \sum_{w \in B} g_w(t). \]
+From Section~\ref{sec:reduction}, $F_T(t) = \prod_{v \in B} F_{\hat z_v}(t)$, so the product
+over $v \ne w$ is $F_T(t) \big/ F_{\hat z_w}(t)$. Set
+\[ h_w(t) \;=\; \frac{f_{\hat z_w}(t)}{F_{\hat z_w}(t)}
+   \;=\; \frac{\sigma^{-1}\varphi\bigl((t - z_w)/\sigma\bigr)}
+              {\Phi\bigl((t - z_w)/\sigma\bigr)}, \]
+so that $g_w(t) = F_T(t)\, h_w(t)$ and $f_T(t) = F_T(t) \sum_v h_v(t)$. The
+$F_T(t)$ cancels in the ratio:
+\[ \Pr(W^\ast = w \mid T = t) \;=\; \frac{h_w(t)}{\sum_v h_v(t)}, \qquad
+   \bar c(t) \;=\; \frac{\sum_w c_w\, h_w(t)}{\sum_w h_w(t)}. \]
 We choose the clue maximizing the value,
 \[ \text{clue}^\ast \;=\; \argmax_{\text{word},\; 1 \le k \le K}
    \bigl[\, G(k) - P(k) \,\bigr]. \]
@@ -156,33 +156,33 @@ We choose the clue maximizing the value,
 \section{Computation}
 \label{sec:computation}
 
-Both $G$ and $P$ have the form $\int \psi(d)\, dF_D(d)$ for a bounded $\psi$:
-\[ \psi_G(d) = \sum_{j=1}^{k} \Pr(N \ge j \mid D = d), \qquad
-   \psi_P(d) = \Pr(N < k \mid D = d)\, \bar c(d). \]
+Both $G$ and $P$ have the form $\int \psi(t)\, dF_T(t)$ for a bounded $\psi$:
+\[ \psi_G(t) = \sum_{j=1}^{k} \Pr(N \ge j \mid T = t), \qquad
+   \psi_P(t) = \Pr(N < k \mid T = t)\, \bar c(t). \]
 Both are evaluated by numerical integration. Partition an interval
-$[d_0, d_M]$ into cells $[d_m, d_{m+1}]$, take $\psi$ at the midpoint
-$\bar d_m = \tfrac{1}{2}(d_m + d_{m+1})$ of each, and weight it by the
-probability that $D$ lands in that cell:
-\[ u_m \;=\; F_D(d_{m+1}) - F_D(d_m), \qquad
-   \int \psi(d) \, dF_D(d) \;\approx\; \sum_m \psi(\bar d_m)\, u_m. \]
+$[t_0, t_M]$ into cells $[t_m, t_{m+1}]$, take $\psi$ at the midpoint
+$\bar t_m = \tfrac{1}{2}(t_m + t_{m+1})$ of each, and weight it by the
+probability that $T$ lands in that cell:
+\[ u_m \;=\; F_T(t_{m+1}) - F_T(t_m), \qquad
+   \int \psi(t) \, dF_T(t) \;\approx\; \sum_m \psi(\bar t_m)\, u_m. \]
 The $u_m$ are exact, being differences of the product in
 Section~\ref{sec:reduction}, so the
 only error is the variation of $\psi$ within a cell.
 
-Take $d_0$ below every $b_w$ and $d_M$ above every $b_w$, each by several
-$\sigma$, so that $F_D(d_0)$ and $1 - F_D(d_M)$ are negligible and no mass
+Take $t_0$ below every $z_w$ and $t_M$ above every $z_w$, each by several
+$\sigma$, so that $F_T(t_0)$ and $1 - F_T(t_M)$ are negligible and no mass
 falls outside the grid. The same grid and the same $u_m$ serve both integrals,
 so one pass over the cells gives $G(k)$ and $P(k)$ together, and for every
 $k \le K$ at once.
 
-Within a cell, $\bar c(\bar d_m)$ is immediate from its definition, at a cost
-of $|B|$ terms. The probabilities $\Pr(N \ge j \mid D = \bar d_m)$ follow from
+Within a cell, $\bar c(\bar t_m)$ is immediate from its definition, at a cost
+of $|B|$ terms. The probabilities $\Pr(N \ge j \mid T = \bar t_m)$ follow from
 the standard recursion for a sum of independent Bernoulli variables. Letting
 $q^{(i)}_r$ be $\Pr(N = r)$ after the first $i$ words of $A$,
 \[ q^{(0)}_0 = 1, \qquad
-   q^{(i)}_r \;=\; q^{(i-1)}_r\bigl(1 - p_i(\bar d_m)\bigr)
-                \;+\; q^{(i-1)}_{r-1}\,p_i(\bar d_m), \]
-and $\Pr(N \ge j \mid D = \bar d_m) = 1 - \sum_{r < j} q_r$. Counts above $K$
+   q^{(i)}_r \;=\; q^{(i-1)}_r\bigl(1 - p_i(\bar t_m)\bigr)
+                \;+\; q^{(i-1)}_{r-1}\,p_i(\bar t_m), \]
+and $\Pr(N \ge j \mid T = \bar t_m) = 1 - \sum_{r < j} q_r$. Counts above $K$
 are never used, so the recursion may be truncated there, costing $|A|K$ per
 cell rather than $|A|^2$.
 
@@ -320,7 +320,7 @@ reported on.
 \vspace{1.2em}
 \hrule
 \vspace{0.7em}
-\noindent\footnotesize Here $a_i$ and $b_w$ are similarities standardized per
+\noindent\footnotesize Here the $z_x$ are similarities standardized per
 clue, $c_w$ are the costs of the words to avoid, and $\sigma$ is the guesser's
 per-word perturbation.
 
