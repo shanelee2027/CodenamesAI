@@ -37,7 +37,45 @@
 \end{center}
 \vspace{1.5em}
 
+\section{Introduction}
+\label{sec:intro}
+
+A clue in Codenames is a word together with a number. The teammate hears it,
+ranks the unrevealed board words by how well each fits the clue word, and
+selects from the top of that ranking, stopping when they reach the announced
+number or when they select a word that is not ours. A clue therefore earns
+whatever it collects before the first wrong selection, and choosing one means
+choosing where that selection is likely to fall.
+
+Suppose we score words by cosine similarity in an embedding space and assume
+the teammate ranks by the same scores. Their ordering is then known to us, and
+the value of a clue word is the length of the initial run of our team's words
+in that ordering: announce that length as the number and the teammate takes
+exactly those words and stops. Choosing a clue is then a search over the clue
+vocabulary for the word with the longest run, solved by enumerating the
+vocabulary and reading off the answer. Nothing in the problem is uncertain,
+and on a typical board many clue words attain the same run length.
+
+The assumption is false. The teammate does not hold our embedding --- they are
+a person, or a language model, and their sense of which words belong together
+is related to ours without being equal to it. One position out of place near
+the top of the ordering changes the run length, so the quantity being
+maximized is not one we can observe. The clue that looks best under our own
+scores is also disproportionately one whose score we have overstated, since
+maximizing over a large vocabulary selects for favorable error as much as for
+genuine fit.
+
+This document keeps our ranking and models the teammate's as ours perturbed by
+independent noise of a single scale $\sigma$. The run length becomes a random
+variable, the number is a bet on how far the teammate will get, and a word of
+the opposing team or the assassin carries a cost rather than merely ending the
+turn. Sections \ref{sec:setup}--\ref{sec:computation} derive the expected value
+of a clue under that model and reduce it to a one-dimensional integral, which
+is evaluated for the whole clue vocabulary at once. Section \ref{sec:results}
+fits $\sigma$ against a real guesser.
+
 \section{Setup}
+\label{sec:setup}
 
 Let $A$ be the set of board words we want the guesser to select and $B$ the
 set we want them to avoid. A clue is a clue word together with a number $k$,
@@ -60,6 +98,7 @@ independent noise of a single scale, and then guesses greedily. $\sigma$ is
 the only free parameter.
 
 \section{Reduction}
+\label{sec:reduction}
 
 Let
 \[ D = \max_{w \in B} \hat z_w, \qquad W^\ast = \argmax_{w \in B} \hat z_w,
@@ -81,6 +120,7 @@ Since $D$ is a maximum of independent variables,
    \;=\; \prod_{w \in B} \Phi\!\left(\frac{d - b_w}{\sigma}\right). \]
 
 \section{Conditional distribution}
+\label{sec:conditional}
 
 $D$ is a function of $(\varepsilon_w)_{w \in B}$ only, which is independent of
 $(\varepsilon_i)_{i \in A}$. Thus conditioning on $D = d$ does not change the
@@ -91,8 +131,9 @@ Given $D = d$, the count $N$ is therefore a sum of $|A|$ independent Bernoulli
 variables, the $i$-th with success probability $p_i(d)$.
 
 \section{Objective}
+\label{sec:objective}
 
-From Section 2 the guesser reveals $\min(k, N)$ words of $A$, and selects
+From Section~\ref{sec:reduction} the guesser reveals $\min(k, N)$ words of $A$, and selects
 $W^\ast$ exactly when $N < k$. Each word of $A$ is worth $1$ and $W^\ast$
 costs $c_{W^\ast}$, so the value of announcing $k$ is $G(k) - P(k)$, where
 \[ G(k) = \mathbb E\bigl[\min(k, N)\bigr], \qquad
@@ -100,8 +141,8 @@ costs $c_{W^\ast}$, so the value of announcing $k$ is $G(k) - P(k)$, where
 Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$, taking expectations
 and conditioning on $D$ gives
 \[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid D = d) \,\, dF_D(d). \]
-Each $\Pr(N \ge j \mid D = d)$ follows from the Bernoulli sum of Section 3,
-and the integral is one-dimensional in $d$. Section 5 computes both. It
+Each $\Pr(N \ge j \mid D = d)$ follows from the Bernoulli sum of
+Section~\ref{sec:conditional}, and the integral is one-dimensional in $d$. Section~\ref{sec:computation} computes both. It
 remains to find $P$.
 
 In $P$ the cost $c_{W^\ast}$ and the event $\{N < k\}$ both depend on the
@@ -115,7 +156,8 @@ $(\varepsilon_w)_{w \in B}$. The two families are independent, so $N$ and
 $W^\ast$ are conditionally independent given $D$, and the expectation splits:
 \[ P(k) \;=\; \int \Pr(N < k \mid D = d)\; \bar c(d) \,\, dF_D(d), \qquad
    \bar c(d) = \mathbb E\bigl[\, c_{W^\ast} \mid D = d \,\bigr]. \]
-The first factor is again a probability for the Bernoulli sum of Section 3.
+The first factor is again a probability for the Bernoulli sum of
+Section~\ref{sec:conditional}.
 It remains to compute $\bar c(d)$, for which we need
 $\Pr(W^\ast = w \mid D = d)$.
 
@@ -126,7 +168,7 @@ other $v \in B$. The $\hat z$ are independent, so
 \[ g_w(d) \;=\; f_{\hat z_w}(d) \prod_{v \ne w} F_{\hat z_v}(d). \]
 The events $\{W^\ast = w\}$, $w \in B$, are disjoint and exhaustive, so
 \[ f_D(d) \;=\; \sum_{w \in B} g_w(d). \]
-From Section 2, $F_D(d) = \prod_{v \in B} F_{\hat z_v}(d)$, so the product
+From Section~\ref{sec:reduction}, $F_D(d) = \prod_{v \in B} F_{\hat z_v}(d)$, so the product
 over $v \ne w$ is $F_D(d) \big/ F_{\hat z_w}(d)$. Set
 \[ h_w(d) \;=\; \frac{f_{\hat z_w}(d)}{F_{\hat z_w}(d)}
    \;=\; \frac{\sigma^{-1}\varphi\bigl((d - b_w)/\sigma\bigr)}
@@ -140,6 +182,7 @@ We choose the clue maximizing the value,
    \bigl[\, G(k) - P(k) \,\bigr]. \]
 
 \section{Computation}
+\label{sec:computation}
 
 Both $G$ and $P$ have the form $\int \psi(d)\, dF_D(d)$ for a bounded $\psi$:
 \[ \psi_G(d) = \sum_{j=1}^{k} \Pr(N \ge j \mid D = d), \qquad
@@ -150,7 +193,8 @@ $\bar d_m = \tfrac{1}{2}(d_m + d_{m+1})$ of each, and weight it by the
 probability that $D$ lands in that cell:
 \[ u_m \;=\; F_D(d_{m+1}) - F_D(d_m), \qquad
    \int \psi(d) \, dF_D(d) \;\approx\; \sum_m \psi(\bar d_m)\, u_m. \]
-The $u_m$ are exact, being differences of the product in Section 2, so the
+The $u_m$ are exact, being differences of the product in
+Section~\ref{sec:reduction}, so the
 only error is the variation of $\psi$ within a cell.
 
 Take $d_0$ below every $b_w$ and $d_M$ above every $b_w$, each by several
@@ -176,6 +220,7 @@ shape, so the whole clue vocabulary is scored at once rather than one clue at
 a time.
 
 \section{Results}
+\label{sec:results}
 
 The model above has one free parameter. To choose it, $\sigma$ was swept over
 three orders of magnitude and each value was made to play the same 100

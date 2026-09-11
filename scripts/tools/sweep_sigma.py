@@ -2,7 +2,7 @@
 
 `sigma` is the one free parameter of the `expected_words` objective: the
 scale of the perturbation between our per-clue z and the guesser's
-perceived ranking (docs/clue-selection-theory.html, section 1). Every
+perceived ranking (docs/clue-selection-theory.tex, Setup). Every
 value picked so far came from eyeballing the resulting clue numbers,
 which is a proxy for the thing that matters and not the thing itself.
 
