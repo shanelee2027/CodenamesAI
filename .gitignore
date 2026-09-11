@@ -14,8 +14,10 @@ __pycache__/
 .env
 !.env.example
 
-# LaTeX build artifacts (docs/clue-selection-theory.tex)
-docs/*.pdf
+# LaTeX build artifacts (docs/clue-selection-theory.tex). The PDF itself is
+# tracked -- it is the form the document gets read and sent in, and it has to
+# be reachable from a machine with no TeX toolchain. Rebuild it after editing
+# the .tex, or the committed copy silently goes stale.
 docs/*.aux
 docs/*.log
 docs/*.synctex.gz
