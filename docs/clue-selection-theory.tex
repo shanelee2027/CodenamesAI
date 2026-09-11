@@ -51,9 +51,7 @@ However, in practice, our perceived similarities are related to but different fr
 \section{Setup}
 \label{sec:setup}
 
-Let $A$ be the set of board words we want the guesser to select and $B$ the
-set we want them to avoid. A clue is a clue word together with a number $k$,
-and announcing it allows the guesser $k$ selections. Fix a clue word, and let
+Let $A$ be the set of our team's board words and $B$ the set of all other board words. For any fixed clue word, let
 $a_i$ be its similarity to word $i \in A$ and $b_w$ its similarity to word
 $w \in B$, where the $a_i$ are sorted so that $a_1 \ge a_2 \ge \dots$.
 Selecting a word of $A$ is worth $1$, and selecting $w \in B$ costs
