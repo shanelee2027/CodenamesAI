@@ -98,6 +98,20 @@ $W$) if and only if $N < k$. Note that no word of $B$ other than $W$ can be sele
 \section{Derivation}
 \label{sec:derivation}
 
+Neither $G$ nor $P$ has a closed form. Both are expectations over all
+$|A| + |B|$ noise variables at once, and the maximum of non-identical normals
+has no elementary distribution, so the aim is not to solve them exactly but to
+reduce them far enough to evaluate cheaply.
+
+We take far enough to mean the following: every quantity is built from
+$\varphi$ and $\Phi$, the standard normal PDF and CDF, by finitely many sums
+and products over $A$ and $B$, with a single one-dimensional integral in $t$
+left over. Treating $\varphi$ and $\Phi$ as known is the convention that treats
+$\exp$ and $\sqrt{\cdot}$ as known: any standard library computes them to
+machine precision. The remaining integral is evaluated numerically in
+Section~\ref{sec:computation}, and what the derivation buys is that one
+dimension replaces the $|A| + |B|$ we started with.
+
 We start with $G(k)$. Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$,
 taking expectations and conditioning on $T$ gives
 \[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid T = t) \,\, dF_T(t). \]
