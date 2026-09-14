@@ -14,6 +14,10 @@
 \usepackage{booktabs}
 \usepackage{caption}
 \usepackage{float}          % [H] pins the table and figure where they are written
+% Blank line between paragraphs instead of a first-line indent. parskip
+% also fixes up the spacing it would otherwise break around lists and
+% display math, which setting \parindent and \parskip by hand does not.
+\usepackage[skip=8pt, indent=0pt]{parskip}
 \usepackage{microtype}
 \usepackage[T1]{fontenc}
 \usepackage{libertinus}          % swap for \usepackage{lmodern} to fall back
