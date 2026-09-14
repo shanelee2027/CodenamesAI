@@ -1,0 +1,521 @@
+CodenamesAI: A Risk-Calibrated Clue Generator over Multiple Word Embedding Spaces
+
+Shane Lee (shane.lee@yale.edu)
+Project proposal
+
+
+1. INTRODUCTION
+
+Codenames is a word-association board game played by two teams. A 5x5 grid of
+words is laid out. One player per team is the spymaster, who alone can see
+which words belong to their team, which belong to the opponent, which are
+neutral, and which single word is the assassin. On each turn the spymaster
+says one word and one number -- "TROUSERS 2" -- and their teammate, the
+guesser, has to pick out which board words the clue was aimed at. Picking a
+neutral or an opponent word ends the turn. Picking the assassin loses the
+game immediately.
+
+This project builds the spymaster. The guesser is treated as the environment
+rather than as something to be built: for training it is simulated, and for
+evaluation it is a large language model standing in for a human listener.
+
+The difficulty is not finding a word that is close to the team's words. That
+part is a lookup. The difficulty is that the spymaster has to predict how
+somebody else will read the clue, using a representation of word meaning that
+the other person does not share, and then commit to a number that says how far
+that prediction should be trusted. Announcing 3 when the guesser will only get
+2 right does not cost one word; it costs a word and hands the turn over, and
+sometimes it loses the game.
+
+The project attacks this from two directions. The first is knowledge: rather
+than picking one word embedding and hoping it covers everything, the system
+reads several embeddings built from different sources and learns which one to
+trust for which clue. The second is risk: the choice of the number is derived
+from an explicit probabilistic model of the guesser rather than set by a
+threshold rule, so the system can say how likely each outcome is and price the
+assassin accordingly.
+
+
+2. BACKGROUND AND RELATED WORK
+
+Computational Codenames work splits fairly cleanly into three lines.
+
+Embedding and graph based spymasters. Koyyalagunta et al. (JAIR 2021) is the
+standard reference. They generate clues from either the BabelNet language graph
+or from word2vec, GloVe, fastText and BERT embeddings, and introduce a scoring
+function together with a weighting term called DETECT that uses dictionary
+definitions and document frequency to throw out clues that are too rare or too
+common. Kim et al. (AIIDE 2019) set up Codenames as a testbed for comparing
+word association methods, and the Codenames AI Competition framework that came
+out of that line is still the common harness. Work presented at CMCL 2022
+builds spymasters from raw co-occurrence counts rather than embeddings and
+compares four scoring functions over them. All of this is deterministic: a
+score is computed for each candidate clue, the best one is taken, and the
+number is usually just how many words scored above some cutoff.
+
+Reinforcement learning. Siu (2022) was the first to write Codenames as a Markov
+decision process and run SAC, PPO and A2C against it. That paper also uses a
+role weighting of -1 for a neutral word, -2 for an opponent word and -3 for the
+assassin, which is the same shape as the reward vector this project uses,
+though with much milder penalties.
+
+Probabilistic guesser modelling. The closest work to this project is
+"Improving Cooperation in Language Games with Bayesian Inference and the
+Cognitive Hierarchy" (2024). It models semantic uncertainty by adding noise to
+word embeddings, computes an expected utility for each (clue, number) pair, and
+takes the best one -- the same model class this project uses. The difference is
+in how the expectation is obtained: that paper samples, querying model guessers
+repeatedly on perturbed embeddings and averaging over ten samples per
+candidate. This project derives the same expectation in closed form, which is
+what makes it affordable to score a vocabulary of 111,440 clues on every turn
+instead of a shortlist. A related paper, "Adapting to Teammates in a
+Cooperative Language Game" (2024), uses Gaussian perturbation of embeddings for
+teammate modelling rather than for clue selection.
+
+Large language models as players. Stephenson, Sidji and Ronval (2024) use
+Codenames as a benchmark for LLMs, which is close to how this project uses an
+LLM -- as a stand-in listener for evaluation, not as the clue giver.
+
+The embedding spaces themselves come from three different construction
+methods, which is the point of using all three. GloVe (Pennington et al. 2014)
+is fitted to global word co-occurrence counts. ConceptNet Numberbatch (Speer,
+Chin and Havasi, AAAI 2017) starts from distributional embeddings and
+retrofits them onto the ConceptNet knowledge graph using the method of Faruqui
+et al. (NAACL 2015), so it carries explicit relations like is-a and part-of
+that co-occurrence statistics never surface on their own. Wikipedia2Vec
+(Yamada et al., EMNLP 2020) trains words and Wikipedia entities into a shared
+space, so it knows about named entities in a way the other two do not.
+
+On the mathematical side, the guesser model used here is a random utility
+model in the sense of Thurstone (1927): a latent score plus independent noise,
+with choice determined by the argmax. The derivation in Section 4 relies on
+standard order statistics for independent but non-identically distributed
+variables, including the ratio of a density to its distribution function, which
+is known as the reversed hazard rate, and on the Poisson binomial distribution
+for a sum of independent Bernoulli variables with unequal probabilities. None
+of that machinery is new. What is specific to this project is the reduction
+that makes it apply.
+
+
+3. PROBLEM DESCRIPTION
+
+Given a board, a set of unrevealed team words A, a set of unrevealed non-team
+words B with a cost attached to each, and a clue vocabulary, choose a clue word
+and a number k that maximize the expected reward of the turn. The reward used
+throughout is +1 for each team word revealed, -0.2 for a neutral word, -1 for
+an opponent word, and -10 for the assassin. The number is capped at 4.
+
+Three things make this hard.
+
+The spymaster cannot see what the guesser sees. Any similarity score the
+system computes is its own. The guesser -- a person, or an LLM -- has a related
+but different sense of which words go together. A clue chosen by maximizing an
+assumed-shared score is most exposed exactly where the two disagree, because
+maximizing over a large vocabulary selects for favourable error as much as for
+genuine fit. Every announced number is a bet on the size of that disagreement.
+
+A single embedding has a fixed knowledge profile, and it is the wrong one
+about a third of the time. Standard embeddings encode dictionary semantics.
+They do not encode pop culture or entity knowledge. On a board holding KING,
+DREAM, CRAFT and SWORD, a human might say "Technoblade" -- a Minecraft YouTuber
+connected to craft through Minecraft, to sword through PvP, to dream through
+the Dream SMP, and to king through his Potato King persona. GloVe has no vector
+for that word at all, so no amount of threshold tuning produces the clue. The
+project's response is to read several spaces with different knowledge profiles
+and learn which to trust per clue, rather than searching for one best
+embedding.
+
+A one-vector-per-word representation cannot handle polysemy, and this has been
+measured rather than assumed. On one board the model gave TROUSERS 2 intending
+Pants and Suit; the LLM guesser took Pants and then Fly, meaning the zip on a
+pair of trousers. Probing Fly against clues aimed at each of its senses shows
+the garment sense is swamped by the insect, aviation and fly-fishing senses in
+all three spaces at once: against zipper, the most direct probe available, Fly
+reaches only +1.70 standard deviations in the best space, against +4.79 for
+airplane. Because all three spaces agree and are wrong together, cross-space
+disagreement cannot detect this class of error. It is also a structured,
+word-specific offset rather than the independent noise the model assumes, which
+makes it the weakest assumption in the current derivation and the one most
+likely to be challenged.
+
+There is also an evaluation problem worth stating plainly. "Is this clue good"
+has no ground truth apart from what some listener actually does with it, so the
+choice of listener defines the training signal completely. A simulated guesser
+pool cannot be validated from inside the simulation that it defines. Results
+therefore have to be reported as conditional on a stated pool configuration,
+and generalization has to be checked against a listener the system never
+trained against.
+
+
+4. PLANNED APPROACHES
+
+4.1 Overall structure
+
+Work is split across three times, so that anything expensive and
+model-independent is paid for once.
+
+  BUILD TIME (once)
+  -----------------
+  GloVe          ]
+  Numberbatch    ]--> intersect vocabularies (111,440 clue words)
+  Wikipedia2Vec  ]        |
+                          v
+                  cosine similarity of every clue word against all 400
+                  board words in every space
+                          |
+                          v
+                  similarity tensor  [111,440 x 400 x 3]  fp16, memory-mapped
+                  clue_stats.npz     per-clue mean/std/rarity percentile
+                          |
+     (after this point the embedding models are never loaded again)
+
+
+  TRAIN TIME (repeatable)
+  -----------------------
+  sample (board, clue, guesser) triples
+          |
+          v
+  simulate the guesser  -->  rollout store: (board, clue, guesser, turn) -> (k, cause)
+          |                        [expensive, model-independent, cached]
+          v
+  featurize per model   -->  training dataset
+          |                        [cheap: ~35x faster than simulating]
+          v
+  train the scorer      -->  checkpoint
+
+
+  PLAY TIME (per turn)
+  --------------------
+  board state
+      |
+      v
+  score all 111,440 clues in one batched pass (GPU)
+      |
+      v
+  expected reward for every (clue, k) using reward parameters applied
+  outside the network
+      |
+      v
+  filter illegal clues (shares a root with a board word)
+      |
+      v
+  best (clue, number)
+
+4.2 The representation
+
+For a candidate clue, the system looks up its similarity to all 25 board words
+in each of the three spaces, splits them by role (own, opponent, neutral,
+assassin), sorts descending within each role group per space, pads to a fixed
+width with a sentinel and a validity mask, and concatenates. A few scalars are
+appended: own words remaining, turn index, score differential.
+
+Two choices here matter. Sorting within a role group makes the representation
+permutation-invariant, since board order carries no information, and it makes
+rank position meaningful -- "the highest own-word similarity is 0.8" and "the
+ninth own-word similarity is 0.8" describe completely different boards. Spaces
+are concatenated and never averaged, because averaging destroys the signal the
+project exists to use: a high Numberbatch similarity next to a near-zero GloVe
+similarity identifies a clue riding on an explicit knowledge-graph relation,
+and averaged into one number that is indistinguishable from a uniformly
+mediocre clue.
+
+Similarities are standardized per clue word against the full 400-word board
+vocabulary before use, which corrects for the fact that some clue words are
+close to everything. The resulting scores have mean 0 and variance 1 by
+construction, though they are strongly right-skewed rather than normal, which
+is what makes a clue informative at all.
+
+The network never sees a word. All linguistic knowledge sits in the similarity
+tensor.
+
+4.3 The two spymasters
+
+An analytic baseline, expected_words. This one has no learned parameters. It
+assumes the guesser perceives word x as z_x + e_x with e_x independent Gaussian
+noise of a single scale sigma, and that the guesser works down its own
+perceived order until it hits a non-team word. Writing T for the perceived
+score of the strongest non-team word, W for that word's identity, and N for the
+number of team words the guesser ranks above it, the turn reveals min(k, N)
+team words and errs exactly when N < k. Conditioning on T makes the team words
+conditionally independent, so N given T is Poisson binomial and the whole
+expected reward collapses to a one-dimensional integral that can be evaluated
+for the entire vocabulary at once. The derivation is written up separately in
+docs/clue-selection-theory.tex.
+
+Conditioning on T is what makes this correct rather than merely convenient.
+The obvious alternative -- multiplying each word's survival probability
+together -- is wrong twice over, because comparisons against a given team word
+share that word's noise draw and because every team word faces the same
+distractor draws. Both dependencies are positive, so the naive product
+understates survival, measured 0.37 expected words too low at sigma = 1.8.
+
+The single free parameter was fitted by sweeping sigma over three orders of
+magnitude across 100 held-out positions against a Claude Sonnet guesser. Reward
+per turn peaks at sigma = 2.5 with +1.314, and the sweep shows that the number
+of words revealed and the reward earned peak at different values: revealed
+words peak at sigma = 1.0 with 1.74 per turn, where reward is only 0.852,
+because at that setting the guesser reaches a non-team word on 76 of 100 turns
+and the assassin on 4. An objective fitted on words revealed alone would pick a
+setting that loses games.
+
+A learned scorer. An MLP with hidden layers of 256, 256 and 128 units maps the
+feature vector to 13 output classes through a softmax. The classes are a joint
+distribution over (k, cause): how many team words are revealed in a row before
+stopping, crossed with which role actually stopped it, plus one right-censored
+class for hitting the cap without a miss. The network is trained only to
+predict that distribution and is never shown a reward value. A separate
+closed-form step combines the predicted distribution with four reward
+parameters to produce an expected reward for every announced number, and the
+best (clue, number) pair is returned. Keeping the reward outside training means
+the assassin penalty doubles as a risk-aversion dial that can be turned at play
+time without retraining, which is what lets the same trained model be moved
+along the "brilliant but high-variance" to "safe and dull" curve.
+
+Supervised learning rather than RL is a deliberate choice. Given a board, a
+clue and a guesser, the outcome is directly simulable -- full feedback on every
+action, free, unlimited times -- which is exactly the condition under which the
+problem reduces to supervised classification. Policy gradients over a 111,440
+action space would deliver the same information with far more variance and no
+clean validation metric.
+
+4.4 Evaluation
+
+Training guessers and evaluation guessers are kept strictly separate. Training
+uses a pool of three simulated guessers, one per embedding space, each wrapped
+in Gaussian noise of 0.03 standard deviations. The pool's diversity is in
+knowledge, not noise: a pool of one base guesser at several noise levels would
+punish exactly the knowledge-source-specific clues the project is trying to
+produce, since a GloVe-only listener fails on "Technoblade" at every noise
+level, which would teach the scorer that such clues are bad.
+
+Evaluation uses a single fixed LLM guesser, Claude Opus 5 at medium reasoning
+effort, prompted to rank the unrevealed board words by relatedness to the clue.
+The LLM is never used in training, so it is a listener the spymaster has no
+access to. The suite is frozen: 100 fixed board seeds, boards built entirely
+from 150 board words held out of training, and the LLM model identifier is part
+of the suite's identity so that switching models cannot silently make old
+numbers look comparable. Every response and every completed game is cached in
+SQLite, so a rerun is free, extending the suite pays only for new boards, and
+two models that give the same clue on the same board get the identical LLM
+response -- which makes model-to-model comparison paired rather than
+independently sampled.
+
+Five baselines are registered and run alongside: a random legal clue, a
+centroid clue, the hand-coded linear scorer, the analytic expected_words model,
+and a zero-noise oracle used as an upper bound rather than as a fair
+comparison.
+
+4.5 Tools, libraries and data
+
+  Language and core
+    Python 3.11+
+    NumPy -- the similarity tensor, all feature construction
+    PyTorch -- the MLP, and batched whole-vocabulary scoring on GPU
+    pytest -- test suite (358 tests at present)
+
+  Embeddings and word data
+    GloVe -- co-occurrence-based vectors
+    ConceptNet Numberbatch -- retrofitted onto the ConceptNet knowledge graph
+    Wikipedia2Vec -- words and Wikipedia entities in a shared space
+    gensim -- loading and querying pretrained vectors at build time
+    wikiextractor -- preparing Wikipedia text
+    wordfreq -- word frequency, used for the clue rarity percentile filter
+
+  LLM guesser
+    anthropic (official Python SDK)
+    Claude Opus 5 for evaluation, Claude Sonnet for cheaper development runs
+    SQLite (standard library) for the response and game-record caches
+
+  Infrastructure
+    memory-mapped fp16 NumPy arrays, so many worker processes share one copy
+      of the similarity tensor instead of each loading embeddings
+    concurrent.futures -- ProcessPoolExecutor for data generation,
+      ThreadPoolExecutor for parallel LLM calls
+    http.server (standard library) for the interactive web inspector
+    matplotlib for plots
+    LaTeX, compiled with Tectonic, for the written derivation
+    git
+
+  Hardware
+    RTX 5080, 16GB, Blackwell (sm_120), which requires CUDA 12.8 or newer.
+    Nothing in the project needs rented or cloud compute.
+
+
+5. SCHEDULE
+
+Dates below assume a semester ending in the second week of December; they
+should be adjusted if that is wrong. The infrastructure described in Section 4
+is already built and tested, so the schedule is about producing measured
+results with it, not about standing it up.
+
+  Week of Sep 15   Finish the written derivation of the analytic model.
+                   Settle the evaluation guesser (Opus vs Sonnet) before
+                   spending money, since the choice is baked into the suite
+                   identity and cannot be changed later without invalidating
+                   every cached game.
+
+  Week of Sep 22   Run the first paid evaluation: all five baselines against
+                   the frozen 100-board suite. This produces the first
+                   comparable numbers the project has ever had.
+
+  Week of Sep 29   Improve the clue vocabulary. Add a part-of-speech and
+                   proper-noun filter to the rarity screen, which is expected
+                   to be a larger gain than any modelling change at this
+                   stage.
+
+  Week of Oct 6    Generate the rollout set at full scale and featurize it.
+
+  Week of Oct 13   Train the first (k, cause) scorer under the current 150-word
+                   split. Check it against the training-side arena.
+
+  Week of Oct 20   Evaluate the trained scorer on the frozen suite. Write its
+                   version document. Mid-semester checkpoint: either the
+                   learned model beats expected_words or there is a documented
+                   reason why not.
+
+  Week of Oct 27   Ablations: concatenated versus averaged spaces, sorted
+                   versus unsorted features, and a pool-composition sweep as a
+                   sensitivity check on the guesser-pool assumption.
+
+  Week of Nov 3    Risk-aversion sweep. Vary the assassin reward at scoring
+                   time and plot the expected-value against worst-case curve
+                   the design anticipates.
+
+  Week of Nov 10   Second model iteration, chosen from what the ablations show.
+                   Cross-space disagreement as a feature is the current
+                   candidate.
+
+  Week of Nov 17   Evaluate the second iteration. Freeze results.
+
+  Week of Nov 24   Write the report. Assemble the poster.
+
+  Week of Dec 1    Buffer for reruns and rewriting. Rehearse the oral defense.
+
+  Week of Dec 8    Submit. Present.
+
+Two scheduling risks are worth naming now. The first paid evaluation is the
+single point where the project starts spending real money, and the suite
+identity has to be settled before it, not after. And the clue vocabulary work
+in week three is the kind of task that looks small and is not; it is scheduled
+early for that reason.
+
+
+6. DELIVERABLES
+
+  Code
+    The full repository: library code, the build/train/evaluate pipeline, the
+    spymaster and guesser registries, the frozen eval suite and the caches.
+    A pytest suite covering it.
+
+  Models
+    The analytic expected_words spymaster with its fitted parameter.
+    At least one trained (k, cause) scorer with published results under the
+    frozen suite.
+    Four reference baselines for comparison.
+
+  Written work
+    "Clue Selection Under Noise" -- the derivation of the analytic model,
+    typeset in LaTeX, currently about six pages.
+    One version document per model, recording what changed and what it
+    measured.
+    A standing design-decisions document and a chronological working log.
+    The final project report.
+
+  Demonstrations
+    An interactive web inspector that plays a full two-team game or dissects a
+    single turn, with live controls for the reward parameters, noise and
+    rarity filter.
+    A command-line inspector for the same single-turn view.
+
+  Presentation
+    Poster.
+    Oral defense.
+
+
+7. FUTURE WORK
+
+Several directions are out of scope this semester but follow directly.
+
+Human evaluation. Everything measured so far uses either a simulated guesser or
+an LLM. Logging real games against human players and fitting the guesser-pool
+mixture to that data would replace the project's least defensible assumption
+with a measured one.
+
+Polysemy. The TROUSERS/Fly case shows the limit of one vector per word type.
+Sense-aware embeddings (LMMS, ARES, SensEmBERT) or multi-prototype embeddings
+attach separate vectors to separate senses and would address a failure mode
+that no amount of cross-space voting can reach.
+
+A pop-culture and entity space. The motivating example for the whole
+multi-space design -- "Technoblade" -- is still not producible, because no
+space in the current set contains it. A fourth space built from a source with
+that coverage was planned and cut for scope.
+
+An LLM that proposes and an analytic layer that disposes. LLMs are good at
+association and bad at calibrated risk; the model in Section 4.3 is the
+reverse. Letting an LLM propose candidate clue words and having the existing
+machinery score them and pick the number would combine the two at a cost of one
+API call per turn. This would need the design-decisions document amended, since
+it currently rules out prompting a language model for a clue anywhere in the
+pipeline.
+
+Multi-turn play. Everything here optimizes a single turn. Clue choice changes
+which words remain for later turns, and a real spymaster plans around that.
+Adding lookahead or a value function on top of a working single-turn scorer is
+the natural next step.
+
+Cross-space disagreement as a veto. The assassin is reached on 11% of turns
+under one space and 26% under another, which suggests using disagreement
+between spaces as a safety check. The polysemy measurement showed this will not
+help where all three spaces are wrong together, but it should still help where
+they differ.
+
+
+8. REFERENCES
+
+Block, H. W., Savits, T. H., and Singh, H. "The Reversed Hazard Rate Function."
+  Probability in the Engineering and Informational Sciences 12(1), 1998.
+
+Faruqui, M., Dodge, J., Jauhar, S. K., Dyer, C., Hovy, E., and Smith, N. A.
+  "Retrofitting Word Vectors to Semantic Lexicons." NAACL 2015.
+
+Frank, M. C., and Goodman, N. D. "Predicting Pragmatic Reasoning in Language
+  Games." Science 336(6084), 2012.
+
+Kim, A., Ruzmaykin, M., Truong, A., and Summerville, A. "Cooperation and
+  Codenames: Understanding Natural Language Processing via Codenames." AIIDE
+  2019.
+
+Koyyalagunta, D., Sun, A., Draelos, R. L., and Rudin, C. "Playing Codenames
+  with Language Graphs and Word Embeddings." Journal of Artificial Intelligence
+  Research 71, 2021. arXiv:2105.05885.
+
+Pennington, J., Socher, R., and Manning, C. D. "GloVe: Global Vectors for Word
+  Representation." EMNLP 2014.
+
+Siu, S. "Towards Automating Codenames Spymasters with Deep Reinforcement
+  Learning." 2022. arXiv:2212.14104.
+
+Speer, R., Chin, J., and Havasi, C. "ConceptNet 5.5: An Open Multilingual Graph
+  of General Knowledge." AAAI 2017.
+
+Stephenson, M., Sidji, M., and Ronval, B. "Codenames as a Benchmark for Large
+  Language Models." 2024. arXiv:2412.11373.
+
+Thurstone, L. L. "A Law of Comparative Judgment." Psychological Review 34(4),
+  1927.
+
+Yamada, I., Asai, A., Sakuma, J., Shindo, H., Takeda, H., Takefuji, Y., and
+  Matsumoto, Y. "Wikipedia2Vec: An Efficient Toolkit for Learning and
+  Visualizing the Embeddings of Words and Entities from Wikipedia." EMNLP 2020
+  (System Demonstrations).
+
+"Improving Cooperation in Language Games with Bayesian Inference and the
+  Cognitive Hierarchy." 2024. arXiv:2412.12409.
+
+"Adapting to Teammates in a Cooperative Language Game." 2024. arXiv:2403.00823.
+
+"Codenames as a Game of Co-occurrence Counting." Workshop on Cognitive
+  Modeling and Computational Linguistics (CMCL), 2022.
+
+Codenames AI Competition framework. github.com/stepmat/Codenames_GPT
