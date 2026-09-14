@@ -68,7 +68,9 @@ optimal clue under these conditions.
 \label{sec:setup}
 
 Let $A$ be the set of our team's board words and $B$ the set of all other board
-words. For any fixed clue word, let $z_x$ be its similarity to board word $x$.
+words. For any fixed clue word, let $z_x$ be its similarity to board word $x$,
+standardized per clue word so that its similarities across the full board
+vocabulary have mean $0$ and variance $1$.
 Throughout this paper, $i$ indexes $A$ and $w$ indexes $B$.
 
 In order to construct an algorithm, we first define rewards --- suppose
