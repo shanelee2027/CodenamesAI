@@ -103,14 +103,7 @@ $|A| + |B|$ noise variables at once, and the maximum of non-identical normals
 has no elementary distribution, so the aim is not to solve them exactly but to
 reduce them far enough to evaluate cheaply.
 
-We take far enough to mean the following: every quantity is built from
-$\varphi$ and $\Phi$, the standard normal PDF and CDF, by finitely many sums
-and products over $A$ and $B$, with a single one-dimensional integral in $t$
-left over. Treating $\varphi$ and $\Phi$ as known is the convention that treats
-$\exp$ and $\sqrt{\cdot}$ as known: any standard library computes them to
-machine precision. The remaining integral is evaluated numerically in
-Section~\ref{sec:computation}, and what the derivation buys is that one
-dimension replaces the $|A| + |B|$ we started with.
+Our goal is to reduce both expressions to elementary operations and functions of $z_x$, the standard normal PDF and CDF, and single integrals.
 
 We start with $G(k)$. Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$,
 taking expectations and conditioning on $T$ gives
@@ -171,31 +164,22 @@ $\bar t_m = \tfrac{1}{2}(t_m + t_{m+1})$ of each, and weight it by the
 probability that $T$ lands in that cell:
 \[ u_m \;=\; F_T(t_{m+1}) - F_T(t_m), \qquad
    \int \psi(t) \, dF_T(t) \;\approx\; \sum_m \psi(\bar t_m)\, u_m. \]
-The $u_m$ are exact, being differences of the product in
-Section~\ref{sec:derivation}, so the
-only error is the variation of $\psi$ within a cell.
+Because the range of $T$ is $\mathbb{R}$, we have to limit our integral approximation to bounds $t_0$ and $t_M$. Take $t_0$ below every $z_w$ and $t_M$ above every $z_w$, each by several
+$\sigma$, so that $F_T(t_0)$ and $1 - F_T(t_M)$ are negligible. 
 
-Take $t_0$ below every $z_w$ and $t_M$ above every $z_w$, each by several
-$\sigma$, so that $F_T(t_0)$ and $1 - F_T(t_M)$ are negligible and no mass
-falls outside the grid. The same grid and the same $u_m$ serve both integrals,
-so one pass over the cells gives $G(k)$ and $P(k)$ together, and for every
-$k \le K$ at once.
+Computing $\bar c(t)$ takes $O(|B|)$. 
 
-Within a cell, $\bar c(\bar t_m)$ is immediate from its definition, at a cost
-of $|B|$ terms. The probabilities $\Pr(N \ge j \mid T = \bar t_m)$ follow from
+The probabilities $\Pr(N \ge j \mid T = t)$ follow from
 the standard recursion for a sum of independent Bernoulli variables. Letting
 $q^{(i)}_r$ be $\Pr(N = r)$ after the first $i$ words of $A$,
 \[ q^{(0)}_0 = 1, \qquad
-   q^{(i)}_r \;=\; q^{(i-1)}_r\bigl(1 - p_i(\bar t_m)\bigr)
-                \;+\; q^{(i-1)}_{r-1}\,p_i(\bar t_m), \]
-and $\Pr(N \ge j \mid T = \bar t_m) = 1 - \sum_{r < j} q_r$. Counts above $K$
-are never used, so the recursion may be truncated there, costing $|A|K$ per
-cell rather than $|A|^2$.
+   q^{(i)}_r \;=\; q^{(i-1)}_r\bigl(1 - p_i(t)\bigr)
+                \;+\; q^{(i-1)}_{r-1}\,p_i(t), \]
+and $\Pr(N \ge j \mid T = t) = 1 - \sum_{r < j} q_r$. Counts above $K$
+are never used, so this takes $O(|A|K)$.
 
 The total is $O\bigl(M(|A|K + |B|)\bigr)$ per clue, with $M$ the number of
-cells. Every step is a fixed sequence of arithmetic on arrays of the same
-shape, so the whole clue vocabulary is scored at once rather than one clue at
-a time.
+cells. 
 
 \section{Results}
 \label{sec:results}
@@ -206,9 +190,7 @@ positions, drawn from held-out board words and spanning openings through
 endgames. Each turn was scored as the game scores it: the guesser's ranking is
 walked, own words are counted until the first word of $B$, and the reward is
 $+1$ per own word with $-0.2$, $-1$ and $-10$ for a neutral, opponent and
-assassin word respectively. The guesser was an external language model, not
-the similarity ranking the spymaster itself uses, so the numbers measure the
-model against a listener it has no access to.
+assassin word respectively. The guesser was Claude Sonnet, who was prompted to give an ordered list of the unrevealed board words of how related each word is to the clue word.
 
 \begin{table}[H]
 \centering
@@ -286,48 +268,6 @@ intervals; the wide bars at small $\sigma$ are assassin turns, each costing
 $-10$.}
 \end{figure}
 
-Both limits saturate. As $\sigma \to 0$ the model treats the guesser as a copy
-of itself and announces $k = K$ on nearly every board, and as $\sigma$ grows
-it announces $k = 1$ and stops responding to further increases. Neither end is
-optimal, and the reward curve is single-peaked between them.
-
-Note that the number of words revealed and the reward earned are maximized at
-different $\sigma$. Revealed words peak at $\sigma = 1.0$ with $1.74$ per
-turn, where reward is only $0.852$; reward peaks at $\sigma = 2.5$ with
-$1.314$, where $1.41$ words are revealed. The difference is entirely risk. At
-$\sigma = 1.0$ the guesser reaches a word of $B$ on 76 of 100 turns and the
-assassin on 4; at $\sigma = 2.5$ it reaches $B$ on 20 and the assassin on
-none. Thus the gain from claiming an extra word is real but is more than
-repaid, and an objective fitted on revealed words alone would choose a value
-that loses games.
-
-The assassin is what makes the left half of the curve hard to measure. It is
-worth $-10$, so a handful of assassin turns dominate the variance: the
-standard error is $0.2$ to $0.3$ for $\sigma \le 2.0$ and $0.035$ to $0.069$
-for $\sigma \ge 2.5$, where no assassin was reached at all. Comparing paired
-by board, $\sigma = 2.5$ beats every other value tested at the 5\% level
-except $\sigma = 2.0$ $(+0.14 \pm 0.21)$ and $\sigma = 1.0$
-$(+0.46 \pm 0.49)$, both of which are indistinguishable only because their own
-assassin losses are so noisy.
-
-Note also that the gap between announced and revealed is negative everywhere
-and closes monotonically, reaching $-0.11$ at $\sigma = 4$. The model
-therefore remains optimistic at its own optimum, announcing $1.72$ where
-$1.41$ is delivered. Calibrating $G$ and maximizing reward are different
-objectives: only the ordering of $G(k) - P(k)$ across clues and $k$ affects
-the choice made, so a bias shared by every candidate leaves the argmax
-unchanged. Fitting $\sigma$ to close the gap would report $\sigma \approx 4$
-and cost $0.25$ reward per turn.
-
-We therefore take $\sigma = 2.5$. The positions used here are disjoint from
-the evaluation boards, so the value was not chosen on the boards it is later
-reported on.
-
-\vspace{1.2em}
-\hrule
-\vspace{0.7em}
-\noindent\footnotesize Here the $z_x$ are similarities standardized per
-clue, $c_w$ are the costs of the words to avoid, and $\sigma$ is the guesser's
-per-word perturbation.
+We take $\sigma = 2.5$ for our benchmark.
 
 \end{document}
