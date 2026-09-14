@@ -84,35 +84,31 @@ assume the guesser selects unrevealed words in decreasing order of $\hat z$,
 stopping after $k$ selections or upon selecting a word of $B$, whichever comes
 first.
 
-\section{Reduction to three variables}
-\label{sec:reduction}
-
 Let
-\[ T = \max_{w \in B} \hat z_w, \qquad W^\ast = \argmax_{w \in B} \hat z_w,
+\[ T = \max_{w \in B} \hat z_w, \qquad W = \argmax_{w \in B} \hat z_w,
    \qquad N = \#\{\, i \in A : \hat z_i > T \,\}. \]
-In words, $T$ is the highest similarity the guesser perceives among the words
-to avoid, and is therefore the bar a word of $A$ has to clear to be chosen
-before any of them; $W^\ast$ is the word of $B$ that sets that bar; and $N$
-counts our words that clear it.
+In words, $W$ is the non-team word with the highest similarity from the guesser, $T$ is the guesser's similarity of that word, and $N$ is the number of team words that the guesser ranks higher than $W$.
 
-Every word ranked above $T$ is in $A$, since $T$ is the maximum of $\hat z$
-over $B$. Thus the guesser's ordering begins with the $N$ words counted above,
-and the $(N+1)$-th word is $W^\ast$. This means the guesser reveals
-$\min(k, N)$ words of $A$, and selects a word of $B$ if and only if $N < k$,
-in which case that word is $W^\ast$.
+We know the guesser reveals
+$\min(k, N)$ words of $A$, and selects a word of $B$ (that word being 
+$W$) if and only if $N < k$. Note that no word of $B$ other than $W$ can be selected. Thus, our goal is to maximize $G(k) - P(k)$, where 
+\[ G(k) = \mathbb E\bigl[\min(k, N)\bigr], \qquad
+   P(k) = \mathbb E\bigl[\, c_{W}\,\mathbf 1\{N < k\} \,\bigr]. \]
 
-Note that no word of $B$ other than $W^\ast$ can be selected, so the single
-random variable $T$ accounts for all of $B$. Write $\varphi$ and $\Phi$ for
-the density and the distribution function of a standard normal. Each
-$\hat z_w$ is $\mathcal N(z_w, \sigma^2)$, so
-\[ F_{\hat z_w}(t) = \Phi\!\left(\frac{t - z_w}{\sigma}\right), \qquad
-   f_{\hat z_w}(t) = \sigma^{-1}\varphi\!\left(\frac{t - z_w}{\sigma}\right). \]
+\section{Calculations}
+\label{sec:calculations}
+
+We start with $G(k)$. Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$, taking expectations
+and conditioning on $T$ gives
+\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid T = t) \,\, dF_T(t). \]
+
+Letting $\varphi$ and $\Phi$ be
+the PDF and CDF functions of a standard normal, we have that the PDF and CDF functions of $\hat z_w \sim \mathcal N(z_w, \sigma^2)$ are
+\[ f_{\hat z_w}(t) = \sigma^{-1}\varphi\!\left(\frac{t - z_w}{\sigma}\right), \qquad
+   F_{\hat z_w}(t) = \Phi\!\left(\frac{t - z_w}{\sigma}\right). \]
 Since $T$ is a maximum of independent variables,
 \[ F_T(t) \;=\; \prod_{w \in B} F_{\hat z_w}(t)
    \;=\; \prod_{w \in B} \Phi\!\left(\frac{t - z_w}{\sigma}\right). \]
-
-\section{Conditional distribution}
-\label{sec:conditional}
 
 $T$ is a function of $(\varepsilon_w)_{w \in B}$ only, which is independent of
 $(\varepsilon_i)_{i \in A}$. Thus conditioning on $T = t$ does not change the
@@ -122,43 +118,33 @@ $\hat z_i > t$ with probability
 Given $T = t$, the count $N$ is therefore a sum of $|A|$ independent Bernoulli
 variables, the $i$-th with success probability $p_i(t)$.
 
-\section{Objective}
-\label{sec:objective}
 
-From Section~\ref{sec:reduction} the guesser reveals $\min(k, N)$ words of $A$, and selects
-$W^\ast$ exactly when $N < k$. Each word of $A$ is worth $1$ and $W^\ast$
-costs $c_{W^\ast}$, so the value of announcing $k$ is $G(k) - P(k)$, where
-\[ G(k) = \mathbb E\bigl[\min(k, N)\bigr], \qquad
-   P(k) = \mathbb E\bigl[\, c_{W^\ast}\,\mathbf 1\{N < k\} \,\bigr]. \]
-Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$, taking expectations
-and conditioning on $T$ gives
-\[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid T = t) \,\, dF_T(t). \]
 Each $\Pr(N \ge j \mid T = t)$ follows from the Bernoulli sum of
 Section~\ref{sec:conditional}, and the integral is one-dimensional in $t$. Section~\ref{sec:computation} computes both. It
 remains to find $P$.
 
-In $P$ the cost $c_{W^\ast}$ and the event $\{N < k\}$ both depend on the
+In $P$ the cost $c_{W}$ and the event $\{N < k\}$ both depend on the
 noise, but they become independent once $T$ is fixed. To see this, note that
 $T$ is a function of $(\varepsilon_w)_{w \in B}$ alone, so conditioning on
 $T = t$ constrains that family and leaves $(\varepsilon_i)_{i \in A}$ with its
 original distribution. Given $T = t$, the count
 $N = \#\{i \in A : z_i + \varepsilon_i > t\}$ is a function of
-$(\varepsilon_i)_{i \in A}$, while the identity $W^\ast$ is a function of
+$(\varepsilon_i)_{i \in A}$, while the identity $W$ is a function of
 $(\varepsilon_w)_{w \in B}$. The two families are independent, so $N$ and
-$W^\ast$ are conditionally independent given $T$, and the expectation splits:
+$W$ are conditionally independent given $T$, and the expectation splits:
 \[ P(k) \;=\; \int \Pr(N < k \mid T = t)\; \bar c(t) \,\, dF_T(t), \qquad
-   \bar c(t) = \mathbb E\bigl[\, c_{W^\ast} \mid T = t \,\bigr]. \]
+   \bar c(t) = \mathbb E\bigl[\, c_{W} \mid T = t \,\bigr]. \]
 The first factor is again a probability for the Bernoulli sum of
 Section~\ref{sec:conditional}.
 It remains to compute $\bar c(t)$, for which we need
-$\Pr(W^\ast = w \mid T = t)$.
+$\Pr(W = w \mid T = t)$.
 
-Writing $g_w$ for the joint density of $W^\ast = w$ and $T$ at $t$,
-\[ \Pr(W^\ast = w \mid T = t) \;=\; \frac{g_w(t)}{f_T(t)}. \]
-$W^\ast = w$ and $T = t$ means $\hat z_w = t$ and $\hat z_v < t$ for every
+Writing $g_w$ for the joint density of $W = w$ and $T$ at $t$,
+\[ \Pr(W = w \mid T = t) \;=\; \frac{g_w(t)}{f_T(t)}. \]
+$W = w$ and $T = t$ means $\hat z_w = t$ and $\hat z_v < t$ for every
 other $v \in B$. The $\hat z$ are independent, so
 \[ g_w(t) \;=\; f_{\hat z_w}(t) \prod_{v \ne w} F_{\hat z_v}(t). \]
-The events $\{W^\ast = w\}$, $w \in B$, are disjoint and exhaustive, so
+The events $\{W = w\}$, $w \in B$, are disjoint and exhaustive, so
 \[ f_T(t) \;=\; \sum_{w \in B} g_w(t). \]
 From Section~\ref{sec:reduction}, $F_T(t) = \prod_{v \in B} F_{\hat z_v}(t)$, so the product
 over $v \ne w$ is $F_T(t) \big/ F_{\hat z_w}(t)$. Set
@@ -167,7 +153,7 @@ over $v \ne w$ is $F_T(t) \big/ F_{\hat z_w}(t)$. Set
               {\Phi\bigl((t - z_w)/\sigma\bigr)}, \]
 so that $g_w(t) = F_T(t)\, h_w(t)$ and $f_T(t) = F_T(t) \sum_v h_v(t)$. The
 $F_T(t)$ cancels in the ratio:
-\[ \Pr(W^\ast = w \mid T = t) \;=\; \frac{h_w(t)}{\sum_v h_v(t)}, \qquad
+\[ \Pr(W = w \mid T = t) \;=\; \frac{h_w(t)}{\sum_v h_v(t)}, \qquad
    \bar c(t) \;=\; \frac{\sum_w c_w\, h_w(t)}{\sum_w h_w(t)}. \]
 We choose the clue maximizing the value,
 \[ \text{clue}^\ast \;=\; \argmax_{\text{word},\; 1 \le k \le K}
