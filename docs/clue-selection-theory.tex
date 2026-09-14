@@ -65,28 +65,32 @@ optimal clue under these conditions.
 
 Let $A$ be the set of our team's board words and $B$ the set of all other board
 words. For any fixed clue word, let $z_x$ be its similarity to board word $x$.
-Throughout, $i$ indexes $A$ and $w$ indexes $B$. Selecting a word of $A$ is
-worth $1$, and selecting $w \in B$ costs $c_w > 0$. We want to choose both
-parts of the clue.
+Throughout this paper, $i$ indexes $A$ and $w$ indexes $B$.
 
-We assume the guesser perceives board word $x$'s similarity with the clue word
-as $\hat z_x = z_x + \varepsilon_x$, where the $\varepsilon_x$ are independent
-$\mathcal N(0, \sigma^2)$. This models differences
-between our interpreted embeddings and the guesser's --- higher $\sigma$ means
-a larger gap between the two. We also assume the guesser selects unrevealed
-words in decreasing order of $\hat z$, stopping after $k$ selections or upon
-selecting a word of $B$, whichever comes first.
+In order to construct an algorithm, we first define rewards --- suppose
+selecting a word of $A$ is worth $1$, and selecting $w \in B$ costs $c_w > 0$.
+We want to choose the clue word and number $k$ that maximizes the expected
+reward.
 
-In words, the guesser ranks the board the same way we do, perturbed by
-independent noise of a single scale, and then guesses greedily. $\sigma$ is
-the only free parameter.
+To model deviations in the guesser's perceived similarities of the words from
+ours, we assume the guesser perceives board word $x$'s similarity with the clue
+word as $\hat z_x = z_x + \varepsilon_x$, where the $\varepsilon_x$ are
+independent $\mathcal N(0, \sigma^2)$ for some free parameter $\sigma$. We also
+assume the guesser selects unrevealed words in decreasing order of $\hat z$,
+stopping after $k$ selections or upon selecting a word of $B$, whichever comes
+first.
 
-\section{Reduction}
+\section{Reduction to three variables}
 \label{sec:reduction}
 
 Let
 \[ T = \max_{w \in B} \hat z_w, \qquad W^\ast = \argmax_{w \in B} \hat z_w,
    \qquad N = \#\{\, i \in A : \hat z_i > T \,\}. \]
+In words, $T$ is the highest similarity the guesser perceives among the words
+to avoid, and is therefore the bar a word of $A$ has to clear to be chosen
+before any of them; $W^\ast$ is the word of $B$ that sets that bar; and $N$
+counts our words that clear it.
+
 Every word ranked above $T$ is in $A$, since $T$ is the maximum of $\hat z$
 over $B$. Thus the guesser's ordering begins with the $N$ words counted above,
 and the $(N+1)$-th word is $W^\ast$. This means the guesser reveals
