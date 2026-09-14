@@ -101,8 +101,8 @@ $W$) if and only if $N < k$. Note that no word of $B$ other than $W$ can be sele
 We start with $G(k)$. Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$,
 taking expectations and conditioning on $T$ gives
 \[ G(k) \;=\; \sum_{j=1}^{k} \int \Pr(N \ge j \mid T = t) \,\, dF_T(t). \]
-Evaluating this needs two ingredients: the distribution of $T$, and the
-distribution of $N$ given $T = t$. We derive them in turn.
+To evaluate this, we need the distribution of $T$ and the
+distribution of $N$ given $T = t$.
 
 For the first, let $\varphi$ and $\Phi$ be the PDF and CDF of a standard
 normal, so that the PDF and CDF of $\hat z_w \sim \mathcal N(z_w, \sigma^2)$
@@ -118,20 +118,14 @@ only, which is independent of $(\varepsilon_i)_{i \in A}$. Thus conditioning on
 $T = t$ does not change the distribution of the $\hat z_i$, and each $i \in A$
 independently satisfies $\hat z_i > t$ with probability
 \[ p_i(t) \;=\; \Phi\!\left(\frac{z_i - t}{\sigma}\right). \]
-Given $T = t$, the count $N$ is therefore a sum of $|A|$ independent Bernoulli
-variables, the $i$-th with success probability $p_i(t)$. This fixes every
-$\Pr(N \ge j \mid T = t)$, and with it $G$.
+Thus, given $T = t$, $N$ is a sum of $|A|$ independent Bernoulli
+variables, the $i$-th with success probability $p_i(t)$.
 
-We turn to $P(k)$. The cost $c_W$ and the event $\{N < k\}$ both depend on the
-noise, so the expectation does not factor as it stands. It does once $T$ is
-fixed: given $T = t$, the count $N = \#\{i \in A : z_i + \varepsilon_i > t\}$
-is a function of $(\varepsilon_i)_{i \in A}$, while the identity $W$ is a
-function of $(\varepsilon_w)_{w \in B}$. The two families are independent, so
-$N$ and $W$ are conditionally independent given $T$, and the expectation
-splits:
+Now, we go onto $P(k)$. Note that if we fix $T = t$, then $N$ is solely a function of $(\varepsilon_i)_{i \in A}$, whereas $W$ is solely a
+function of $(\varepsilon_w)_{w \in B}$. Thus, $c_W$ and $\text{Pr}(N < k)$ are conditionally independent given $T$, so
 \[ P(k) \;=\; \int \Pr(N < k \mid T = t)\; \bar c(t) \,\, dF_T(t), \qquad
    \bar c(t) = \mathbb E\bigl[\, c_{W} \mid T = t \,\bigr]. \]
-The first factor is the Bernoulli sum above. The second needs
+We have already derived the distribution of $T$ and the first factor, so we just need the distribution of $\bar c(t)$, which requires
 $\Pr(W = w \mid T = t)$.
 
 Writing $g_w$ for the joint density of $W = w$ and $T$ at $t$,
@@ -150,11 +144,6 @@ so that $g_w(t) = F_T(t)\, h_w(t)$ and $f_T(t) = F_T(t) \sum_v h_v(t)$. The
 $F_T(t)$ cancels in the ratio:
 \[ \Pr(W = w \mid T = t) \;=\; \frac{h_w(t)}{\sum_v h_v(t)}, \qquad
    \bar c(t) \;=\; \frac{\sum_w c_w\, h_w(t)}{\sum_w h_w(t)}. \]
-
-Both $G$ and $P$ are now determined, and we choose the clue maximizing the
-value,
-\[ \text{clue}^\ast \;=\; \argmax_{\text{word},\; 1 \le k \le K}
-   \bigl[\, G(k) - P(k) \,\bigr]. \]
 
 \section{Computation}
 \label{sec:computation}
