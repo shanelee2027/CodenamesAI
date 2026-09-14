@@ -73,8 +73,8 @@ Throughout this paper, $i$ indexes $A$ and $w$ indexes $B$.
 
 In order to construct an algorithm, we first define rewards --- suppose
 selecting a word of $A$ is worth $1$, and selecting $w \in B$ costs $c_w > 0$.
-We want to choose the clue word and number $k$ that maximizes the expected
-reward.
+We want to choose the clue word and number $k$, with $1 \le k \le K$ for a
+fixed maximum $K$, that maximizes the expected reward.
 
 To model deviations in the guesser's perceived similarities of the words from
 ours, we assume the guesser perceives board word $x$'s similarity with the clue
@@ -95,8 +95,8 @@ $W$) if and only if $N < k$. Note that no word of $B$ other than $W$ can be sele
 \[ G(k) = \mathbb E\bigl[\min(k, N)\bigr], \qquad
    P(k) = \mathbb E\bigl[\, c_{W}\,\mathbf 1\{N < k\} \,\bigr]. \]
 
-\section{Calculations}
-\label{sec:calculations}
+\section{Derivation}
+\label{sec:derivation}
 
 We start with $G(k)$. Since $\min(k, N) = \sum_{j=1}^{k} \mathbf 1\{N \ge j\}$,
 taking expectations and conditioning on $T$ gives
@@ -121,11 +121,11 @@ independently satisfies $\hat z_i > t$ with probability
 Thus, given $T = t$, $N$ is a sum of $|A|$ independent Bernoulli
 variables, the $i$-th with success probability $p_i(t)$.
 
-Now, we go onto $P(k)$. Note that if we fix $T = t$, then $N$ is solely a function of $(\varepsilon_i)_{i \in A}$, whereas $W$ is solely a
-function of $(\varepsilon_w)_{w \in B}$. Thus, $c_W$ and $\text{Pr}(N < k)$ are conditionally independent given $T$, so
+Now we move on to $P(k)$. Note that if we fix $T = t$, then $N$ is solely a function of $(\varepsilon_i)_{i \in A}$, whereas $W$ is solely a
+function of $(\varepsilon_w)_{w \in B}$. Thus, $c_W$ and $\mathbf 1\{N < k\}$ are conditionally independent given $T$, so
 \[ P(k) \;=\; \int \Pr(N < k \mid T = t)\; \bar c(t) \,\, dF_T(t), \qquad
    \bar c(t) = \mathbb E\bigl[\, c_{W} \mid T = t \,\bigr]. \]
-We have already derived the distribution of $T$ and the first factor, so we just need the distribution of $\bar c(t)$, which requires
+We have already derived the distribution of $T$ and the first factor, so we just need $\bar c(t)$, which requires
 $\Pr(W = w \mid T = t)$.
 
 Writing $g_w$ for the joint density of $W = w$ and $T$ at $t$,
@@ -145,7 +145,7 @@ $F_T(t)$ cancels in the ratio:
 \[ \Pr(W = w \mid T = t) \;=\; \frac{h_w(t)}{\sum_v h_v(t)}, \qquad
    \bar c(t) \;=\; \frac{\sum_w c_w\, h_w(t)}{\sum_w h_w(t)}. \]
 
-\section{Computation}
+\section{Numerical evaluation}
 \label{sec:computation}
 
 Both $G$ and $P$ have the form $\int \psi(t)\, dF_T(t)$ for a bounded $\psi$:
@@ -158,7 +158,7 @@ probability that $T$ lands in that cell:
 \[ u_m \;=\; F_T(t_{m+1}) - F_T(t_m), \qquad
    \int \psi(t) \, dF_T(t) \;\approx\; \sum_m \psi(\bar t_m)\, u_m. \]
 The $u_m$ are exact, being differences of the product in
-Section~\ref{sec:calculations}, so the
+Section~\ref{sec:derivation}, so the
 only error is the variation of $\psi$ within a cell.
 
 Take $t_0$ below every $z_w$ and $t_M$ above every $z_w$, each by several
