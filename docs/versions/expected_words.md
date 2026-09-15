@@ -30,150 +30,183 @@ clue" state to fall back out of.
 
 ## The metric
 
-For each candidate clue (`rarity_percentile <= max_rarity`, default
-10.0, `space="numberbatch"`): let `a_1 >= a_2 >= ...` be its z-scores
-against unrevealed own words, descending, and `b_w` its z-score against
-each unrevealed non-own word `w`, with cost `c_w = abs(ROLE_REWARD[role(w)])`.
+Derived in full in [`../clue-selection-theory.tex`](../clue-selection-theory.tex)
+(rendered: [`../clue-selection-theory.pdf`](../clue-selection-theory.pdf)),
+which is the authoritative statement of this model. Summarised here only
+far enough to say what the code does.
+
+One assumption, one parameter: the guesser perceives board word `x` as
+`zhat_x = z_x + eps_x` with `eps ~ N(0, sigma^2)` independent per word,
+and selects unrevealed words in decreasing `zhat` order, stopping after
+`k` selections or on the first word of `B`. `sigma` is "how far off the
+guesser's read of any single word is," in per-clue z units.
+
+With `A` our team's words and `B` every other board word, let
 
 ```
-q_w(x, tau) = Phi((b_w - x) / tau)                 # torch.special.ndtr
-s_j     = prod_w (1 - q_w(a_j, tau_gain))            for j = 1..k
-gain(k) = sum_{j=1..k} prod_{i<=j} s_i
-penalty(k) = sum_w c_w * q_w(a_k, tau_pen)
-score(clue, k) = gain(k) - penalty(k)
+T = max_{w in B} zhat_w        # perceived score of the strongest distractor
+W = argmax_{w in B} zhat_w     # which distractor that is
+N = #{i in A : zhat_i > T}     # own words the guesser ranks above it
 ```
 
-`tau_gain=2.5`, `tau_pen=0.7`, both in per-clue z units (not converted
-through each clue's own sigma, unlike `z_threshold`'s risk term, which
-did convert through sigma to land in raw cosine-similarity space where
-its assumed noise model lived). Selected clue and number are the
-`argmax` over every `(clue, k)` pair jointly, `k` ranging over
-`1..min(len(own), MAX_CLUE_NUMBER)`.
+The guesser reveals `min(k, N)` words of `A`, and errs exactly when
+`N < k` — and the word it then takes is `W`, no other. So the objective is
+`G(k) - P(k)` for
 
-`s_j` depends only on `j`, never on the outer `k` it's being summed
-into -- it's a survival probability, "how likely is the guesser to still
-be on an own word by the time they reach the j-th one." `gain(k)` is
-deliberately sub-linear in `k` because of this: the k-th word's marginal
-contribution is `prod_{i<=k} s_i <= 1`, discounted by the chance of
-actually reaching it. `penalty(k)` uses only `a_k`, the weakest of the
-intended `k` words, asking how likely a guesser who correctly reached
-that word would then drift onto each distractor.
+```
+G(k) = E[min(k, N)]            P(k) = E[c_W * 1{N < k}]
+```
+
+Everything reduces by conditioning on `T`: `T` is a maximum of
+independents so `F_T` is a closed-form product of normal CDFs; given
+`T = t` the `zhat_i` are unchanged and independent, so `N` is
+Poisson-binomial with `p_i(t) = Phi((z_i - t)/sigma)`; and `c_W` is
+conditionally independent of `1{N < k}` given `T`, so `P(k)` needs only
+`cbar(t) = E[c_W | T = t]`, which falls out of the reversed hazard rate
+`h_w = f/F` as `sum_w c_w h_w / sum_w h_w`. Both integrals are then single
+integrals against `dF_T`, evaluated on a grid taking each cell's mass as
+`F(hi) - F(lo)`.
+
+**Notation drift, worth knowing.** The `.tex` calls the maximum `T` and
+writes similarities as `z_i`/`z_w`;
+`codenames/spymasters/expected_words.py` still calls it `D` and writes
+`a_i`/`b_w`. Same quantities, and the code is correct — but the names
+were changed in the paper and not in the code.
+
+### Two things this gets right that the obvious formulations do not
+
+**Conditioning on `T`, not multiplying marginals.** Comparisons against
+one own word share that word's `eps`, and all own words face the same
+distractor draws. Both dependencies are positive, so a naive product
+*understates* survival: against Monte Carlo at `sigma=1.8` the product
+gave 1.1206 expected words where the truth was 1.4939 — low by 0.37.
+
+**`N` counts every own word above `T`, not the top `k` by our own
+similarity.** The guesser has no idea which words we intended; it takes
+own words as it meets them. Scoring `P(the top k all clear T)` is
+strictly smaller — low by 0.02 expected words at `k=2` and up to 0.30 at
+`k=4`, with the penalty correspondingly overstated. That error was in the
+original spec and survived a Monte Carlo test, because the test simulated
+the same wrong event: it confirmed the code matched its own model rather
+than the game. The test now simulates `N`.
+
+**`penalty(k)` charges the word the guesser would actually pick.**
+Summing `c_w` over every distractor that might have broken through would
+count several misses that cannot all happen.
 
 **A linear `k - penalty` was tried and rejected.** It picked `k=4` on
-every board at every `tau` tested, because a linear gain term credits
-every announced word +1 regardless of how endangered it is -- exactly
-the failure mode `z_threshold`'s inert risk term had, reintroduced at the
-gain side this time. The sub-linear product is what makes `k` a real
-choice instead of always maxing out at `MAX_CLUE_NUMBER`.
+every board at every width tested, because a linear gain term credits
+every announced word +1 regardless of how endangered it is. `G(k)` is
+sub-linear instead: its k-th increment is `P(N >= k) <= 1` and
+non-increasing, so claiming more only helps when the words are clear
+enough of the distractors to keep that probability near 1.
 
-**Selection reduces to "each clue's own best k," and this is exact, not
-an approximation.** Since `s_j` doesn't depend on `k`, a fixed clue's
-best `k` is unambiguous (whichever maximizes `gain(k) - penalty(k)`);
-reducing every clue to `(best_k, best_score)` before ranking clues
-against each other therefore finds the same joint maximum a literal
-scan over the full `(clue, k)` grid would, without materializing that
-grid as an explicit list. What the model must *not* do -- and doesn't --
-is fix `k` by some rule independent of the score (as `z_threshold` did,
-counting own words above a percentile bar) and only judge risk
-afterward.
+**Selection reduces to "each clue's own best k," and this is exact.** Per
+clue the best `k` is unambiguous, so reducing every clue to
+`(best_k, best_score)` before ranking clues against each other finds the
+same joint maximum a literal scan over the full `(clue, k)` grid would.
+What the model must *not* do — and doesn't — is fix `k` by a rule
+independent of the score (as `z_threshold` did, counting own words above
+a percentile bar) and only judge risk afterward.
+
+### Verification
+
+- Matches a 20M-sample Monte Carlo to 0.5 standard errors; the grid
+  converges by 96 cells.
+- After the `N` correction, agreement within ±0.002 expected words at
+  every `k` on real boards (3M samples), against gaps of up to 0.30
+  before.
 
 ## No thresholds, no fallback chain
 
 `t`, `neutral_outside`, `opponent_outside`, `assassin_outside`, and
-`guesser_noise_std` don't exist in this model. The only guard left is
-the one real degenerate case -- a team with zero unrevealed own words,
-which cannot occur in an actual game since a team is never asked for a
-clue once it has none left -- handled by returning the most common
-legal clue at `number=1`, the same "never raise, never return no clue"
-contract every baseline follows.
+`guesser_noise_std` don't exist in this model, and neither does the
+earlier `tau_gain`/`tau_pen` pair — two widths implied two different
+guessers, and after conditioning on `T` the algebra is written in `sigma`
+throughout, so no `tau` survives to name. Every `(clue, k)` pair gets a
+finite score, so `argmax` always has an answer.
 
-## Measured, 40 fresh boards (`load_holdout_wordlist()`, seeds 0-39)
+The only guard left is the one real degenerate case — a team with zero
+unrevealed own words, which cannot occur in an actual game since a team
+is never asked for a clue once it has none left — handled by returning
+the most common legal clue at `number=1`, the same "never raise, never
+return no clue" contract every baseline follows.
 
-| metric | measured | expected |
-|---|---|---|
-| mean announced number | 2.025 | ~2.0 |
-| number distribution | {1: 1, 2: 37, 3: 2} out of 40 | concentrated on 2 |
-| median assassin margin (`a_k - z_assassin`) | +4.32 | ~+4.3 |
-| worst (minimum) assassin margin | +2.40 | ~+2.4 |
+## Choosing `sigma`
 
-All three line up with the validated design's expected numbers. The
-distribution being almost entirely `k=2` (37/40 boards), not spread
-across 1-4, says the sub-linear gain term is doing real, board-dependent
-work rather than defaulting to either extreme -- neither always-1 (which
-a badly-miscalibrated risk term would produce) nor always-`MAX_CLUE_NUMBER`
-(which the rejected linear variant produced on every board).
+`sigma = 2.5`, recorded explicitly in `configs/spymasters.json` rather
+than left as a class default: this model is meant to be the fixed
+opponent, so its settings are part of every future comparison's identity,
+and editing a default would invalidate them with no config diff.
 
-## Smoke test: `run_two_team_arena.py --n-boards 100`
+It was selected by the sweep in the `.tex`'s Results section: `sigma`
+over three orders of magnitude, each value playing the same 100 positions
+drawn from held-out board words, scored the way the game scores a turn.
+`sigma=2.5` gave the best mean reward (1.314, s.e. 0.069) with zero
+assassin hits and 80/100 clean finishes; the announced number falls
+monotonically with `sigma`, from 3.96 at 0.25 to 1.13 at 10.0.
 
-Real two-team self-play, synthetic guessers (no API cost). Per this
-model's own instructions, **these numbers are a smoke test only** --
-does it play legally and finish games without catastrophe -- not an
-evaluation result; these synthetic guessers rank by cosine in one space
-and aren't the real evaluation target (the frozen LLM eval suite is).
-Nothing here was tuned against them.
+**The guesser in that sweep was Claude Sonnet.** That is a deliberate
+split from the frozen eval suite, which uses Opus — but it does mean this
+model's one parameter was chosen against an LLM listener, which is worth
+stating plainly rather than leaving for someone to notice. See
+`docs/iteration-architecture.md`'s "two roles for guessers".
 
-| listener | assassin-hit | half-turns (all) | mean clue number | correct/clue | own% |
-|---|---|---|---|---|---|
-| `noisy_numberbatch` (its own space) | 0.0% | 10.94 | 1.42 | 1.42 | 99.9% |
-| `noisy_glove` | 14.0% | 11.06 | 1.46 | 1.25 | 87.2% |
-| `noisy_wikipedia2vec` | 23.0% | 10.52 | 1.47 | 1.23 | 84.9% |
+**Stale class default.** `codenames/spymasters/expected_words.py` still
+defaults to `sigma=1.8`, which the sweep shows is miscalibrated (mean `k`
+2.67). Every real caller goes through the registry and gets 2.5 from the
+config, and `scripts/tools/sweep_sigma.py` passes its own value, so no
+pipeline path reads it — but a test constructing the class directly does.
 
-Every game finished legally across all three listeners; no crashes, no
-stuck turns, no illegal clues. The clue number stays low (~1.4-1.5,
-lower than `z_threshold`'s tuned 1.94-1.99) because this metric's
-`gain(k)` genuinely discounts risk per word rather than counting words
-above a fixed bar -- it isn't chasing a target `k`, it's directly
-maximizing an expected-words-style objective, and with real per-board
-distractors nearby, that objective often prefers announcing fewer,
-safer words.
+## Superseded measurements
+
+The 40-board announced-number table and the three-listener
+`run_two_team_arena.py` smoke test that used to sit here were taken
+against the original `tau_gain`/`tau_pen` formulation, before both the
+conditioning fix and the `N` fix. They measured a model this one is two
+revisions past, and have not been re-run. They are in `docs/log.md` with
+their original commits.
+
+What replaces them is the `.tex` sweep above, which is both current and a
+better measurement — an LLM listener on held-out words rather than
+synthetic single-space guessers.
 
 ### Inherited: the cross-space assassin problem
 
-`z_threshold` measured a real, structural finding (see `docs/log.md`) that this model
-inherits rather than fixes, since it's a consequence of selecting on a
-single embedding space (`space="numberbatch"`), not of the threshold
-mechanism that document was otherwise about: **a single-space spymaster
-is only as safe as a listener that shares its space.** The assassin-hit
-rate climbing from 0.0% (numberbatch listener) to 14.0% (glove) to 23.0%
-(wikipedia2vec) above reproduces that same pattern -- nothing in this
-model's z-margins constrains where the assassin sits in a space it never
-consults. This is cited as inherited context from the prior model's
-measurement, not as a new finding of this one; the smoke test above
-wasn't designed to isolate it further. This remains expected behavior
-for a single-space model, not a bug.
+`z_threshold` measured a real, structural finding (see `docs/log.md`)
+that this model inherits rather than fixes, since it is a consequence of
+selecting on a single embedding space (`space="numberbatch"`), not of the
+threshold mechanism that document was otherwise about: **a single-space
+spymaster is only as safe as a listener that shares its space.** Nothing
+in this model's z-margins constrains where the assassin sits in a space
+it never consults.
+
+The sweep above reports zero assassin hits at `sigma=2.5` over 100
+positions against Claude Sonnet, which is encouraging but does not test
+the cross-space case — an LLM listener is not a different embedding
+space, it is a different kind of listener entirely.
 
 ### Inherited: embedding-space disagreement
 
-Related, and also carried over as context rather than re-derived here:
-`z_threshold` traced the cross-space assassin problem (`docs/log.md`) to a concrete
-example (seed 9, clue "counter", assassin at z=-0.05 in numberbatch but
-+1.79/+1.77 in glove/wikipedia2vec) -- the same clue can look completely
-safe in the space a spymaster actually looks at and simultaneously
-dangerous in a space it doesn't. This model's `z_for_board`/`ClueStats`
-machinery carries mean/std for all three spaces already; extending the
-*penalty* term (or a hard safety filter) to require low `b_w` in every
-built space, not just the selected one, was left open by the prior model
-and remains open here -- this model didn't attempt it, since the task
-was to remove thresholds from the existing single-space design, not to
-change what space(s) it consults.
+Also carried over as context rather than re-derived: `z_threshold` traced
+the cross-space assassin problem to a concrete example (seed 9, clue
+"counter", assassin at z=-0.05 in numberbatch but +1.79/+1.77 in
+glove/wikipedia2vec) — the same clue can look completely safe in the
+space a spymaster looks at and simultaneously dangerous in one it
+doesn't. `z_for_board`/`ClueStats` already carry mean/std for all three
+spaces, so extending the penalty term (or adding a hard safety filter) to
+require low `b_w` in every built space is a scoring change, not an
+architectural one. Still open.
 
 ## Open for the next model
 
-- The multi-space safety extension noted above (`ClueStats` already has
-  the data; this would be a scoring change, not an architectural one).
-- Only `space="numberbatch"` and the shipped `tau_gain`/`tau_pen`
-  defaults are exercised by the measurements above; a `tau` sweep
-  (analogous to the retired `own_top`/`assassin_outside` sweep in `docs/log.md`)
-  hasn't been run, so how sensitive the announced-number distribution is
-  to those two constants specifically is unmeasured.
-- `penalty(k)` uses only the single weakest intended word, `a_k` -- a
-  distractor closer to a *stronger* intended word than to the weakest
-  one is not separately penalized for that. Whether this matters in
-  practice (versus the sub-linear `gain` term already discouraging large
-  `k` when any own word is weak) is unmeasured.
-- Like `z_threshold`'s risk term, this model's guesser-uncertainty
-  model is a single Gaussian CDF in z-space: one `tau` standing in for
-  the whole distribution over `(k, cause)`. A deliberate simplification,
-  not a claim about how real guessers behave. The order-statistics
-  treatment of what that distribution actually looks like is in
-  `docs/clue-selection-theory.tex`.
+- The multi-space safety extension above (`ClueStats` already has the
+  data).
+- `sigma` was swept, but `max_rarity=10.0` and `space="numberbatch"` were
+  not; how sensitive the model is to either is unmeasured.
+- `penalty(k)` uses `P(N < k)` and `cbar(t)`, which charge the expected
+  cost of the strongest distractor. A distractor that is dangerous
+  specifically against a *stronger* intended word is not separately
+  penalised for that. Whether it matters in practice is unmeasured.
+- Rename `D` to `T` and `a`/`b` to `z_i`/`z_w` in the code, to match the
+  paper.

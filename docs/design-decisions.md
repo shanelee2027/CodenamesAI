@@ -115,9 +115,11 @@ already given. Both argue for lookahead or a value function on top of a
 working single-turn scorer, not instead of one.
 
 **Optimization of any small, fixed parameter set** — `linear_scorer`'s
-weights, `expected_words`'s `tau_gain`/`tau_pen` — should use CMA-ES,
-Bayesian optimization, or grid search, not policy gradients. Neither has
-been done; both sets are still their original illustrative constants.
+weights, `expected_words`'s `sigma` — should use CMA-ES, Bayesian
+optimization, or grid search, not policy gradients. Neither has been
+done. `linear_scorer`'s weights are still their original illustrative
+constants, and `sigma` was picked from the announced-number distribution
+on fresh boards rather than optimized against any play outcome.
 
 **Linear scoring is a baseline, not a candidate.** A weighted sum over
 roles composes to a single linear function, which cannot represent

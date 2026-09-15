@@ -128,28 +128,43 @@ batches many simultaneous games on GPU for the same result, much faster.
 Given a board state and a candidate clue, in one embedding space
 (`numberbatch`), with every similarity converted to a per-clue z-score:
 
+One assumption and one parameter: the guesser perceives word `i` as
+`z_i + eps_i` with `eps ~ N(0, sigma)` drawn independently per word, then
+works down its own perceived order until it hits a non-own word. So
+`sigma` is "how far off the guesser's read of any single word is," in z
+units.
+
+Let `D` be the perceived score of the strongest non-own word, and
+`N` the number of own words perceived above it. The guesser works strictly
+downward, so everything it reaches before `D` is an own word: it reveals
+`min(k, N)` and errs exactly when `N < k`. Conditioning on `D` closes the
+whole thing:
+
 ```
-q_w(x, tau) = Phi((b_w - x) / tau)          # b_w = z-score of non-own word w
-s_j         = prod_w (1 - q_w(a_j, tau_gain))
-gain(k)     = sum_{j=1..k} prod_{i<=j} s_i
-penalty(k)  = sum_w c_w * q_w(a_k, tau_pen)
-score       = gain(k) - penalty(k)
+F(d)    = prod_w Phi((d - b_w) / sigma)      # exact CDF of D
+p_i(d)  = Phi((a_i - d) / sigma)             # own word i clears d
+N | D=d ~ PoissonBinomial({p_i(d)})          # given d, the a_i are independent
+gain(k)    = INT F'(d) * sum_{j<=k} P(N >= j | d) dd
+penalty(k) = INT F'(d) * P(N < k | d) * cbar(d) dd
 ```
 
-`a_1 >= a_2 >= ...` are the clue's z-scores against unrevealed own words
-and `c_w` is the cost of revealing `w`. `gain(k)` is deliberately
-sub-linear: the k-th word is credited only by the probability the guesser
-survives that far, which is what makes `k` a real choice rather than
-always maxing out. The selected `(clue, number)` is the joint argmax.
+`a_1 >= a_2 >= ...` are the clue's z-scores against unrevealed own words,
+`b_w` against each non-own word, and `cbar(d)` is the expected cost of
+the distractor that actually achieved the max. Conditioning on `D` is
+what makes this exact rather than a product of marginals — comparisons
+against one own word share that word's `eps`, and all own words face the
+same distractor draws, so multiplying marginals understates survival by a
+measured 0.37 expected words. `gain(k)` is sub-linear because its k-th
+increment is `P(N >= k) <= 1`, which is what makes `k` a real choice
+rather than always maxing out.
 
-Nothing is trained and nothing is fitted — the two constants
-(`tau_gain=2.5`, `tau_pen=0.7`) are hand-set and have never been swept.
-Full derivation, the rejected linear variant, and measurements are in
-[`docs/versions/expected_words.md`](docs/versions/expected_words.md).
-
-The underlying order-statistics model — what the guesser's ranking looks
-like when their embedding disagrees with ours by Gaussian noise — is
-derived in [`docs/clue-selection-theory.pdf`](docs/clue-selection-theory.pdf).
+Nothing is trained and nothing is fitted. `sigma = 2.5` (in
+`configs/spymasters.json`, which is authoritative for this model) is
+chosen from the announced-number distribution on fresh boards, not swept
+against play results. Full derivation and measurements are in
+[`docs/versions/expected_words.md`](docs/versions/expected_words.md); the
+order-statistics background is in
+[`docs/clue-selection-theory.pdf`](docs/clue-selection-theory.pdf).
 
 **Results.** None published. The two models that had measured results
 (`v1` and the `v1.1` blend subversion) were retired: they were trained
