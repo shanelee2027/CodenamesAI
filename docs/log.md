@@ -1,7 +1,11 @@
 # Working log
 
-Record what was expected vs. what actually happened as work proceeds. One
-section per milestone. See `docs/SCOPE.md` for the milestone definitions.
+Record what was expected vs. what actually happened as work proceeds,
+oldest first. The early sections are the original milestones (M0-M9);
+the project has since moved to a sequence of named models, so later
+entries are one per piece of work rather than per milestone. See
+`docs/versions/` for the models and `docs/design-decisions.md` for
+standing rationale.
 
 ## M0 — Corpus collection
 
@@ -3627,3 +3631,63 @@ It cuts favourably too. When the guesser sees a connection we don't, we
 collect a word we didn't plan for -- and since 783f7da the objective
 scores *any* own word clearing D, so that upside is counted. Before it,
 it was not.
+
+## 2026-09-15 — centroid vs expected_words, 100 games against Claude Sonnet
+
+First head-to-head between two spymasters rather than self-play, and the
+first paid run since the training pipeline was removed. 50 boards, each
+played twice with the sides swapped (team A holds 9 words and moves
+first, team B holds 8 — a one-sided run measures the seating), guesser
+`claude-sonnet-5` at effort medium on both sides. 100 games, 220s at 48
+workers, ~1,660 new API calls (~$8). Recorded in `cache/llm_store.db`
+under `centroid-vs-expected_words+llm-sonnet|A=...`.
+
+**Expected:** `expected_words` to win clearly. It is the model the
+project is built around, it has an explicit distractor penalty, and
+`centroid` has no assassin-avoidance of any kind.
+
+**Got:** a coin flip on win rate, and a large, real difference in how the
+games were lost.
+
+| | win% (95% CI) | assassin% (95% CI) | mean k | own/clue | own% |
+|---|---|---|---|---|---|
+| `centroid` | 49 [39.4, 58.7] | 13 [7.8, 21.0] | 1.47 | 1.14 | 81.0 |
+| `expected_words` | 51 [41.3, 60.6] | 3 [1.0, 8.5] | 1.16 | 1.07 | 93.2 |
+
+The win rate is nothing: 51–49, CIs almost entirely overlapping. The
+paired view is blunter still — of 50 boards, only **17 were won by the
+same model under both seatings** (9 `expected_words`, 8 `centroid`), and
+the other 33 flipped with the seat. Board and seating dominate the
+spymaster difference at this sample size.
+
+The assassin rate is real: 13% vs 3%, z = 2.61, **p = 0.009**. And the
+mechanism is visible in the transcripts rather than inferred. Of
+`centroid`'s 13 assassin losses, **7 were on the guesser's very first
+pick** — `wool` → Australia, `queen` → England, `shoe` → Boot,
+`smurfs` → Comic, `austria` → Czech, `filed` → Chocolate,
+`straight` → Ruler. The clue's single nearest board word *was* the
+assassin. That is exactly what a centroid of own-word vectors with no
+distractor term should do, and it had never been demonstrated against a
+real listener.
+
+**Why the safety doesn't convert into wins.** `expected_words` is
+strictly better per guess (93.2% own vs 81.0%) and 4x safer, but slower:
+mean announced number 1.16 vs 1.47, words revealed per clue 1.07 vs 1.14.
+It buys safety with pace, and over a full game the two cancel almost
+exactly. Worth stating plainly because "safer model, same win rate" is a
+result about the *reward function*, not about the model — at
+`sigma = 2.5` the penalty term is pricing the assassin high enough to
+suppress large `k` nearly everywhere.
+
+**Caveat that limits what this shows.** Sonnet at medium effort is the
+listener `sigma = 2.5` was itself chosen against
+(`scripts/tools/sweep_sigma.py`, see `docs/versions/expected_words.md`).
+So `expected_words` is playing to a listener it was calibrated for and
+`centroid` is not. The frozen Opus suite remains the untainted
+comparison; this run is a diagnostic, not an evaluation result.
+
+**Incidental:** `expected_words` played the clue `rn` (seed 5), which is
+not a word. The clue vocabulary is the intersection of three embedding
+spaces with a rarity filter, and that still admits tokenization debris.
+A part-of-speech / real-word filter on the clue vocabulary is worth
+doing before any headline number is quoted.
