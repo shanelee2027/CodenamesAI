@@ -3691,3 +3691,67 @@ not a word. The clue vocabulary is the intersection of three embedding
 spaces with a rarity filter, and that still admits tokenization debris.
 A part-of-speech / real-word filter on the clue vocabulary is worth
 doing before any headline number is quoted.
+
+## 2026-09-15 — why the matchup's mean k (1.16) is far below the sweep's (1.72)
+
+Chasing a discrepancy noticed in the matchup above: `expected_words`
+announced a mean number of 1.16 there, against 1.72 reported for
+sigma=2.5 in `docs/clue-selection-theory.tex`'s sweep and 1.83 in
+783f7da's commit message. Both numbers are correctly computed. They
+measure different board distributions, and the difference is a flaw in
+how sigma was chosen.
+
+Reproduced the 1.72 exactly by running the current model over
+`scripts/tools/sweep_sigma.py::positions()`, so the tex is right about
+what it measured. Fresh boards give 1.54, and the clue vocabulary is not
+involved: the default 400-word list and the 150-word holdout both give
+1.54 on fresh boards.
+
+**The cause.** `positions()` builds mid-game boards by revealing
+`(i * 2) % 13` words chosen **uniformly at random** from all 25. But 16
+of the 25 cards are distractors, so uniform reveals clear distractors
+about 1.8x faster than own words, and the board gets *easier* as it
+progresses. Real play does the opposite: the guesser picks an own word
+93% of the time, so own words deplete first and the distractor field
+stays dense. The board gets *harder*.
+
+Live distractors at the same number of live own words:
+
+| own left | `positions()` | real games |
+|---|---|---|
+| 9 | 14.5 | 16.0 |
+| 8 | 13.1 | 15.1 |
+| 7 | 12.1 | 14.4 |
+| 6 | 10.4 | 13.2 |
+| 5 | 10.2 | 12.3 |
+| 4 |  9.8 | 10.9 |
+
+**Decomposition of the 1.72 -> 1.16 gap:**
+
+- **0.41 (72%)** — the positions are easier at a matched own-count, per
+  the table above, so the model announces bigger numbers on them.
+- **0.15 (28%)** — which positions occur at all. Real games spend 30% of
+  turns at <= 3 own words left, where `k <= min(own, 4)` forces the
+  number to 1; `positions()` puts 3% of its boards there and its
+  `remaining(OWN) >= 2` filter excludes the rest. (That filter alone is
+  minor: excluding those turns from the real games moves 1.16 to 1.17.)
+
+Announced k by own words remaining, real games, 592 turns:
+
+| own left | 9 | 8 | 7 | 6 | 5 | 4 | <=3 |
+|---|---|---|---|---|---|---|---|
+| turns | 50 | 62 | 65 | 77 | 80 | 78 | 180 |
+| mean k | 1.54 | 1.56 | 1.22 | 1.12 | 1.06 | 1.05 | 1.00 |
+
+**Why this matters beyond the discrepancy.** sigma=2.5 was selected by
+that sweep — it is the only free parameter of the project's only model,
+and it was tuned on a distribution of boards that real games never
+visit. The sweep's reward-per-turn curve therefore peaks where it does
+under systematically easy positions. Whether the peak moves under
+realistic positions is unmeasured; the fix is to build sweep positions by
+playing real games and snapshotting them, rather than by revealing cards
+at random. That re-run costs API money and has not been done.
+
+`positions()`'s own docstring says the intent was "boards spanning the
+arc of a game, not just openings," so this is an implementation flaw in
+the approximation, not a deliberate choice.
