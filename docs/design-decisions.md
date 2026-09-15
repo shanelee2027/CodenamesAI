@@ -80,8 +80,8 @@ brilliant high-variance clues; "Technoblade" survives), versus worst-case or
 CVaR across the pool (produces safe clues that work for most guessers;
 "Technoblade" dies). The risk-aversion reward parameters
 (`codenames/scorer.py::reward_matrix`'s four reward values) move along this
-curve at *scoring* time, not training time — see the current model version
-doc for exactly how.
+curve at *scoring* time, not training time — each model's doc under
+[`versions/`](versions/) records the values it was scored with.
 
 ## First-pass simplifications (still in effect)
 
@@ -103,8 +103,8 @@ past a first pass.
    noise" above — three different embeddings is genuine knowledge
    diversity — just a smaller pool than an eventual full version would use.
 3. **Generalization is checked via held-out board words, not held-out
-   guessers.** `codenames/assets/board_words_holdout.txt` holds 60 of the
-   400 board words out of training data generation entirely
+   guessers.** `codenames/assets/board_words_holdout.txt` holds 150 of
+   the 400 board words out of training data generation entirely
    (`codenames/board.py::load_training_wordlist()`), so a later evaluation
    pass can build boards entirely from unseen words to check generalization
    to unseen board *content*. This is orthogonal to what held-out guessers
@@ -126,9 +126,8 @@ validation metric, and failure modes that take days to diagnose. Supervised
 training runs in minutes.
 
 If multi-turn effects are pursued (clue choice changes which words remain,
-cross-turn clue memory — see the current model version doc's open
-questions), add lookahead or a value function on top of a working
-supervised scorer, not instead of it.
+cross-turn clue memory), add lookahead or a value function on top of a
+working supervised scorer, not instead of it.
 
 **Nonlinear scoring, not tuned constants.** A weighted average of spaces
 followed by a weighted sum over roles composes to a single linear function.
