@@ -106,23 +106,23 @@ the report's comparisons come from.
 
 6. REFERENCES
 
-Bills, J., Archibald, C. and Blaylock, D. "Improving Cooperation in Language
-  Games with Bayesian Inference and the Cognitive Hierarchy." AAAI 2025.
-
-Bills, J. and Archibald, C. "A Deductive Agent Hierarchy: Strategic Reasoning in
-  Codenames." IEEE Conference on Games (CoG), 2023. (Deductive hierarchy as
-  described in Bills, Archibald and Blaylock 2025.)
-
 Archibald, C. and Brosnahan, S. "Adapting to Teammates in a Cooperative
   Language Game." 2024. arXiv:2403.00823.
 
-Koyyalagunta, D., Sun, A., Draelos, R. L. and Rudin, C. "Playing Codenames with
-  Language Graphs and Word Embeddings." Journal of Artificial Intelligence
-  Research 71, 2021. arXiv:2105.05885.
+Bills, J. and Archibald, C. "A Deductive Agent Hierarchy: Strategic Reasoning in
+  Codenames." IEEE Conference on Games (CoG), 2023. Known here through its
+  description in Bills, Archibald and Blaylock (2025).
+
+Bills, J., Archibald, C. and Blaylock, D. "Improving Cooperation in Language
+  Games with Bayesian Inference and the Cognitive Hierarchy." AAAI 2025.
 
 Kim, A., Ruzmaykin, M., Truong, A. and Summerville, A. "Cooperation and
   Codenames: Understanding Natural Language Processing via Codenames." AIIDE
   2019.
+
+Koyyalagunta, D., Sun, A., Draelos, R. L. and Rudin, C. "Playing Codenames with
+  Language Graphs and Word Embeddings." Journal of Artificial Intelligence
+  Research 71, 2021. arXiv:2105.05885.
 
 Stephenson, M., Sidji, M. and Ronval, B. "Codenames as a Benchmark for Large
   Language Models." 2024. arXiv:2412.11373.
