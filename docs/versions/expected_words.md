@@ -171,8 +171,9 @@ change what space(s) it consults.
   one is not separately penalized for that. Whether this matters in
   practice (versus the sub-linear `gain` term already discouraging large
   `k` when any own word is weak) is unmeasured.
-- Like `z_threshold`'s risk term, this model's guesser-uncertainty model
-  is a single Gaussian-CDF-in-z-space stand-in for
-  `codenames/scorer.py::expected_reward_and_best_n`'s actual learned
-  `P(k, cause | clue)` -- a deliberate simplification, not a claim about
-  how real guessers behave.
+- Like `z_threshold`'s risk term, this model's guesser-uncertainty
+  model is a single Gaussian CDF in z-space: one `tau` standing in for
+  the whole distribution over `(k, cause)`. A deliberate simplification,
+  not a claim about how real guessers behave. The order-statistics
+  treatment of what that distribution actually looks like is in
+  `docs/clue-selection-theory.tex`.

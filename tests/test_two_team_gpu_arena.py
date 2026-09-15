@@ -10,11 +10,10 @@ import torch
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU-batched two-team arena needs CUDA")
 
 from codenames.board import Board, load_wordlist  # noqa: E402
-from codenames.spymasters.learned import LearnedSpymaster  # noqa: E402
-from codenames.features import feature_dim  # noqa: E402
+from codenames.clue_stats import clue_vocab_fingerprint  # noqa: E402
 from codenames.guessers.base import Guesser  # noqa: E402
-from codenames.scorer import Scorer  # noqa: E402
 from codenames.similarity import SimilarityTensor  # noqa: E402
+from codenames.spymasters.expected_words import ExpectedWordsSpymaster  # noqa: E402
 from codenames.two_team_arena import MIXED_GUESSER, run_two_team_self_play  # noqa: E402
 from codenames.two_team_gpu_arena import _play_batch_group, run_two_team_self_play_gpu  # noqa: E402
 
@@ -44,6 +43,21 @@ def sims_cache_dir(tmp_path):
     (tmp_path / "clue_vocab.json").write_text(json.dumps(CLUE_WORDS))
     (tmp_path / "board_vocab.json").write_text(json.dumps(board_words))
     (tmp_path / "similarity_meta.json").write_text(json.dumps({"spaces": SPACES, "shape": list(tensor.shape)}))
+    # mean=0/std=1 so a stored value equals its z-score -- same synthetic
+    # ClueStats trick tests/test_expected_words_spymaster.py uses, written
+    # to disk here because the CPU path reconstructs the spymaster from
+    # picklable kwargs inside a worker process and can't be handed an
+    # in-memory object.
+    n = len(CLUE_WORDS)
+    np.savez(
+        tmp_path / "clue_stats.npz",
+        mean=np.zeros((n, len(SPACES)), dtype=np.float32),
+        std=np.ones((n, len(SPACES)), dtype=np.float32),
+        rarity_percentile=np.zeros(n, dtype=np.float32),
+    )
+    (tmp_path / "clue_stats_meta.json").write_text(
+        json.dumps({"clue_vocab_hash": clue_vocab_fingerprint(CLUE_WORDS), "n_clues": n, "spaces": SPACES})
+    )
     return tmp_path
 
 
@@ -74,20 +88,18 @@ def two_guesser_pool_config(tmp_path):
 
 
 @pytest.fixture
-def checkpoint_path(tmp_path, sims_cache_dir):
-    dim = feature_dim(len(SPACES))
-    model = Scorer(input_dim=dim)
-    path = tmp_path / "scorer.pt"
-    torch.save({"model_state": model.state_dict(), "input_dim": dim}, path)
-    return path
+def spymaster_kwargs(sims_cache_dir):
+    """Constructor kwargs rather than an instance: the CPU arena builds a
+    fresh spymaster inside each worker, so these must be picklable."""
+    return {"space": SPACES[0], "cache_dir": sims_cache_dir}
 
 
 class TestRunTwoTeamSelfPlayGpu:
-    def test_matches_the_cpu_arena_exactly_for_deterministic_guessers(self, sims_cache_dir, guesser_pool_config, checkpoint_path):
+    def test_matches_the_cpu_arena_exactly_for_deterministic_guessers(self, sims_cache_dir, guesser_pool_config, spymaster_kwargs):
         sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
         seeds = list(range(1, 21))
 
-        gpu_spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
+        gpu_spymaster = ExpectedWordsSpymaster(**spymaster_kwargs)
         gpu_result = run_two_team_self_play_gpu(
             spymaster=gpu_spymaster,
             guesser_pool_config=guesser_pool_config,
@@ -100,8 +112,8 @@ class TestRunTwoTeamSelfPlayGpu:
         )
 
         cpu_result = run_two_team_self_play(
-            LearnedSpymaster,
-            {"checkpoint_path": checkpoint_path, "device": "cpu"},
+            ExpectedWordsSpymaster,
+            spymaster_kwargs,
             guesser_pool_config,
             "space_a",
             seeds,
@@ -121,13 +133,13 @@ class TestRunTwoTeamSelfPlayGpu:
         assert gpu_result.guess_neutral_rate == pytest.approx(cpu_result.guess_neutral_rate)
         assert gpu_result.guess_assassin_rate == pytest.approx(cpu_result.guess_assassin_rate)
 
-    def test_batch_size_does_not_change_the_result(self, sims_cache_dir, guesser_pool_config, checkpoint_path):
+    def test_batch_size_does_not_change_the_result(self, sims_cache_dir, guesser_pool_config, spymaster_kwargs):
         sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
         seeds = list(range(1, 15))
 
         results_by_batch = {}
         for batch_size in (1, 5, 20):
-            spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
+            spymaster = ExpectedWordsSpymaster(**spymaster_kwargs)
             results_by_batch[batch_size] = run_two_team_self_play_gpu(
                 spymaster=spymaster,
                 guesser_pool_config=guesser_pool_config,
@@ -144,11 +156,11 @@ class TestRunTwoTeamSelfPlayGpu:
             assert r.assassin_rate == pytest.approx(base.assassin_rate), batch_size
             assert r.guess_own_rate == pytest.approx(base.guess_own_rate), batch_size
 
-    def test_mixed_guesser_matches_cpu_path(self, sims_cache_dir, two_guesser_pool_config, checkpoint_path):
+    def test_mixed_guesser_matches_cpu_path(self, sims_cache_dir, two_guesser_pool_config, spymaster_kwargs):
         sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
         seeds = list(range(1, 21))
 
-        gpu_spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
+        gpu_spymaster = ExpectedWordsSpymaster(**spymaster_kwargs)
         gpu_result = run_two_team_self_play_gpu(
             spymaster=gpu_spymaster,
             guesser_pool_config=two_guesser_pool_config,
@@ -160,8 +172,8 @@ class TestRunTwoTeamSelfPlayGpu:
             device=torch.device("cuda"),
         )
         cpu_result = run_two_team_self_play(
-            LearnedSpymaster,
-            {"checkpoint_path": checkpoint_path, "device": "cpu"},
+            ExpectedWordsSpymaster,
+            spymaster_kwargs,
             two_guesser_pool_config,
             MIXED_GUESSER,
             seeds,
@@ -174,12 +186,11 @@ class TestRunTwoTeamSelfPlayGpu:
         assert gpu_result.mean_clue_number == pytest.approx(cpu_result.mean_clue_number)
         assert gpu_result.mean_correct_per_clue == pytest.approx(cpu_result.mean_correct_per_clue)
 
-    def test_batch_guesser_calls_overlap_instead_of_serializing(self, sims_cache_dir, checkpoint_path):
+    def test_batch_guesser_calls_overlap_instead_of_serializing(self, sims_cache_dir, spymaster_kwargs):
         sims = SimilarityTensor.load(cache_dir=sims_cache_dir)
-        spymaster = LearnedSpymaster(checkpoint_path, device="cpu")
+        spymaster = ExpectedWordsSpymaster(**spymaster_kwargs)
         device = torch.device("cuda")
-        spymaster.model.to(device)
-        spymaster.device = device
+        spymaster.to_device(device)
 
         n_games, delay = 6, 0.2
         boards = [Board.generate(seed=s) for s in range(n_games)]

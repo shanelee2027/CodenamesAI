@@ -34,8 +34,7 @@ spawned worker processes -- it needs a `(class, kwargs)` spec, not a live
 instance, since a live instance (especially one holding a torch model)
 isn't guaranteed to survive a `spawn`-context pickle/unpickle round trip.
 `SpymasterEntry.spec` gives exactly that; `SpymasterEntry.build()` is for
-callers (e.g. scripts/tools/web_inspector.py) that want a live instance directly,
-in the same process.
+callers that want a live instance directly, in the same process.
 """
 
 from __future__ import annotations
@@ -47,7 +46,6 @@ from pathlib import Path
 from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
-from codenames.spymasters.learned import LearnedSpymaster
 from codenames.spymasters.linear_scorer import LinearScorerSpymaster
 from codenames.spymasters.oracle import OracleSpymaster
 from codenames.spymasters.random_clue import RandomSpymaster
@@ -59,7 +57,6 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "centroid": CentroidSpymaster,
     "linear_scorer": LinearScorerSpymaster,
     "oracle": OracleSpymaster,
-    "learned": LearnedSpymaster,
     "expected_words": ExpectedWordsSpymaster,
 }
 
@@ -114,8 +111,7 @@ def spymaster_spec(
     name: str, config: Path | dict = DEFAULT_SPYMASTER_CONFIG, **overrides
 ) -> tuple[type[Spymaster], dict]:
     """One entry's (class, kwargs) spec, with `overrides` merged into its
-    config params -- e.g. a `learned` entry's `checkpoint_path`, which
-    only a training run (not this static config) can supply. Raises
+    config params -- anything a static config can't supply. Raises
     KeyError if `name` isn't in `config`."""
     entries = load_spymasters(config)
     if name not in entries:

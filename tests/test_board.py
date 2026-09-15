@@ -266,8 +266,8 @@ class TestOpponentBoardView:
 
     def test_revealed_set_is_shared_not_copied(self):
         # Some spymaster code reads board.revealed directly (e.g.
-        # codenames/spymasters/_util.py::state_rng, LearnedSpymaster's
-        # turn-index calc) rather than going through is_revealed() --
+        # codenames/spymasters/_util.py::state_rng) rather than going
+        # through is_revealed() --
         # needs to see the same set, live, from either perspective.
         board = Board.generate(seed=7)
         view = OpponentBoardView(board)

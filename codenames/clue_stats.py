@@ -35,14 +35,27 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
 
 import numpy as np
 
-from codenames.rollouts import clue_vocab_fingerprint
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
-__all__ = ["ClueStats"]
+__all__ = ["ClueStats", "clue_vocab_fingerprint"]
+
+
+def clue_vocab_fingerprint(clue_words: list[str]) -> str:
+    """Cheap identity for the clue vocabulary a cached artifact was built
+    against. Stored alongside the artifact and checked on load: clue
+    indices are meaningless against a different vocabulary, and a silent
+    mismatch would mislabel every row rather than fail."""
+    digest = hashlib.sha256()
+    digest.update(str(len(clue_words)).encode())
+    for word in clue_words:
+        digest.update(word.encode())
+        digest.update(b"\0")
+    return digest.hexdigest()[:16]
 
 
 @dataclass
@@ -64,11 +77,9 @@ class ClueStats:
         """Loads the cached arrays and validates them against the live
         `SimilarityTensor` at `cache_dir`. `clue_vocab_hash` mismatch
         raises rather than silently continuing: clue indices are
-        meaningless against a different vocabulary (the same reasoning
-        `codenames/rollouts.py::clue_vocab_fingerprint` and
-        `scripts/pipeline/featurize_rollouts.py` apply to rollout sets), and a
-        silent mismatch here would corrupt every downstream score rather
-        than fail loudly."""
+        meaningless against a different vocabulary, and a silent mismatch
+        here would corrupt every downstream score rather than fail
+        loudly."""
         cache_dir = Path(cache_dir)
         meta = json.loads((cache_dir / "clue_stats_meta.json").read_text())
         data = np.load(cache_dir / "clue_stats.npz")

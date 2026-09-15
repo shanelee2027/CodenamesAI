@@ -1,67 +1,58 @@
 {
-  "_comment": "Spymaster registry config (docs/iteration-architecture.md step 2, codenames/spymasters/registry.py). Each entry names a Spymaster subclass (see SPYMASTER_CLASSES) and its constructor params. 'trained' marks whether this entry expects a trained artifact (a checkpoint) before it can be built -- false for every baseline here, since none of them train. The 'learned' entry has no checkpoint_path in its params (there is no single fixed checkpoint -- it comes from whichever training run a caller wants); scripts that need it call registry.spymaster_spec('learned', checkpoint_path=..., ...) to merge in the real path at call time rather than building this entry directly. 'roles' says which scripts pick an entry up without naming it: 'baseline' is the standard comparison set (both arenas), 'exploration' is an upper-bound tool that only scripts/pipeline/run_two_team_arena.py offers, 'trained' needs a checkpoint supplied per invocation. A new entry omitting 'roles' defaults to ['baseline'], so it appears in the arenas automatically.",
-  "spymasters": [
-    {
-      "name": "random",
-      "type": "random",
-      "params": {
-        "seed": 0
-      },
-      "trained": false,
-      "roles": [
-        "baseline"
-      ]
-    },
-    {
-      "name": "centroid",
-      "type": "centroid",
-      "params": {
-        "seed": 0
-      },
-      "trained": false,
-      "roles": [
-        "baseline"
-      ]
-    },
-    {
-      "name": "linear_scorer",
-      "type": "linear_scorer",
-      "params": {},
-      "trained": false,
-      "roles": [
-        "baseline"
-      ]
-    },
-    {
-      "name": "oracle",
-      "type": "oracle",
-      "params": {},
-      "trained": false,
-      "roles": [
-        "exploration"
-      ]
-    },
-    {
-      "name": "learned",
-      "type": "learned",
-      "params": {},
-      "trained": true,
-      "roles": [
-        "trained"
-      ]
-    },
-    {
-      "name": "expected_words",
-      "type": "expected_words",
-      "params": {
-        "space": "numberbatch",
-        "sigma": 2.5,
-        "max_rarity": 10.0
-      },
-      "trained": false,
-      "roles": [
-        "baseline"
-      ]
-    }
-  ]
+ "_comment": "Spymaster registry config (docs/iteration-architecture.md step 2, codenames/spymasters/registry.py). Each entry names a Spymaster subclass (see SPYMASTER_CLASSES) and its constructor params. 'trained' marks whether this entry expects a trained artifact before it can be built -- false for every entry here, since none of them train. 'roles' says which scripts pick an entry up without naming it: 'baseline' is the standard comparison set (both arenas), 'exploration' is an upper-bound tool that only scripts/pipeline/run_two_team_arena.py offers, A new entry omitting 'roles' defaults to ['baseline'], so it appears in the arenas automatically.",
+ "spymasters": [
+  {
+   "name": "random",
+   "type": "random",
+   "params": {
+    "seed": 0
+   },
+   "trained": false,
+   "roles": [
+    "baseline"
+   ]
+  },
+  {
+   "name": "centroid",
+   "type": "centroid",
+   "params": {
+    "seed": 0
+   },
+   "trained": false,
+   "roles": [
+    "baseline"
+   ]
+  },
+  {
+   "name": "linear_scorer",
+   "type": "linear_scorer",
+   "params": {},
+   "trained": false,
+   "roles": [
+    "baseline"
+   ]
+  },
+  {
+   "name": "oracle",
+   "type": "oracle",
+   "params": {},
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
+  },
+  {
+   "name": "expected_words",
+   "type": "expected_words",
+   "params": {
+    "space": "numberbatch",
+    "sigma": 2.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "baseline"
+   ]
+  }
+ ]
 }

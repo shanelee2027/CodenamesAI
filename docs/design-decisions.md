@@ -62,18 +62,19 @@ A consequence worth stating plainly: `scripts/pipeline/run_arena.py`'s
 spymaster × guesser matrix is a training diagnostic, not a scoreboard.
 Its numbers must never be presented as evaluation results.
 
-## Reward parameters live at scoring time, not training time
+## Reward values are a scoring-time knob
 
-The four reward values (own / neutral / opponent / assassin) are a
-risk-aversion knob, and they live outside training entirely: a rollout
-stores `(k, cause)`, and reward is derived from it on demand
-(`codenames/rollouts.py::reward_for`). Changing a reward constant
-reprices an existing rollout set for free, with no retraining.
+The four reward values (own / neutral / opponent / assassin, in
+`codenames/game.py::ROLE_REWARD`) are a risk-aversion knob, not a fixed
+property of the game. `expected_words` reads them per candidate word as
+`c_w`, so changing the assassin's cost changes how conservative the
+model is without touching anything else.
 
 Two objectives are worth reporting rather than collapsing into one:
 expected value across listeners, and worst-case or CVaR across them. The
 reward values are what move a model along that curve, which only works
-if they are a scoring-time parameter.
+while they stay a parameter rather than a constant baked into a fitted
+artifact.
 
 ## Composition lives in a config file, not in code
 
@@ -92,35 +93,39 @@ can't be cited in a results table, swept over, or diffed between runs.
 
 ## Method decisions
 
-**Supervised learning, not RL.** Given a board, clue, and guesser, the
-outcome is directly simulable — full feedback on every action, for free,
-unlimited times. That's the condition under which the problem reduces to
-supervised classification. RL would deliver the same information through
-policy gradients over a ~111k-action space, with high variance, no clean
-validation metric, and failure modes that take days to diagnose.
+**Nothing here trains.** Every model is a scoring function written down
+in closed form and evaluated against the frozen LLM suite. An earlier
+direction — an MLP over a multi-space feature vector, trained on
+simulated guesser rollouts — was built, measured, and removed; see
+`docs/log.md` for what it was and what it scored.
 
-If multi-turn effects are pursued (clue choice changes which words
-remain, cross-turn clue memory), add lookahead or a value function on
-top of a working scorer, not instead of it.
+If a future model does need fitting, the outcome of a (board, clue,
+guesser) triple is directly simulable — full feedback on every action,
+for free, unlimited times — so it is a supervised problem, not an RL
+one. RL would deliver the same information through policy gradients over
+a ~111k-action space, with high variance and no clean validation metric.
+Two consequences of that earlier pass are worth not rediscovering: split
+train/val by board seed rather than by row, since one board appears in
+many examples and a row-wise split leaks it across the split; and keep
+the reward values out of whatever gets fitted, per the section above.
+
+**Multi-turn effects are the open direction.** Clue choice changes which
+words remain, and a clue only has to be distinguishable from the clues
+already given. Both argue for lookahead or a value function on top of a
+working single-turn scorer, not instead of one.
 
 **Optimization of any small, fixed parameter set** — `linear_scorer`'s
 weights, `expected_words`'s `tau_gain`/`tau_pen` — should use CMA-ES,
 Bayesian optimization, or grid search, not policy gradients. Neither has
 been done; both sets are still their original illustrative constants.
 
-**Linear scoring is a baseline, not a candidate.** A weighted average
-over spaces followed by a weighted sum over roles composes to a single
-linear function, which cannot represent threshold effects (0.75 to three
-words beats 0.45 to five, because guessing is greedy and ranking is what
-matters) or the margin between the weakest intended word and the
-strongest distractor. `spymasters/linear_scorer.py` is kept to
-demonstrate that, not as a serious contender.
-
-**Split by board seed, not by row.** The same board appears in many
-training examples (a board is sampled once, several clues are drawn
-against it). Row-wise train/val splits leak boards across the split and
-inflate validation numbers. `scripts/pipeline/train_scorer.py` splits by
-a hash of each example's board seed instead.
+**Linear scoring is a baseline, not a candidate.** A weighted sum over
+roles composes to a single linear function, which cannot represent
+threshold effects (0.75 to three words beats 0.45 to five, because
+guessing is greedy and ranking is what matters) or the margin between
+the weakest intended word and the strongest distractor.
+`spymasters/linear_scorer.py` is kept to demonstrate that, not as a
+serious contender.
 
 ## The clue vocabulary is an intersection
 

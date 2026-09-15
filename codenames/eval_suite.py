@@ -20,10 +20,9 @@ row per game; this module only supplies the right key
 (`spymaster_id`, `suite_id`, `board_seed`) and the skip-if-already-
 recorded logic that key makes possible -- not a new storage mechanism.
 
-**Model identity.** `scripts/pipeline/train_scorer.py` always writes
-`cache/checkpoints/scorer_best.pt`, so a path-keyed identity would
-silently serve one model's expensive eval results as another's the
-moment that path is overwritten by a second training run.
+**Model identity.** A path-keyed identity would silently serve one
+model's expensive eval results as another's the moment two models share
+a path.
 `spymaster_identity` hashes the checkpoint's *content* instead --
 `spymaster_id` for a trained model is `f"{name}:{content_hash}"`, so two
 different checkpoints that happen to share a path never collide, and the

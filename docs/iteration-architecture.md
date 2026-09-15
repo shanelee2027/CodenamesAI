@@ -16,9 +16,8 @@ evaluation.
 1. A new spymaster is one new file plus one config entry. No other file
    changes to make it runnable, trainable, or evaluable.
 2. Whatever is expensive and model-independent is computed once and
-   cached. Three such things exist: embedding similarities (done -- the
-   similarity tensor), LLM responses (done -- `llm_store.py`), and
-   guesser rollouts (missing -- see step 4).
+   cached: embedding similarities (the similarity tensor), per-clue
+   statistics (`clue_stats.npz`), and LLM responses (`llm_store.py`).
 3. Evaluation against the LLM guesser is paid for once per model.
 
 ## Two roles for guessers
@@ -42,11 +41,10 @@ presented as evaluation results.
 Two changes to `spymasters/base.py`, made together because both touch
 every spymaster and every caller.
 
-**A context object instead of loose arguments.** Today `give_clue(board,
-sims)` has no turn counter, so `LearnedSpymaster` reconstructs one as
-`len(board.revealed)` -- its own docstring flags this as train/serve skew
-risk. Models are board-state-only for now, but the input set is expected
-to grow (clue history, past guesses). A dataclass absorbs that growth
+**A context object instead of loose arguments.** `give_clue(board,
+sims)` had no turn counter, so a model wanting one had to reconstruct it
+as `len(board.revealed)`. Models are board-state-only for now, but the
+input set is expected to grow (clue history, past guesses). A dataclass absorbs that growth
 without touching models that ignore the new field:
 
 ```python
@@ -56,10 +54,10 @@ class TurnContext:
     turn_index: int
 ```
 
-**Top-k as the primary method.** `LearnedSpymaster.top_k_clues` already
-returns `(clue, number, score)` triples; making that the interface and
-`give_clue` a thin wrapper means one scoring path per model instead of
-two that can drift.
+**Top-k as the primary method.** A model that ranks the whole clue
+vocabulary already produces `(clue, number, score)` triples; making that
+the interface and `give_clue` a thin wrapper means one scoring path per
+model instead of two that can drift.
 
 ```python
 class Spymaster(ABC):
@@ -72,17 +70,15 @@ class Spymaster(ABC):
         return clue, number
 ```
 
-Reward parameters live on the model (already true of
-`LearnedSpymaster`), so the arena never reads them. **Legality filtering
+Reward parameters live on the model, so the arena never reads them. **Legality filtering
 stays in `clue_search`** -- it is a rule of Codenames, identical for
 every model, and must not be reimplemented per model.
 
 ## Step 2: A spymaster registry
 
-Today three files keep their own private list of which spymasters exist
-(`run_arena.py`, `run_two_team_arena.py`, `web_inspector.py`), and the
-learned model is bolted onto each separately via a `--checkpoint` flag.
-Adding a model means editing all three.
+Every runner used to keep its own private list of which spymasters
+exist (`run_arena.py`, `run_two_team_arena.py`, and the since-removed
+inspectors), so adding a model meant editing all of them.
 
 `spymasters/registry.py` mirrors `guessers/registry.py`: a
 `SPYMASTER_CLASSES` dict, a `configs/spymasters.json` giving each entry a
@@ -100,15 +96,14 @@ a checkpoint exists.
 
 ## Step 3: A batched-scoring protocol
 
-`gpu_arena.py` and `two_team_gpu_arena.py` are hardcoded to
-`LearnedSpymaster`: they import it directly, call
-`spymaster.model.predict_proba`, read `.own_reward`/`.miss_penalty`, and
-call `expected_reward_and_best_n` themselves. Any new model that scores
-the whole vocabulary -- which the planned baseline does -- gets either
-the slow per-process path or a forked copy of a subtle lockstep loop.
+The GPU arenas used to be hardcoded to one model: they imported it
+directly, reached into its torch internals, and computed expected reward
+themselves. Any new model that scores the whole vocabulary then gets
+either the slow per-process path or a forked copy of a subtle lockstep
+loop.
 
-`two_team_gpu_arena.py:124-146` does five things inline. Once features
-vary per model, only the first and last belong to the arena:
+The batched loop does five things inline. Only the first and last belong
+to the arena:
 
 | | who owns it |
 |---|---|
@@ -130,52 +125,24 @@ class BatchScoringSpymaster(Protocol):
     def to_device(self, device) -> None: ...
 ```
 
-`to_device` replaces the arena reaching in to set `spymaster.model.to(device)`
-and `spymaster.device`. The single-board path routes through `score_batch`
-with a one-element list, so there is exactly one scoring implementation
-per model.
+`to_device` replaces the arena reaching into a model's internals. The
+single-board path routes through `score_batch` with a one-element list,
+so there is exactly one scoring implementation per model.
+`ExpectedWordsSpymaster` implements this protocol; `to_device` is a
+no-op for it, since it scores in numpy on the CPU.
 
-## Step 4: Cache rollouts, not features
+## Step 4: Cache rollouts, not features (retired)
 
-`generate_training_data.py:383` computes
-`feature_builder(board, clue, sims, turn_index)` and
-`simulate_natural_stop(board, clue, guesser, sims)`, then saves only the
-*featurized* row plus the outcome -- discarding the board, clue, turn
-index, and which guesser was drawn.
+This step existed to serve supervised training: rollouts
+(`(board, clue, guesser, turn_index) -> (k, cause)`) were cached so a new
+feature design cost a recompute rather than a re-simulation, measured at
+~35x cheaper. It was built, measured, and removed along with the training
+pipeline it fed -- see `docs/log.md` for the numbers.
 
-This welds the expensive, model-independent half (simulating the guesser)
-to the cheap, model-specific half (computing features). Generation is
-"the dominant cost (~40 min sequentially at moderate scale)" per
-`run_ablation_study.py`; training is fast. Since features now change
-between models, every new model would re-simulate identical rollouts just
-to get different columns out of them. `ablation.py` already exists as a
-partial workaround -- it derives what it can by rearranging columns --
-and the `unsorted`/`pool_*` ablations already need fresh generation
-passes for the same reason.
-
-Store the rollout instead: `(board, clue, guesser, turn_index) ->
-(k, cause)`. Features are then computed on demand per model. A new
-feature design costs a recompute, not a re-simulation, and every model
-trains on the identical rollout set, which makes model-to-model
-comparison cleaner.
-
-**Built, and measured.** `codenames/rollouts.py` stores the rollouts;
-`scripts/pipeline/featurize_rollouts.py` turns a rollout set into a training
-dataset whose on-disk layout is byte-compatible with the pre-split one,
-so `scripts/pipeline/train_scorer.py` needed no changes at all. On a 500-example
-sample: generation runs at ~318 examples/sec, featurization at ~11,161 —
-**~35x**, which is what a feature-design change now costs relative to a
-regeneration. Storage is 4.1x smaller (54,134 bytes of rollouts vs
-222,512 of features; earlier estimates of ~6x and ~60 bytes/row were
-optimistic). Equivalence was verified rather than assumed: the
-featurized rollouts reproduce the pre-refactor dataset exactly — all four
-arrays (`features`, `outcome`, `reward`, `seed`) identical at the same
-seed.
-
-Reward is not stored, only derived, for the reason given above.
-
-This is the same discipline as the similarity tensor and the LLM
-response cache, applied to the third expensive model-independent thing.
+The heading is kept so that references to steps 5-7 elsewhere in the
+codebase stay correct. If a future model needs fitting, note that this
+schema stored one turn's outcome, not a trajectory, so a value function
+for multi-turn play would need a different one.
 
 ## Step 5: A frozen eval suite
 
@@ -209,10 +176,10 @@ keyed by `(spymaster_id, suite_id, board_seed)`:
 `GameRecordStore` already writes one row per game and needs the right
 key, not a rewrite.
 
-**Identify a model by checkpoint content hash, not path.**
-`train_scorer.py:259` writes `cache/checkpoints/scorer_best.pt` every
-run, so a path-keyed cache would silently serve one model's expensive
-results as another's.
+**Identify a model by its content, not by a name.** A model's
+`spymaster_id` has to change whenever anything that changes its clues
+changes -- its parameters included -- or a cache keyed on it would
+silently serve one model's expensive results as another's.
 
 Because the whole game replays through cached responses, and because the
 cache key does not mention the spymaster, two models that give the same

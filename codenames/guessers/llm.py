@@ -8,10 +8,10 @@ same blind spots." A real LLM was never part of that training loop, so
 scoring against it breaks the coupling: it's the closest cheap proxy
 this project has for "would an actual human guess this."
 
-Deliberately NOT used in scripts/pipeline/generate_training_data.py or anywhere
-in the training path -- that samples millions of (board, clue, guesser)
-triples, and a real API call per example would be far too slow and
-expensive. This is wired into evaluation the same way any other guesser
+Deliberately NOT used anywhere a model is tuned or diagnosed -- see
+docs/iteration-architecture.md's "two roles for guessers": training
+against the LLM would fit the model to one specific listener and
+collapse the train/eval distinction. This is wired into evaluation the same way any other guesser
 is (codenames/two_team_arena.py, scripts/pipeline/run_two_team_arena.py), just
 never into training_pool()'s sampling.
 

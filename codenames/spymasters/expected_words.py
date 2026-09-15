@@ -91,8 +91,9 @@ no clue" contract.
 
 Implements `BatchScoringSpymaster` for the same reason `z_threshold.py`
 did: `to_device` is a no-op (numpy/CPU only) and `score_batch` loops the
-same per-context scoring `top_clues` uses, so `codenames/gpu_arena.py`/
-`two_team_gpu_arena.py` can drive this model without a special case.
+same per-context scoring `top_clues` uses, so
+`codenames/two_team_gpu_arena.py` can drive this model without a special
+case.
 """
 
 from __future__ import annotations

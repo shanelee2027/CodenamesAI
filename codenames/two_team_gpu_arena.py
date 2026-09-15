@@ -1,8 +1,8 @@
 """GPU-batched two-team self-play arena for a BatchScoringSpymaster
-(currently only LearnedSpymaster) -- plays many simultaneous two-team
-games in lockstep on one GPU process, mirroring codenames/gpu_arena.py's
-single-team batching (see that module's docstring for the underlying
-"batch the forward pass across many boards" idea, its measured speedup,
+(currently ExpectedWordsSpymaster) -- plays many simultaneous two-team
+games in lockstep on one GPU process, batching the per-board scoring
+across many boards (see docs/iteration-architecture.md step 3 for the
+underlying idea, its measured speedup,
 and the BatchScoringSpymaster protocol this module is written against
 instead of a specific spymaster class) but doubled for two sides.
 
@@ -18,7 +18,7 @@ active game and run one batched forward pass, exactly like the
 single-team path already does for its one perspective.
 
 Only accelerates the case codenames/two_team_arena.py's own docstring
-already scopes to: bulk two-team *self-play*, the SAME LearnedSpymaster
+already scopes to: bulk two-team *self-play*, the SAME spymaster
 + guesser pair on both sides. A mixed-spymaster or baseline-only
 two-team comparison stays on scripts/pipeline/run_two_team_arena.py's
 process-parallel path -- nothing here to batch for a spymaster that

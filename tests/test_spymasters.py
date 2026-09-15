@@ -8,7 +8,7 @@ import pytest
 from codenames.board import Board, Card, Role
 from codenames.spymasters.base import MAX_CLUE_NUMBER, Spymaster, TurnContext
 from codenames.spymasters.centroid import CentroidSpymaster
-from codenames.spymasters.learned import LearnedSpymaster
+from codenames.spymasters.expected_words import ExpectedWordsSpymaster
 from codenames.spymasters.linear_scorer import DEFAULT_WEIGHTS, LinearScorerSpymaster
 from codenames.spymasters.oracle import OracleSpymaster
 from codenames.spymasters.random_clue import RandomSpymaster
@@ -75,7 +75,7 @@ class TestRegistry:
         from codenames.spymasters.registry import DEFAULT_SPYMASTER_CONFIG, load_spymasters
 
         entries = load_spymasters(DEFAULT_SPYMASTER_CONFIG)
-        assert set(entries) == {"random", "centroid", "linear_scorer", "oracle", "learned", "expected_words"}
+        assert set(entries) == {"random", "centroid", "linear_scorer", "oracle", "expected_words"}
 
     def test_entries_build_the_expected_classes(self):
         from codenames.spymasters.registry import load_spymasters
@@ -86,11 +86,13 @@ class TestRegistry:
         assert isinstance(entries["linear_scorer"].build(), LinearScorerSpymaster)
         assert isinstance(entries["oracle"].build(), OracleSpymaster)
 
-    def test_only_learned_is_marked_trained(self):
+    def test_no_entry_is_marked_trained(self):
+        """Nothing in the project trains any more -- every registered
+        spymaster is constructible straight from its config params, with
+        no checkpoint to supply."""
         from codenames.spymasters.registry import load_spymasters
 
         entries = load_spymasters()
-        assert entries["learned"].trained is True
         assert entries["random"].trained is False
         assert entries["centroid"].trained is False
         assert entries["linear_scorer"].trained is False
@@ -109,10 +111,11 @@ class TestRegistry:
     def test_spymaster_spec_merges_overrides_into_config_params(self, tmp_path):
         from codenames.spymasters.registry import spymaster_spec
 
-        cls, kwargs = spymaster_spec("learned", checkpoint_path=tmp_path / "x.pt", miss_penalty=-1.0)
-        assert cls is LearnedSpymaster
-        assert kwargs["checkpoint_path"] == tmp_path / "x.pt"
-        assert kwargs["miss_penalty"] == -1.0
+        cls, kwargs = spymaster_spec("expected_words", sigma=1.25, max_rarity=5.0)
+        assert cls is ExpectedWordsSpymaster
+        assert kwargs["sigma"] == 1.25            # override wins
+        assert kwargs["max_rarity"] == 5.0
+        assert kwargs["space"] == "numberbatch"   # untouched config param survives
 
     def test_accepts_an_already_parsed_config_dict_not_just_a_path(self):
         from codenames.spymasters.registry import load_spymasters

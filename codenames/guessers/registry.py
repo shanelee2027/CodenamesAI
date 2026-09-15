@@ -90,8 +90,8 @@ def _build_one(entry_config: dict, built: dict[str, Guesser]) -> Guesser:
 def load_pool(config: Path | dict = DEFAULT_POOL_CONFIG) -> dict[str, GuesserEntry]:
     """`config` is either a path to a pool config file, or an
     already-parsed config dict (e.g. a copy of one with `noise_std`
-    overridden in memory -- see scripts/tools/web_inspector.py's per-noise-level
-    pools -- without needing to write a temp file first)."""
+    overridden in memory for a sweep, without needing to write a temp
+    file first)."""
     parsed = json.loads(config.read_text()) if isinstance(config, Path) else config
     built: dict[str, Guesser] = {}
     entries: dict[str, GuesserEntry] = {}

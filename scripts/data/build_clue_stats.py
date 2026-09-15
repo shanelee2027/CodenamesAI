@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 
 from codenames.clue_search import clue_rarity_percentile
-from codenames.rollouts import clue_vocab_fingerprint
+from codenames.clue_stats import clue_vocab_fingerprint
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 

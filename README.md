@@ -1,15 +1,16 @@
 # CodenamesAI
 
-A Codenames clue-giving agent built around a learned clue scorer over
-multiple word embedding spaces. Codenames has two roles: the **spymaster**
+A Codenames clue-giving agent that picks clues by a closed-form scoring
+function over word-embedding similarities — no language model produces a
+clue at any point. Codenames has two roles: the **spymaster**
 sees which board words belong to which team and gives a one-word clue plus
 a number; the **guesser** sees only the words and tries to pick their
 team's words from the clue. This project builds the spymaster — the
 guesser is deliberately simple and hand-written, a training environment
 rather than a deliverable.
 
-[`docs/versions/`](docs/versions/) documents each model as it is built (empty
-for now — no model has been built under the current eval suite).
+[`docs/versions/`](docs/versions/) documents each model as it is built; the
+current one is [`expected_words`](docs/versions/expected_words.md).
 [`docs/design-decisions.md`](docs/design-decisions.md) has the standing
 design rationale. [`docs/log.md`](docs/log.md) is the working log.
 
@@ -58,40 +59,30 @@ Work happens at three different times:
    python scripts/data/build_similarity_tensor.py
    python scripts/data/extend_similarity_tensor.py   # add a space to an existing tensor
    ```
-2. **Train time (repeatable).** Simulate many sampled (board, clue,
-   guesser) triples against the guesser pool, label each with what actually
-   happened, and train a model to predict that outcome from board+clue
-   features.
-   Split in two, so the expensive half is paid once: generation simulates
-   guesser *rollouts* (model-independent, the dominant cost), and
-   featurization turns those into a model's feature vectors (cheap, ~35x
-   faster). A new feature design re-featurizes stored rollouts instead of
-   re-simulating them — see `codenames/rollouts.py` and
-   [`docs/iteration-architecture.md`](docs/iteration-architecture.md).
+2. **Per-clue statistics (once).** Mean and standard deviation of each
+   clue's similarity across all 400 board words, plus a rarity
+   percentile, so a raw similarity can be turned into a per-clue z-score.
    ```bash
-   python scripts/pipeline/generate_training_data.py --n-examples 200000   # -> cache/rollouts
-   python scripts/pipeline/featurize_rollouts.py                           # -> cache/training_data
-   python scripts/pipeline/train_scorer.py --data-dir cache/training_data
+   python scripts/data/build_clue_stats.py   # -> cache/clue_stats.npz
    ```
-3. **Play time (per turn).** Score every legal clue in the vocabulary in
-   one batched forward pass, turn each score into an expected reward for
-   every possible clue number, and return the best `(clue, number)` pair.
+3. **Play time (per turn).** Score every legal clue in the vocabulary
+   against the current board, pick the best `(clue, number)` pair by
+   expected reward. Nothing is trained; the scoring function is written
+   down, not fitted.
 
 ```bash
-python scripts/tools/web_inspector.py       # web UI: pick spymasters/guessers, play a full two-team
-                                       # game, or inspect a single clue/turn with live reward/noise/rarity controls
-python scripts/tools/inspector.py           # CLI equivalent of the single-turn inspector
 python scripts/pipeline/run_arena.py           # single-team cross-play matrix: every spymaster x every guesser
 python scripts/pipeline/run_two_team_arena.py  # real two-team self-play, one spymaster+guesser pair on both sides
 ```
 
-`scripts/pipeline/run_ablation_study.py` regenerates data and retrains a batch of
-model variants at once; see its own `--help` and docstring.
+Both are **training diagnostics against synthetic guessers, not
+scoreboards** — evaluation results come only from the frozen LLM eval
+suite (`codenames/eval_suite.py`).
 
 ## Baselines
 
-Fixed reference points, not iteration targets — the learned model (below)
-should be compared against these, and should clearly beat them.
+Fixed reference points, not iteration targets — a new model should be
+compared against these, and should clearly beat them.
 
 1. **Random** — a random legal clue.
 2. **Centroid** — the clue nearest the mean of a random own-word subset.
@@ -132,44 +123,39 @@ into one set of stats:
 `codenames/two_team_arena.py` runs this on CPU; `codenames/two_team_gpu_arena.py`
 batches many simultaneous games on GPU for the same result, much faster.
 
-## The learned scorer: (k, cause)
+## The current model: `expected_words`
 
-Given a board state and a candidate clue:
+Given a board state and a candidate clue, in one embedding space
+(`numberbatch`), with every similarity converted to a per-clue z-score:
 
-**The feature vector.** Look up the clue's similarity to all 25 board words
-in every space, partition by role (own/opponent/neutral/assassin), sort
-descending within each role group per space (order carries no information
-otherwise, and sorting makes rank position meaningful), pad with a sentinel
-and a validity mask, and concatenate every space's values plus a few
-scalars (own words remaining, turn index, score differential). Spaces are
-concatenated, never averaged — averaging would destroy exactly the "one
-space knows this, another doesn't" signal the whole project exists to use.
-The model never sees words, only these numbers; all linguistic knowledge
-lives in the similarity tensor.
+```
+q_w(x, tau) = Phi((b_w - x) / tau)          # b_w = z-score of non-own word w
+s_j         = prod_w (1 - q_w(a_j, tau_gain))
+gain(k)     = sum_{j=1..k} prod_{i<=j} s_i
+penalty(k)  = sum_w c_w * q_w(a_k, tau_pen)
+score       = gain(k) - penalty(k)
+```
 
-**The model.** An MLP (`codenames/scorer.py::Scorer`): inputs → hidden
-layers (256, 256, 128) → 13 output classes → softmax. Those 13 classes are
-a joint distribution over `(k, cause)` — `k` is how many own-words a
-guesser reveals in a row before stopping (0..3), crossed with `cause`,
-which role actually stopped it (neutral / opponent / assassin), plus one
-right-censored class for `k=4` (hit the cap, no miss).
+`a_1 >= a_2 >= ...` are the clue's z-scores against unrevealed own words
+and `c_w` is the cost of revealing `w`. `gain(k)` is deliberately
+sub-linear: the k-th word is credited only by the probability the guesser
+survives that far, which is what makes `k` a real choice rather than
+always maxing out. The selected `(clue, number)` is the joint argmax.
 
-**Using the output.** The network predicts that distribution only — it's
-never trained against a specific reward value. A separate closed-form
-calculation (`codenames/scorer.py::reward_matrix`/`expected_reward_and_best_n`)
-combines the predicted distribution with four independent reward
-parameters (`own_reward`, `neutral_reward`, `opponent_reward`,
-`assassin_reward`) to get an expected reward for every possible announced
-number `n`, and returns whichever `(clue, n)` scores highest. Those four
-reward values live outside training entirely, so any of them — including
-`assassin_reward`, which doubles as a risk-aversion knob — can be changed
-at play time with no retraining.
+Nothing is trained and nothing is fitted — the two constants
+(`tau_gain=2.5`, `tau_pen=0.7`) are hand-set and have never been swept.
+Full derivation, the rejected linear variant, and measurements are in
+[`docs/versions/expected_words.md`](docs/versions/expected_words.md).
+
+The underlying order-statistics model — what the guesser's ranking looks
+like when their embedding disagrees with ours by Gaussian noise — is
+derived in [`docs/clue-selection-theory.pdf`](docs/clue-selection-theory.pdf).
 
 **Results.** None published. The two models that had measured results
 (`v1` and the `v1.1` blend subversion) were retired: they were trained
 against the old 60-word board holdout, so their numbers are not comparable
-with anything trained under the current 150-word split, and reporting them
-beside a new model would flatter them. Their measurements remain in
+with anything under the current 150-word split, and reporting them beside
+a new model would flatter them. Their measurements remain in
 [`docs/log.md`](docs/log.md).
 
 The evaluation that replaces them is defined in
@@ -185,16 +171,16 @@ Two guessers were built, measured, and left in the tree rather than
 adopted. Both are training-side infrastructure, not models:
 
 - **`BlendGuesser`** — one weighted average of cosine similarity across all
-  three spaces, rather than three separate single-space guessers. A
-  deliberate departure from [`docs/design-decisions.md`](docs/design-decisions.md)'s
-  "diversity must be in knowledge, not noise" principle, since it presents
-  one synthetic listener instead of three differently-knowledgeable ones.
+  three spaces, rather than three separate single-space guessers. It
+  presents one synthetic listener instead of three differently-
+  knowledgeable ones, which is the opposite of what a training pool is
+  for.
 - **`HistoryAwareGuesser`** — spends one earned bonus guess per turn (real
   Codenames' `n+1` rule), reinstated only when a past clue's miss plausibly
   left a word unaccounted for. Measured worse for both models that were
   tested against it, on both assassin-hit rate and own-word rate.
 
-Both remain selectable in the web UI and in `configs/guesser_pool_*.json`.
+Both remain selectable in `configs/guesser_pool_*.json`.
 See [`docs/log.md`](docs/log.md) for the numbers behind each.
 
 ## Layout

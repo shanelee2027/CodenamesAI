@@ -22,8 +22,8 @@ convention entries for why that was dropped). A guesser can still claim
 one extra guess this turn via `Guesser.bonus_guesses` (see
 codenames/guessers/base.py), but only if it has an actual, tracked reason
 to -- e.g. `HistoryAwareGuesser` believes a past clue's miss left a word
-unaccounted-for. `codenames/scorer.py`'s reward math is unaware of this:
-it still assumes exactly `n` attempts, so real play with a bonus-claiming
+unaccounted-for. A spymaster's reward math is unaware of this: it
+assumes exactly `n` attempts, so real play with a bonus-claiming
 guesser slightly outperforms what a spymaster's own expected-reward
 calculation predicts for it, never the other way around.
 """
@@ -38,10 +38,9 @@ from codenames.guessers.base import Guesser
 from codenames.similarity import SimilarityTensor
 
 if TYPE_CHECKING:
-    # Deferred: spymasters/learned.py depends on scorer.py, which depends
-    # on this module (for ROLE_REWARD) -- importing Spymaster (or
-    # TurnContext) at module level here would close that into a circular
-    # import. `from __future__ import annotations` (above) already makes
+    # Deferred: spymasters import this module (for ROLE_REWARD), so
+    # importing Spymaster (or TurnContext) at module level here would
+    # close that into a circular import. `from __future__ import annotations` (above) already makes
     # every annotation in this file a lazy string, so Spymaster itself is
     # only ever needed by type checkers. `TurnContext` is also
     # constructed at runtime (not just referenced in an annotation), so
@@ -95,9 +94,10 @@ def play_turn(
     and uses that pair directly -- lets a caller compute the clue for many
     boards at once (batched, off the hot path of this function) and still
     reuse this exact tested attempt/reveal/stop logic per board. See
-    codenames/gpu_arena.py, which batches LearnedSpymaster's give_clue()
-    across many simultaneous games on GPU for a real throughput win, then
-    drives each board's turn through this same function unchanged.
+    codenames/two_team_gpu_arena.py, which batches a
+    BatchScoringSpymaster's scoring across many simultaneous games on GPU
+    for a real throughput win, then drives each board's turn through this
+    same function unchanged.
 
     `history`, if given, is the backlog state from `Guesser.update_history`
     (see codenames/guessers/base.py) -- forwarded to the guesser so it can

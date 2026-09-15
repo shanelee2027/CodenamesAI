@@ -151,8 +151,8 @@ class TestNoisyGuesser:
         assert first == second
 
     def test_noise_is_independent_of_noise_std(self, sims):
-        # scripts/pipeline/run_ablation_study.py's noise-level sweep depends on
-        # this: the same seed at a different noise_std should be the same
+        # A noise-level sweep depends on this: the same seed at a
+        # different noise_std should be the same
         # underlying standard-normal draw per (clue, word), just scaled --
         # not an unrelated draw -- so different noise_std levels are
         # directly comparable, not just similarly distributed.
@@ -246,10 +246,10 @@ class TestRegistry:
         assert guesser.base.weights == {"glove": 0.3, "numberbatch": 0.5, "wikipedia2vec": 0.2}
 
     def test_accepts_an_already_parsed_config_dict_not_just_a_path(self):
-        # scripts/tools/web_inspector.py builds one in-memory pool per noise
-        # level by copying and editing the default config dict, so
-        # load_pool needs to accept that directly rather than requiring a
-        # round-trip through a temp file.
+        # A noise sweep builds one in-memory pool per level by copying
+        # and editing the default config dict, so load_pool needs to
+        # accept that directly rather than requiring a round-trip through
+        # a temp file.
         config = {"guessers": [{"name": "a", "type": "single_space", "params": {"space": "x"}}]}
         entries = load_pool(config)
         assert list(entries) == ["a"]

@@ -1,8 +1,7 @@
 """Shared "search the clue vocabulary for a good, legal clue" helpers.
 
-Used by the baseline spymasters (codenames/spymasters/) and
-by the training-data generation script (scripts/pipeline/generate_training_data.py), which
-both need to turn a (n_clues,)-shaped score array into legal clue words.
+Used by every spymaster (codenames/spymasters/), which all need to turn
+a (n_clues,)-shaped score array into legal clue words.
 """
 
 from __future__ import annotations
@@ -105,10 +104,9 @@ def mean_from_columns(columns: list[np.ndarray]) -> np.ndarray:
     """Per-clue mean, flat across a list of already-fetched (n_clues,
     n_spaces) columns -- shape (n_clues,), NaN where every entry across the
     given columns is missing. Split out from mean_similarity_to_words so a
-    caller doing many repeated lookups of the *same* board word (e.g. the
-    training-data generation sampling one of only ~400 possible board words millions
-    of times) can cache the disk read once per word instead of re-reading
-    it -- see scripts/pipeline/generate_training_data.py for that caching layer."""
+    caller doing many repeated lookups of the *same* board word (there
+    are only ~400 possible ones) can cache the disk read once per word
+    instead of re-reading it."""
     flat = np.stack(columns, axis=1).reshape(columns[0].shape[0], -1)
     with np.errstate(invalid="ignore"):
         valid_counts = np.sum(~np.isnan(flat), axis=1)

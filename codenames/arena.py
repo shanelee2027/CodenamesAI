@@ -21,10 +21,9 @@ earlier version did exactly that and pushed worker RSS past 9GB.
 **Worker start method is "spawn," not the Linux default "fork."** Forking
 after CUDA has been initialized in the parent process hangs or crashes the
 child, even if the child never touches the GPU itself -- the forked
-process inherits a broken copy of the CUDA context. This matters
-concretely now that scripts/pipeline/run_arena.py can combine this module's
-baselines with codenames/gpu_arena.py's GPU-batched LearnedSpymaster path
-in one invocation: whichever runs first would poison the other under
+process inherits a broken copy of the CUDA context. This matters as soon
+as any GPU path (codenames/two_team_gpu_arena.py) runs in the same
+invocation as this one: whichever runs first would poison the other under
 "fork," and getting the call order right forever is a landmine, not a fix.
 "spawn" starts each worker as a genuinely fresh interpreter, sidestepping
 the hazard regardless of call order, at the cost of somewhat slower
@@ -87,8 +86,8 @@ class CrossPlayResult:
 
 def new_stats_accumulator() -> dict[str, float]:
     """One (spymaster, guesser) pair's running totals -- shared between
-    run_arena's per-process games and codenames/gpu_arena.py's batched
-    games, so both runners compute CrossPlayResult identically instead of
+    run_arena's per-process games and any batched GPU runner's games, so
+    both compute CrossPlayResult identically instead of
     maintaining two copies of this bookkeeping that could quietly drift
     apart."""
     return {

@@ -6,14 +6,13 @@ learned scorer and every baseline implement this same interface so
 the arena can play any spymaster against any guesser without special-casing.
 
 `TurnContext` bundles the board state with a turn counter instead of
-passing loose (board, sims) arguments. Today every model is board-state-
-only and ignores `turn_index` except `LearnedSpymaster` (which used to
-reconstruct it internally as `len(board.revealed)` -- a train/serve skew
-risk its own docstring used to flag, since the caller and the model could
-in principle disagree on what turn it is). Threading it through explicitly
-from the game loop removes that risk and gives future models (clue
-history, past guesses) somewhere to grow without touching every existing
-model or caller.
+passing loose (board, sims) arguments. Every model is board-state-only
+today and ignores `turn_index`; a model that wanted it would otherwise
+reconstruct it as `len(board.revealed)`, letting the caller and the model
+disagree in principle about what turn it is. Threading it through
+explicitly from the game loop removes that risk and gives future models
+(clue history, past guesses) somewhere to grow without touching every
+existing model or caller.
 
 `top_clues` is the primary method -- score, rank, and pick the best k
 legal (clue, number, score) triples -- and `give_clue` is a thin wrapper
@@ -21,16 +20,16 @@ around it (`top_clues(ctx, sims, 1)[0]`), so there is exactly one scoring
 path per model instead of two (a single-pick path and a top-k path) that
 can silently drift apart.
 
-Reward parameters (own/neutral/opponent/assassin) live on the model itself
-(see `LearnedSpymaster`), not here -- the arena never reads them. Legality
+Reward parameters (own/neutral/opponent/assassin) live on the model
+itself, not here -- the arena never reads them. Legality
 filtering stays in `codenames/clue_search.py`: it's a rule of Codenames,
 identical for every model, and must not be reimplemented per model.
 
 `BatchScoringSpymaster` (docs/iteration-architecture.md step 3) is the
 protocol a model opts into if it scores the whole clue vocabulary and can
 usefully batch that across many simultaneous boards -- currently only
-`LearnedSpymaster`. `codenames/gpu_arena.py` and
-`codenames/two_team_gpu_arena.py` are written against this protocol only:
+`ExpectedWordsSpymaster`. `codenames/two_team_gpu_arena.py` is written
+against this protocol only:
 they gather board views into `TurnContext`s, call `score_batch` for the
 per-clue (best_n, scores) arrays, hand those to `codenames.clue_search`
 for the best *legal* clue, and call `to_device` instead of reaching into

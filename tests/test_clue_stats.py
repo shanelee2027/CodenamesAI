@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts" / "data"))
 from build_clue_stats import build_clue_stats  # noqa: E402
 
 from codenames.clue_stats import ClueStats
-from codenames.rollouts import clue_vocab_fingerprint
+from codenames.clue_stats import clue_vocab_fingerprint
 from codenames.similarity import SimilarityTensor
 
 CLUE_WORDS = ["ownfavored", "opponentfavored", "neutralfavored", "assassinfavored", "mixedclue", "flatclue"]

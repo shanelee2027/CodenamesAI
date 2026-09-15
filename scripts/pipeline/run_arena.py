@@ -5,17 +5,14 @@ why), over a fixed set of seeded boards. Prints the win-rate / assassin-rate
 
 Usage:
     python scripts/pipeline/run_arena.py --n-boards 20 --max-workers 8
-    python scripts/pipeline/run_arena.py --n-boards 300 --checkpoint cache/m9/checkpoints/noise_0_08/scorer_best.pt
+    python scripts/pipeline/run_arena.py --n-boards 300 --max-workers 8
 
-With --checkpoint, the learned spymaster routes through
-codenames/gpu_arena.py's batched-across-games GPU path by default (13x
-faster measured in practice, see docs/log.md -- pass --no-gpu-batch for
-the normal per-process CPU path instead). Baselines
-(random/centroid/linear_scorer) always run through the regular arena
-either way, since they're already cheap and have nothing to gain from
-batching. Results are merged into one report. See
-codenames/gpu_arena.py's module docstring for why this exists and what it
-does and doesn't accelerate.
+Every spymaster with role "baseline" in configs/spymasters.json runs here,
+selected by role rather than by name so a new entry needs no edit to this
+file. Per docs/design-decisions.md, this matrix is a *training
+diagnostic*, not a scoreboard: its guessers are the synthetic training
+pool, and evaluation results come only from the frozen LLM eval suite
+(codenames/eval_suite.py).
 """
 
 from __future__ import annotations
@@ -24,13 +21,9 @@ import argparse
 import time
 from pathlib import Path
 
-import torch
-
 from codenames.arena import run_arena
-from codenames.gpu_arena import run_arena_gpu
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
-from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
-from codenames.spymasters.registry import load_spymasters, spymaster_names, spymaster_spec
+from codenames.spymasters.registry import load_spymasters, spymaster_names
 
 # This script's spymasters, selected by role from configs/spymasters.json
 # rather than by name, so a new entry needs no edit here. "oracle" is
@@ -46,39 +39,13 @@ def main() -> None:
     parser.add_argument("--db", type=Path, default=Path("cache/arena.db"))
     parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS")
     parser.add_argument("--max-workers", type=int, default=None, help="default: os.cpu_count()")
-    parser.add_argument(
-        "--checkpoint", type=Path, default=None, help="scorer checkpoint from scripts/pipeline/train_scorer.py -- adds a 'learned' spymaster if given"
-    )
-    parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for the learned spymaster (default: -10.0, see codenames.scorer)")
-    parser.add_argument(
-        "--gpu-batch-size",
-        type=int,
-        default=32,
-        help="with --checkpoint, run the learned spymaster through codenames/gpu_arena.py's GPU-batched "
-        "path (default: on, batch of 32) instead of the normal per-process one -- measured 13x faster in "
-        "practice (docs/log.md). Baselines still run through the normal path either way. Falls back to "
-        "CPU automatically if no CUDA device is available, just without the speedup.",
-    )
-    parser.add_argument(
-        "--no-gpu-batch", action="store_true", help="use the normal per-process path for the learned spymaster too, instead of --gpu-batch-size"
-    )
-    parser.add_argument("--sims-cache-dir", type=Path, default=DEFAULT_CACHE_DIR, help="only used by --gpu-batch-size")
     args = parser.parse_args()
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
     seeds = list(range(args.n_boards))
-    use_gpu_batch = args.checkpoint is not None and not args.no_gpu_batch
 
     all_entries = load_spymasters()
     spymaster_specs = {name: all_entries[name].spec for name in BASE_SPYMASTER_NAMES}
-    learned_cls, learned_kwargs = None, {}
-    if args.checkpoint is not None:
-        overrides = {"checkpoint_path": args.checkpoint}
-        if args.risk_aversion is not None:
-            overrides["miss_penalty"] = args.risk_aversion
-        learned_cls, learned_kwargs = spymaster_spec("learned", **overrides)
-        if not use_gpu_batch:
-            spymaster_specs["learned"] = (learned_cls, learned_kwargs)
 
     kwargs = {}
     if args.max_turns is not None:
@@ -93,22 +60,6 @@ def main() -> None:
         max_workers=args.max_workers,
         **kwargs,
     )
-
-    if use_gpu_batch:
-        sims = SimilarityTensor.load(args.sims_cache_dir)
-        learned_spymaster = learned_cls(**learned_kwargs)
-        gpu_results = run_arena_gpu(
-            spymaster=learned_spymaster,
-            spymaster_name="learned",
-            guesser_pool_config=args.guesser_pool_config,
-            seeds=seeds,
-            db_path=args.db,
-            sims=sims,
-            batch_size=args.gpu_batch_size,
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-            **kwargs,
-        )
-        results.update({("learned", g_name): r for g_name, r in gpu_results.items()})
 
     elapsed = time.time() - start
 

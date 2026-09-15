@@ -42,9 +42,8 @@ from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 # Passed as `guesser_name` to mean "don't fix one guesser -- each game
 # independently draws one, uniformly, from every guesser in
-# --guesser-pool-config" (matching training's own sampling: see
-# scripts/pipeline/generate_training_data.py's `rng.choice(guesser_names)` and
-# configs/guesser_pool.json, which is the source of truth for pool
+# --guesser-pool-config" (drawing from configs/guesser_pool.json, the
+# source of truth for pool
 # composition -- evaluating against a single fixed guesser instead is a
 # narrower test than what the model was actually trained against).
 MIXED_GUESSER = "mixed"

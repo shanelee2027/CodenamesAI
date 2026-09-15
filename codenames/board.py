@@ -3,10 +3,9 @@
 Design notes for the two non-obvious calls made here:
 
 Role partition is fixed at own=9, opponent=8, neutral=7, assassin=1 (25
-total) -- the standard Codenames starting-team split, matching the feature
-vector layout in codenames/features.py. Every `Card`'s role is fixed at board
-generation from one team's perspective -- spymasters, guessers, and the
-scorer are all written against that single perspective, never a
+total) -- the standard Codenames starting-team split. Every `Card`'s role
+is fixed at board generation from one team's perspective -- spymasters and
+guessers are all written against that single perspective, never a
 parameter. Real two-team play (codenames/game.py::play_two_team_game) is
 still possible without changing any of them: `OpponentBoardView` below
 just swaps OWN/OPPONENT while sharing the same underlying revealed-state,
@@ -78,10 +77,9 @@ BOARD_SIZE = sum(ROLE_COUNTS.values())
 # number of own-words the guesser will reveal before stopping.
 # Baseline spymasters cap their chosen number at the same bound so
 # every spymaster's outputs stay comparable in the arena. Lives here (not
-# in spymasters/base.py, where it conceptually belongs) so both
-# spymasters/ and scorer.py can import it without a circular dependency --
-# spymasters/learned.py already depends on scorer.py, so scorer.py can't
-# depend back on anything under spymasters/.
+# in spymasters/base.py, where it conceptually belongs) so anything that
+# needs it can import it without a circular dependency back through
+# spymasters/.
 MAX_CLUE_NUMBER = 4
 
 
@@ -189,8 +187,8 @@ class OpponentBoardView:
     def revealed(self) -> set[str]:
         # Which words are revealed doesn't depend on perspective, only
         # what role they turn out to be -- some spymaster code reads
-        # this set directly (codenames/spymasters/_util.py::state_rng,
-        # LearnedSpymaster's turn-index calc) rather than going through
+        # this set directly (codenames/spymasters/_util.py::state_rng)
+        # rather than going through
         # is_revealed()/reveal(), so it needs to exist here too.
         return self._board.revealed
 
@@ -237,8 +235,9 @@ def load_holdout_wordlist(path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]
 
 
 def load_training_wordlist(all_path: Path = ASSET_WORDLIST_PATH, holdout_path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]:
-    """load_wordlist() minus load_holdout_wordlist() -- what training data
-    generation (scripts/pipeline/generate_training_data.py) samples boards from."""
+    """load_wordlist() minus load_holdout_wordlist() -- the words a model
+    is allowed to see. Everything held out is reserved for the frozen
+    eval suite (codenames/eval_suite.py)."""
     holdout = set(load_holdout_wordlist(holdout_path))
     return [w for w in load_wordlist(all_path) if w not in holdout]
 

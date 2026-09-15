@@ -28,12 +28,8 @@ What you run when trying a new model. See
 
 | script | what it does |
 |---|---|
-| `generate_training_data.py` | simulate guesser rollouts → `cache/rollouts` |
-| `featurize_rollouts.py` | rollouts → a model's feature dataset (~35x cheaper than regenerating) |
-| `train_scorer.py` | train on a feature dataset → a checkpoint |
 | `run_arena.py` | cross-play matrix vs. synthetic guessers — a **training diagnostic, not a scoreboard** |
 | `run_two_team_arena.py` | two-team self-play |
-| `run_ablation_study.py` | generate + train a batch of variants, with a comparison report |
 
 Evaluation proper — the LLM guesser, against frozen board seeds — lives in
 `codenames/eval_suite.py`, not here.
@@ -42,8 +38,6 @@ Evaluation proper — the LLM guesser, against frozen board seeds — lives in
 
 | script | what it does |
 |---|---|
-| `web_inspector.py` | web UI: play a full two-team game, or inspect one clue with live controls |
-| `inspector.py` | CLI single-turn inspector |
 | `check_clue.py` | look up one clue's similarities |
 | `dump_game_records.py` | human-readable view of recorded games |
 | `probe_llm_cost.py` | price an LLM guesser turn on real positions (**spends money**; `--dry-run` is free) |
