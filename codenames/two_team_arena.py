@@ -21,8 +21,8 @@ the first-move edge, not a quality signal.
 `guesser_name` can also be `MIXED_GUESSER` ("mixed"): instead of fixing
 one guesser for the whole run, each game independently draws one,
 uniformly, from every guesser in `guesser_pool_config` -- matching the
-distribution the spymaster was actually trained against (see
-docs/design-decisions.md), rather than the narrower test a single fixed
+distribution the spymaster was actually trained against, rather than
+the narrower test a single fixed
 guesser is.
 """
 
@@ -44,8 +44,8 @@ from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 # independently draws one, uniformly, from every guesser in
 # --guesser-pool-config" (matching training's own sampling: see
 # scripts/pipeline/generate_training_data.py's `rng.choice(guesser_names)` and
-# docs/design-decisions.md's "guesser pool is 3 members, equally
-# weighted" -- evaluating against a single fixed guesser instead is a
+# configs/guesser_pool.json, which is the source of truth for pool
+# composition -- evaluating against a single fixed guesser instead is a
 # narrower test than what the model was actually trained against).
 MIXED_GUESSER = "mixed"
 

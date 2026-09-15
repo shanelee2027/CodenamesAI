@@ -1,8 +1,9 @@
 """Guesser pool registry.
 
 Pool composition lives in configs/guesser_pool.json, not in code, per
-docs/design-decisions.md: "make the composition explicit in a config file,
-not code... report results as 'under pool configuration X, we observe Y.'"
+docs/design-decisions.md's "composition lives in a config file, not in
+code" note -- results are reported as "under pool configuration X, we
+observe Y."
 This module only
 knows how to build guessers *from* a config; it has no opinion on what the
 pool should contain.

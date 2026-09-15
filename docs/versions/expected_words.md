@@ -139,9 +139,8 @@ rate climbing from 0.0% (numberbatch listener) to 14.0% (glove) to 23.0%
 model's z-margins constrains where the assassin sits in a space it never
 consults. This is cited as inherited context from the prior model's
 measurement, not as a new finding of this one; the smoke test above
-wasn't designed to isolate it further; per `docs/design-decisions.md`'s
-"diversity must be in knowledge, not noise" principle, this remains
-expected behavior for a single-space model, not a bug.
+wasn't designed to isolate it further. This remains expected behavior
+for a single-space model, not a bug.
 
 ### Inherited: embedding-space disagreement
 

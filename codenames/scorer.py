@@ -37,8 +37,8 @@ see scripts/pipeline/generate_training_data.py):
 `reward_of(cause)` is `neutral_reward`/`opponent_reward`/`assassin_reward`
 depending on which role stopped the rollout. `assassin_reward` (default
 -10, matching `DEFAULT_MISS_PENALTY`) is the one meant to double as the
-risk-aversion knob (see docs/design-decisions.md's risk-aversion reward
-parameters) -- the other three default to the real game's
+risk-aversion knob (see docs/design-decisions.md's reward-parameters-at-
+scoring-time note) -- the other three default to the real game's
 `ROLE_REWARD` values (own +1, neutral -0.2, opponent -1), not baseline-3's
 separate untuned -0.3-for-neutral constant (`spymasters/linear_scorer.py`),
 since this is the reward the model is actually meant to optimize, not an

@@ -15,8 +15,8 @@ intersection sidesteps it directly: every legal clue has a real vector in
 every space that's currently built, so no guesser in the pool is
 structurally disadvantaged by coverage gaps. This is a divergence from
 the original union approach -- documented here and in
-docs/design-decisions.md's first-pass-simplifications note and
-docs/log.md, not silently reverted.
+docs/design-decisions.md's clue-vocabulary note and docs/log.md, not
+silently reverted.
 
 Per-space vocabulary contribution (unchanged from the union version):
   - GloVe and Wikipedia2Vec are both frequency-descending ordered in their

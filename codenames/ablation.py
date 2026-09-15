@@ -36,9 +36,8 @@ def average_concatenation(features: np.ndarray, layout: FeatureLayout) -> np.nda
     (per the independent per-space sort) may come from different
     underlying words at the same position, no special-casing of that or of
     the -1 sentinel is applied, since demonstrating this is worse than
-    proper concatenation is the point of the ablation (see
-    docs/design-decisions.md's justification for concatenating rather than
-    averaging). Shape
+    proper concatenation is the point of the ablation (see docs/log.md for
+    the original concatenate-over-average argument). Shape
     (N, D) -> (N, 25 + 25 + 3)."""
     space_blocks = np.stack([features[:, layout.space_slice(s)] for s in layout.spaces], axis=0)
     averaged = space_blocks.mean(axis=0)

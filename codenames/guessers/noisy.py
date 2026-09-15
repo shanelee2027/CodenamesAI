@@ -1,10 +1,10 @@
 """Wraps a base guesser and adds Gaussian noise to its scores, modeling
 human inconsistency -- the pool's guesser with Gaussian noise on
 similarities. Deliberately just one guesser among several structurally
-different ones -- see docs/design-decisions.md's explicit warning that a pool built as one
-base guesser plus several noise levels would defeat the project's own
-goal (a knowledge-blind scorer can't learn to trust rare/niche clues if
-every guesser shares GloVe's blind spots).
+different ones: a pool built as one base guesser plus several noise
+levels would defeat its own purpose, since a knowledge-blind scorer
+can't learn to trust rare/niche clues if every guesser shares GloVe's
+blind spots.
 
 Noise is a deterministic function of (seed, clue, word) -- one word's
 noisy misperception of one clue is fixed, not a fresh dice roll every

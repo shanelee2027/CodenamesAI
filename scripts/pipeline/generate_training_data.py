@@ -30,8 +30,8 @@ stored rollout set into a training dataset.
   diagnostic only in any case; scripts/pipeline/train_scorer.py trains against
   `outcome` alone.
 
-Guesser sampling still goes through `training_pool()` (docs/design-decisions.md's
-mechanism for "training code must never touch held-out guessers"), though
+Guesser sampling still goes through `training_pool()`, the mechanism
+that keeps training code from touching held-out guessers, though
 the first-pass pool (configs/guesser_pool.json) currently has none held out
 -- see docs/log.md's design-revision entry for why.
 

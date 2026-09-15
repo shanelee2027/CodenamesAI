@@ -2,118 +2,93 @@
 
 Standing design rationale that doesn't belong in the README's overview and
 isn't tied to one model version. Recorded so it isn't silently revisited.
-See [`docs/versions/`](versions/) for what changed between model versions,
-and [`docs/log.md`](log.md) for the chronological record of how any of this
-was actually arrived at.
+See [`docs/versions/`](versions/) for what changed between models,
+[`docs/iteration-architecture.md`](iteration-architecture.md) for how a
+model gets built and evaluated, and [`docs/log.md`](log.md) for the
+chronological record of how any of this was actually arrived at —
+including the rationale for approaches since retired.
 
 ## What this project explicitly is not
 
-- **Not an LLM wrapper.** No language model is prompted for a clue anywhere
-  in the pipeline. The spymaster is a learned scoring function over
-  numerical features.
-- **Not novel research.** Reusing published techniques is fine and expected;
-  the contribution is a working, well-measured system.
-- **Not a training-from-scratch embeddings project.** Every embedding space
-  is downloaded pretrained.
+- **Not an LLM wrapper.** No language model is prompted for a clue
+  anywhere in the pipeline. This is the project's defining constraint,
+  not a performance claim.
+- **Not novel research.** Reusing published techniques is fine and
+  expected; the contribution is a working, well-measured system.
+- **Not a training-from-scratch embeddings project.** Every embedding
+  space is downloaded pretrained.
 
-## The motivating problem
+## Every model is reported against a baseline ladder
 
-Standard word embeddings encode dictionary semantics, not pop-culture or
-entity knowledge. Given a board with KING, DREAM, CRAFT, and SWORD, a human
-might clue "Technoblade" (a Minecraft YouTuber — Minecraft/craft, PvP/sword,
-the Dream SMP/dream, his Potato King persona). GloVe has no vector for that
-word at all and could not produce the clue at any threshold. The approach
-here is to use several embedding spaces with different knowledge profiles
-and train a model to learn which space to trust for which clue — not to
-solve Codenames with a single "best" embedding.
+`configs/spymasters.json` registers four non-learned spymasters with
+`"roles": ["baseline"]` — `random`, `centroid`, `linear_scorer`, and the
+current `expected_words` — and any new model picks all of them up
+without naming them (`codenames/spymasters/registry.py`).
 
-## Feature vector design
+The overhead is deliberate. A win rate with nothing beside it is not a
+result, and the cheapest way to find out that an elaborate model is
+doing nothing is to see it tied with `centroid`. `random` earns its slot
+separately: it catches harness bugs that would otherwise make every
+model look equally good.
 
-- **Sort descending within each role group, per space.** Board word order
-  carries no information, so the representation must be permutation-
-  invariant — otherwise the model wastes capacity learning that position 3
-  and position 7 mean the same thing. Sorting also makes rank position
-  meaningful: "highest own-word similarity is 0.8" and "ninth own-word
-  similarity is 0.8" are entirely different situations.
-- **Concatenate spaces, don't average them.** Averaging destroys the signal
-  that matters most: "high Numberbatch similarity, near-zero GloVe
-  similarity" identifies a clue driven by a structured commonsense relation
-  (e.g. a has-part or is-a edge ConceptNet encodes explicitly) that GloVe's
-  co-occurrence statistics never surface — a knowledge-source-specific clue,
-  the same kind of case the Technoblade example illustrates. Averaged into
-  one number, that's indistinguishable from a uniformly mediocre clue.
-  `codenames/ablation.py::average_concatenation` exists specifically to
-  demonstrate this empirically, not as a serious alternative.
-- **The model never sees words, only numbers.** All linguistic knowledge
-  lives in the similarity tensor; the network learns to read a similarity
-  profile, nothing else.
+A baseline is retired by replacement, not by accumulation — when
+`expected_words` superseded `z_threshold`, the older model's code, test,
+config entry, and doc were deleted rather than kept side by side, with
+its measurements preserved in `docs/log.md`. See
+[`versions/expected_words.md`](versions/expected_words.md).
 
-## The guesser pool
+## Two structural guards against overfitting
 
-The guesser pool defines the entire training signal — "is this clue good"
-reduces to "will the guesser pick our words" — which makes its composition
-the single most consequential design decision in the project.
+Both are enforced by code and config rather than by discipline, which is
+the point — neither can be violated by forgetting.
 
-**Diversity must be in knowledge, not noise.** A pool of one base guesser
-plus several Gaussian-noise levels is wrong and actively defeats the
-project's goal. A GloVe-only guesser has no vector for "Technoblade," so it
-guesses badly regardless of noise, so the label is negative, so the scorer
-learns Technoblade is a bad clue — the system would train itself out of the
-exact behavior the project exists to produce. Humans don't differ from
-GloVe by an epsilon; they differ by having different knowledge. Every
-guesser in `configs/guesser_pool.json` wraps a *structurally different*
-knowledge source (a different embedding space), and noise is layered on top
-of that real diversity, never used as a substitute for it.
+**Held-out board words.** `codenames/assets/board_words_holdout.txt`
+holds 150 of the 400 board words out of training data generation
+entirely (`codenames/board.py::load_training_wordlist()`), so evaluation
+builds boards from words no model has seen. This tests generalization to
+unseen board *content*, which is a different axis from generalizing to an
+unseen listener. See `docs/iteration-architecture.md` step 5 for why 150
+rather than the original 60 — the change is what retired `v1`/`v1.1`,
+whose numbers are not comparable with anything trained since.
 
-**The pool is an unvalidatable assumption — treat it as one.** Its
-composition can't be validated from inside the simulation, because the
-simulation is defined by it. Any result is conditional on a made-up
-distribution. Mitigations: make the composition explicit in a config file,
-not code (`configs/guesser_pool.json`); report results as "under pool
-configuration X, we observe Y," never as unconditional truths; and treat a
-noise-level sweep or pool-composition sweep (`scripts/pipeline/run_ablation_study.py`)
-as a sensitivity check, not just a hyperparameter search.
+**The LLM guesser never appears in training.** Evaluation uses only LLM
+guessers; every other guesser exists only for training. Training against
+the LLM would fit the spymaster to how one specific model reads a clue
+and would collapse the train/eval distinction entirely, leaving no
+held-out listener to measure against. The LLM model id is part of
+`EvalSuite.suite_id` for the same reason (`codenames/eval_suite.py`).
 
-**The expected-value / robustness tradeoff.** Two objectives are both worth
-reporting, not collapsed into one: expected value across the pool (produces
-brilliant high-variance clues; "Technoblade" survives), versus worst-case or
-CVaR across the pool (produces safe clues that work for most guessers;
-"Technoblade" dies). The risk-aversion reward parameters
-(`codenames/scorer.py::reward_matrix`'s four reward values) move along this
-curve at *scoring* time, not training time — each model's doc under
-[`versions/`](versions/) records the values it was scored with.
+A consequence worth stating plainly: `scripts/pipeline/run_arena.py`'s
+spymaster × guesser matrix is a training diagnostic, not a scoreboard.
+Its numbers must never be presented as evaluation results.
 
-## First-pass simplifications (still in effect)
+## Reward parameters live at scoring time, not training time
 
-Three deliberate divergences from the guesser-pool design above, adopted to
-sidestep the "different embeddings know different things" problem rather
-than solve it head-on in the first working version. Revisit before scaling
-past a first pass.
+The four reward values (own / neutral / opponent / assassin) are a
+risk-aversion knob, and they live outside training entirely: a rollout
+stores `(k, cause)`, and reward is derived from it on demand
+(`codenames/rollouts.py::reward_for`). Changing a reward constant
+reprices an existing rollout set for free, with no retraining.
 
-1. **Clue vocabulary is an intersection, not a union**, of every currently-
-   built embedding space's own vocabulary (currently GloVe, Numberbatch,
-   Wikipedia2Vec — 111,440 words). Every legal clue has a real vector in
-   every space, so no guesser can fail on a clue purely from a vocabulary
-   gap — the exact effect a diverse pool exists to average out, which
-   matters more when the pool is small. See
-   `scripts/data/build_similarity_tensor.py`.
-2. **Guesser pool is 3 members, not ~8**: one per currently-built embedding
-   space, each wrapped in Gaussian noise, equally weighted, all
-   training-visible, none held out. Still "diversity in knowledge, not
-   noise" above — three different embeddings is genuine knowledge
-   diversity — just a smaller pool than an eventual full version would use.
-3. **Generalization is checked via held-out board words, not held-out
-   guessers.** `codenames/assets/board_words_holdout.txt` holds 150 of
-   the 400 board words out of training data generation entirely
-   (`codenames/board.py::load_training_wordlist()`), so a later evaluation
-   pass can build boards entirely from unseen words to check generalization
-   to unseen board *content*. This is orthogonal to what held-out guessers
-   test (generalizing to an unseen *listener*), not a replacement for it —
-   adopted because holding out 2 of only 3 guessers would leave a single
-   training-visible guesser, reproducing the single-guesser anti-pattern via
-   the held-out mechanism itself. The held-out-word evaluation is built but
-   has never actually been run against a trained model — a real gap, not
-   yet closed.
+Two objectives are worth reporting rather than collapsing into one:
+expected value across listeners, and worst-case or CVaR across them. The
+reward values are what move a model along that curve, which only works
+if they are a scoring-time parameter.
+
+## Composition lives in a config file, not in code
+
+Which guessers are in the training pool
+(`configs/guesser_pool.json`), which spymasters are baselines
+(`configs/spymasters.json`), and which boards and listener make up the
+frozen eval suite (`configs/eval_suite.json`) are all data, not code.
+Registries know how to build things *from* a config and have no opinion
+on what it should contain (`codenames/guessers/registry.py`,
+`codenames/spymasters/registry.py`).
+
+The reason is that every result is conditional on those choices, so they
+have to be nameable: results are reported as "under configuration X, we
+observe Y," never as unconditional truths. A composition buried in code
+can't be cited in a results table, swept over, or diffed between runs.
 
 ## Method decisions
 
@@ -122,48 +97,60 @@ outcome is directly simulable — full feedback on every action, for free,
 unlimited times. That's the condition under which the problem reduces to
 supervised classification. RL would deliver the same information through
 policy gradients over a ~111k-action space, with high variance, no clean
-validation metric, and failure modes that take days to diagnose. Supervised
-training runs in minutes.
+validation metric, and failure modes that take days to diagnose.
 
-If multi-turn effects are pursued (clue choice changes which words remain,
-cross-turn clue memory), add lookahead or a value function on top of a
-working supervised scorer, not instead of it.
+If multi-turn effects are pursued (clue choice changes which words
+remain, cross-turn clue memory), add lookahead or a value function on
+top of a working scorer, not instead of it.
 
-**Nonlinear scoring, not tuned constants.** A weighted average of spaces
-followed by a weighted sum over roles composes to a single linear function.
-It can't represent threshold effects (0.75 to three words beats 0.45 to
-five, because guessing is greedy and ranking is what matters), margins (the
-gap between our lowest target and their highest word), or space-conditional
-trust. The linear version is still built, as a baseline — see the README's
-baselines section.
+**Optimization of any small, fixed parameter set** — `linear_scorer`'s
+weights, `expected_words`'s `tau_gain`/`tau_pen` — should use CMA-ES,
+Bayesian optimization, or grid search, not policy gradients. Neither has
+been done; both sets are still their original illustrative constants.
 
-**Optimization of any small, fixed parameter set** (e.g. tuning
-`spymasters/linear_scorer.py`'s baseline weights) should use CMA-ES,
-Bayesian optimization, or grid search — not policy gradients. Not yet done
-for that baseline; its weights are still the original illustrative
-constants, untuned.
+**Linear scoring is a baseline, not a candidate.** A weighted average
+over spaces followed by a weighted sum over roles composes to a single
+linear function, which cannot represent threshold effects (0.75 to three
+words beats 0.45 to five, because guessing is greedy and ranking is what
+matters) or the margin between the weakest intended word and the
+strongest distractor. `spymasters/linear_scorer.py` is kept to
+demonstrate that, not as a serious contender.
 
 **Split by board seed, not by row.** The same board appears in many
-training examples (a board is sampled once, several clues are drawn against
-it). Row-wise train/val splits leak boards across the split and inflate
-validation numbers. `scripts/pipeline/train_scorer.py` splits by a hash of each
-example's board seed instead.
+training examples (a board is sampled once, several clues are drawn
+against it). Row-wise train/val splits leak boards across the split and
+inflate validation numbers. `scripts/pipeline/train_scorer.py` splits by
+a hash of each example's board seed instead.
+
+## The clue vocabulary is an intersection
+
+The legal clue vocabulary is the intersection of every built embedding
+space's own vocabulary — currently GloVe, Numberbatch, and
+Wikipedia2Vec, 111,440 words (`scripts/data/build_similarity_tensor.py`).
+Every legal clue therefore has a real vector in every space, whether or
+not the current model consults that space.
+
+That matters for the cross-space safety extension left open in
+`versions/expected_words.md`: a single-space model is only as safe as a
+listener who shares its space, and checking a candidate clue's assassin
+margin in spaces the model didn't select from is only possible because
+the vocabulary guarantees the vector exists.
 
 ## Environment
 
-- Targets an RTX 5080 (16GB, Blackwell/sm_120), which needs CUDA 12.8+ — pin
-  the PyTorch build early rather than debugging this near a deadline.
+- Targets an RTX 5080 (16GB, Blackwell/sm_120), which needs CUDA 12.8+ —
+  pin the PyTorch build early rather than debugging this near a deadline.
 - Data generation and any local embedding training are CPU-bound and
-  parallel (see `scripts/pipeline/run_ablation_study.py`'s `ProcessPoolExecutor`
-  usage).
+  parallel.
 - Nothing here needs rented/cloud compute.
-- **Memory design note:** the mmapped similarity tensor exists specifically
-  to avoid holding embedding models resident across many worker processes.
-  Python's copy-on-write does not protect large dicts across `fork` —
-  refcount updates touch the pages and gradually copy them per worker. Keep
-  word→index maps small or shared deliberately; the fp16 tensor array
-  itself shares for free. See `codenames/arena.py`'s module docstring for a
-  concrete RSS bug this caused and how it was fixed.
+- **Memory design note:** the mmapped similarity tensor exists
+  specifically to avoid holding embedding models resident across many
+  worker processes. Python's copy-on-write does not protect large dicts
+  across `fork` — refcount updates touch the pages and gradually copy
+  them per worker. Keep word→index maps small or shared deliberately;
+  the fp16 tensor array itself shares for free. See `codenames/arena.py`'s
+  module docstring for a concrete RSS bug this caused and how it was
+  fixed.
 
 ## References
 
@@ -171,11 +158,12 @@ example's board seed instead.
   Embeddings," JAIR 71 (2021). arXiv:2105.05885
 - Stephenson, Sidji & Ronval, "Codenames as a Benchmark for Large Language
   Models" (2024). arXiv:2412.11373
-- "Improving Cooperation in Language Games with Bayesian Inference and the
-  Cognitive Hierarchy" (2024). arXiv:2412.12409
+- Archibald & Brosnahan, "Adapting to Teammates in a Cooperative Language
+  Game" (2024). arXiv:2403.00823
+- Bills, Archibald & Blaylock, "Improving Cooperation in Language Games
+  with Bayesian Inference and the Cognitive Hierarchy," AAAI 2025.
+  arXiv:2412.12409
 - Speer, Chin & Havasi, "ConceptNet 5.5: An Open Multilingual Graph of
   General Knowledge," AAAI 2017
-- Faruqui et al., "Retrofitting Word Vectors to Semantic Lexicons," NAACL
-  2015
 - Yamada et al., "Wikipedia2Vec," EMNLP 2020 (system demonstrations)
 - Codenames AI Competition framework: github.com/stepmat/Codenames_GPT
