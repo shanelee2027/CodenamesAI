@@ -127,7 +127,15 @@ class LLMGuesser(Guesser):
                 # for a plain personal key.
                 workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
                 headers = {"anthropic-workspace-id": workspace_id} if workspace_id else None
-                self._client = anthropic.Anthropic(default_headers=headers)
+                # max_retries above the SDK's default of 2: a matchup or
+                # eval run deliberately oversubscribes workers far past
+                # CPU count (these calls are network-bound, not
+                # CPU-bound), so 429s are expected rather than
+                # exceptional. The SDK backs off exponentially and honors
+                # Retry-After, so the cost of a high ceiling is latency on
+                # a throttled run, while the cost of too low a ceiling is
+                # a half-finished paid run.
+                self._client = anthropic.Anthropic(default_headers=headers, max_retries=8)
             return self._client
 
     @property

@@ -46,7 +46,22 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     # across a GPU-batched arena's thread pool) are responsible for their
     # own locking around it -- see LLMResponseCache's `_lock`.
     conn = sqlite3.connect(db_path, timeout=30.0, check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
+    # Switching journal modes needs a brief exclusive lock, and SQLite
+    # answers SQLITE_BUSY immediately for it rather than waiting out
+    # busy_timeout the way it does for ordinary writes. With many worker
+    # processes opening a fresh db at once (see
+    # codenames/two_team_arena.py::run_two_team_matchup, which
+    # deliberately oversubscribes workers), they collide. Reading the
+    # current mode takes no exclusive lock, so ask first and only set it
+    # when it isn't already WAL -- which makes this a no-op for every
+    # worker after the first. Failure is survivable: WAL is a concurrency
+    # optimization, and the default rollback journal is still correct.
+    try:
+        if (conn.execute("PRAGMA journal_mode").fetchone() or ("",))[0].lower() != "wal":
+            conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass
     conn.execute(
         """CREATE TABLE IF NOT EXISTS responses (
             cache_key TEXT PRIMARY KEY,

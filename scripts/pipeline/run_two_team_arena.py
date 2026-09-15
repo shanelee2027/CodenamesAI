@@ -1,22 +1,29 @@
-"""Run the two-team self-play arena (codenames/two_team_arena.py): the
-SAME spymaster+guesser pair on both sides of a real two-team game (see
-codenames/game.py::play_two_team_game), across many seeded boards.
+"""Run real two-team games (codenames/game.py::play_two_team_game) across
+many seeded boards, in either of two modes.
 
-Usage:
+**Self-play** -- the same spymaster+guesser pair on both sides:
+
     python scripts/pipeline/run_two_team_arena.py --n-boards 300 --spymaster centroid --guesser noisy_glove
-    python scripts/pipeline/run_two_team_arena.py --n-boards 300 \\
-        --checkpoint cache/m9/checkpoints/noise_0_08/scorer_best.pt --guesser noisy_glove
-    python scripts/pipeline/run_two_team_arena.py --n-boards 300 \\
-        --checkpoint cache/blend_pool/checkpoints/scorer_best.pt \\
-        --guesser-pool-config configs/guesser_pool_blend.json --guesser blend
 
-With --checkpoint, routes through codenames/two_team_gpu_arena.py's
-batched-across-games GPU path by default (mirrors scripts/pipeline/run_arena.py's
---gpu-batch-size for the single-team case -- pass --no-gpu-batch for the
-normal per-process CPU path instead). A baseline --spymaster always
-runs through the normal per-process path either way, since it's already
-cheap and has nothing to gain from batching (it scores a handful of
-candidates, not the whole clue vocabulary, each turn).
+**Head-to-head** -- two different spymasters, one per side:
+
+    python scripts/pipeline/run_two_team_arena.py --n-boards 50 \\
+        --spymaster centroid --vs expected_words \\
+        --guesser-pool-config configs/guesser_pool_llm_sonnet.json --guesser llm \\
+        --record-games cache/llm_store.db --max-workers 48
+
+--vs plays every board twice with the sides swapped, because team A holds
+9 words and moves first while team B holds 8 -- a one-sided run would
+confound spymaster strength with that advantage. It reports per-spymaster
+rather than pooled, since pooling two different models' clue numbers into
+one average says nothing about either.
+
+**--max-workers is not bounded by cores.** With an LLM guesser each turn
+is network latency, not computation, so the useful worker count is how
+many games you want in flight at once. Turns inside one game are strictly
+sequential (the board changes between them), so wall-clock is roughly
+(games / workers) * (turns per game) * per-call latency. Oversubscribing
+well past os.cpu_count() is the intended use.
 """
 
 from __future__ import annotations
@@ -25,18 +32,10 @@ import argparse
 import time
 from pathlib import Path
 
-import torch
-
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG
-from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
-from codenames.spymasters.registry import load_spymasters, spymaster_names, spymaster_spec
-from codenames.two_team_arena import run_two_team_self_play
-from codenames.two_team_gpu_arena import run_two_team_self_play_gpu
+from codenames.spymasters.registry import load_spymasters, spymaster_names
+from codenames.two_team_arena import run_two_team_matchup, run_two_team_self_play
 
-# This script's baseline set (unchanged from before the registry existed).
-# Names into configs/spymasters.json; "learned" is built separately since
-# it needs a --checkpoint, supplied per invocation rather than fixed in
-# that config.
 # Selected by role from configs/spymasters.json rather than by name, so a
 # new entry needs no edit here. This script offers the "exploration"
 # role (oracle) on top of the standard baselines; scripts/pipeline/run_arena.py
@@ -55,20 +54,22 @@ def main() -> None:
         "independently draws a guesser uniformly from the whole pool, matching the distribution the "
         "spymaster was actually trained against (see codenames/two_team_arena.py::MIXED_GUESSER)",
     )
-    parser.add_argument("--spymaster", choices=BASE_SPYMASTER_NAMES, default=None, help="a baseline spymaster")
-    parser.add_argument("--checkpoint", type=Path, default=None, help="a learned scorer checkpoint instead of a baseline spymaster")
-    parser.add_argument("--risk-aversion", type=float, default=None, help="miss_penalty for a learned spymaster (default: -10.0)")
-    parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS (per team)")
-    parser.add_argument("--max-workers", type=int, default=None, help="default: os.cpu_count() -- only used without --checkpoint's GPU path")
+    parser.add_argument("--spymaster", choices=BASE_SPYMASTER_NAMES, required=True, help="the spymaster to play (team A's, with --vs)")
     parser.add_argument(
-        "--gpu-batch-size",
-        type=int,
-        default=32,
-        help="with --checkpoint, batch of simultaneous two-team games scored per forward pass "
-        "(codenames/two_team_gpu_arena.py). Falls back to CPU automatically if no CUDA device is available.",
+        "--vs",
+        choices=BASE_SPYMASTER_NAMES,
+        default=None,
+        help="head-to-head against this spymaster instead of self-play. Every board is played twice "
+        "with the sides swapped, so first-move advantage falls on both equally.",
     )
-    parser.add_argument("--no-gpu-batch", action="store_true", help="use the normal per-process path for --checkpoint too, instead of --gpu-batch-size")
-    parser.add_argument("--sims-cache-dir", type=Path, default=DEFAULT_CACHE_DIR, help="only used by the GPU-batched --checkpoint path")
+    parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS (per team)")
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=None,
+        help="games in flight at once. NOT bounded by cores -- with an LLM guesser these are "
+        "network-bound, so values well past os.cpu_count() are the point. Default: os.cpu_count().",
+    )
     parser.add_argument(
         "--record-games",
         type=Path,
@@ -80,54 +81,78 @@ def main() -> None:
     parser.add_argument("--run-label", default=None, help="label stored alongside --record-games' rows (default: '<spymaster>+<guesser>')")
     args = parser.parse_args()
 
-    if (args.spymaster is None) == (args.checkpoint is None):
-        parser.error("pass exactly one of --spymaster or --checkpoint")
+    if args.vs == args.spymaster:
+        parser.error("--vs must name a different spymaster than --spymaster (use self-play mode instead)")
 
-    use_gpu_batch = args.checkpoint is not None and not args.no_gpu_batch
-
-    if args.checkpoint is not None:
-        overrides = {"checkpoint_path": args.checkpoint}
-        if args.risk_aversion is not None:
-            overrides["miss_penalty"] = args.risk_aversion
-        spymaster_cls, spymaster_kwargs = spymaster_spec("learned", **overrides)
-        spymaster_label = f"learned:{args.checkpoint.parent.name}"
-    else:
-        spymaster_cls, spymaster_kwargs = load_spymasters()[args.spymaster].spec
-        spymaster_label = args.spymaster
+    entries = load_spymasters()
+    spymaster_cls, spymaster_kwargs = entries[args.spymaster].spec
+    spymaster_label = args.spymaster
 
     kwargs = {}
     if args.max_turns is not None:
         kwargs["max_turns"] = args.max_turns
-    run_label = args.run_label if args.run_label is not None else f"{spymaster_label}+{args.guesser}"
+    matchup_label = f"{spymaster_label}-vs-{args.vs}" if args.vs else spymaster_label
+    run_label = args.run_label if args.run_label is not None else f"{matchup_label}+{args.guesser}"
     if args.record_games is not None:
         kwargs["game_record_db"] = args.record_games
         kwargs["run_label"] = run_label
 
     seeds = list(range(args.n_boards))
     start = time.time()
-    if use_gpu_batch:
-        sims = SimilarityTensor.load(args.sims_cache_dir)
-        learned_spymaster = spymaster_cls(**spymaster_kwargs)
-        result = run_two_team_self_play_gpu(
-            spymaster=learned_spymaster,
-            guesser_pool_config=args.guesser_pool_config,
-            guesser_name=args.guesser,
-            seeds=seeds,
-            sims=sims,
-            batch_size=args.gpu_batch_size,
-            device=torch.device("cuda" if torch.cuda.is_available() else "cpu"),
-            **kwargs,
-        )
-    else:
-        result = run_two_team_self_play(
-            spymaster_cls,
-            spymaster_kwargs,
+
+    if args.vs is not None:
+        result = run_two_team_matchup(
+            entries[args.spymaster].spec,
+            entries[args.vs].spec,
+            (args.spymaster, args.vs),
             args.guesser_pool_config,
             args.guesser,
             seeds,
             max_workers=args.max_workers,
+            progress=True,
             **kwargs,
         )
+        elapsed = time.time() - start
+        print(
+            f"\n{result.n_games} games ({result.n_boards} boards x 2 side assignments), "
+            f"{args.spymaster} vs {args.vs}, guesser {args.guesser}, in {elapsed:.1f}s"
+        )
+        if result.timeouts:
+            print(f"({result.timeouts} ended in timeout, counted as a win for neither)")
+        print()
+        header = (
+            f"{'spymaster':16s} {'win%':>7s} {'as A':>7s} {'as B':>7s} {'assassin%':>10s} "
+            f"{'clues':>6s} {'mean k':>7s} {'own/clue':>9s} {'own%':>7s}"
+        )
+        print(header)
+        print("-" * len(header))
+        for name in (args.spymaster, args.vs):
+            st = result.sides[name]
+            as_a = st.wins_as_first / st.games_as_first if st.games_as_first else 0.0
+            games_as_b = st.games - st.games_as_first
+            as_b = (st.wins - st.wins_as_first) / games_as_b if games_as_b else 0.0
+            print(
+                f"{name:16s} {100 * st.win_rate:6.1f}% {100 * as_a:6.1f}% {100 * as_b:6.1f}% "
+                f"{100 * st.assassin_rate:9.1f}% {st.clues:6d} {st.mean_clue_number:7.2f} "
+                f"{st.mean_correct_per_clue:9.2f} {100 * st.own_rate:6.1f}%"
+            )
+        print()
+        print("'as A' is win rate when moving first with 9 words; 'as B' when moving second with 8.")
+        print("A large A-vs-B gap means the side advantage dominates the spymaster difference.")
+        if args.record_games is not None:
+            print(f"\ngames recorded to {args.record_games} under labels '{run_label}|A=...'")
+            print(f"  python scripts/tools/dump_game_records.py {args.record_games} --label '{run_label}|A={args.spymaster},B={args.vs}'")
+        return
+
+    result = run_two_team_self_play(
+        spymaster_cls,
+        spymaster_kwargs,
+        args.guesser_pool_config,
+        args.guesser,
+        seeds,
+        max_workers=args.max_workers,
+        **kwargs,
+    )
     elapsed = time.time() - start
 
     print(f"{result.n_games} two-team games ({spymaster_label} + {args.guesser} on both sides) in {elapsed:.1f}s\n")
