@@ -18,48 +18,32 @@ My goal is to design a model that gives clues on the real game, intended for hum
 
 The closest work to mine comes out of one group at BYU. Bills, Archibald and
 Blaylock's "Improving Cooperation in Language Games with Bayesian Inference and
-the Cognitive Hierarchy" (AAAI 2025) starts from the observation that a
-Codenames partner can be wrong about you in two separate ways. They call these
-semantics, meaning which word embedding the partner uses to decide that two
-words are related, and pragmatics, meaning what strategy they apply on top of
-it. A guesser who takes every word within some distance of the clue and a
-guesser who takes exactly as many as the number says can share an embedding and
-still play very differently.
-
-Their agent holds a probability distribution over a set of possible partners,
-each one a pairing of an embedding with a strategy, and updates that
-distribution with Bayes' rule as it watches the partner play. Because every
-model in the set has to be able to produce any observed action, or else the
-posterior collapses to zero everywhere, they make their otherwise deterministic
-agents stochastic by adding Gaussian noise to word embeddings. The spymaster
-then picks the clue maximizing expected utility, estimated by sampling each
-model guesser ten times with the clue word perturbed. Their utility gives +1 for
-a team card, -1 for an opponent card, 0 for a bystander and minus the team's
-card count for the assassin.
+the Cognitive Hierarchy" (AAAI 2025) separates two ways a partner can be wrong
+about you: semantics, meaning which word embedding they use to decide two words
+are related, and pragmatics, meaning what strategy they apply on top of it.
+Their agent keeps a probability distribution over possible partners, each one an
+embedding paired with a strategy, and updates it with Bayes' rule as it watches
+the partner play. To make its otherwise deterministic model agents stochastic it
+adds Gaussian noise to word embeddings, then picks the clue maximizing expected
+utility, estimated by sampling each model guesser ten times with the clue word
+perturbed.
 
 That paper builds on a deductive hierarchy from earlier work by Bills and
-Archibald. Level zero is a guesser that looks only at the current clue and
-the cards still face up. Above that, a level k spymaster best-responds to a
-level k guesser and a level k+1 guesser best-responds to a level k spymaster. A
-guesser above level zero keeps beliefs over every possible assignment of the
-board, throws out the ones inconsistent with the clues it has heard so far, and
-skips cards it has deduced are not its own. Agents one level apart play well
-together and agents further apart play badly, which is the brittleness the
-Bayesian version is meant to repair.
+Archibald. A level zero guesser looks only at the current clue and the cards
+still face up, while a guesser above that keeps beliefs over every possible
+assignment of the board and throws out the ones inconsistent with the clues it
+has heard. Agents one level apart play well together and agents further apart
+play badly, which is the brittleness the Bayesian version repairs.
 
-The second paper, Archibald and Brosnahan's "Adapting to Teammates in a
-Cooperative Language Game" (arXiv:2403.00823), attacks the same mismatch from
-the other side. Rather than reasoning probabilistically about the partner, it
-keeps an ensemble of expert agents and treats the choice of which one speaks
-this turn as a multi-armed bandit, solved with UCB. That needs a number for how
-well the turn went, and neither of the metrics the field had been using works:
-win rate and win time are only known once a game is over, and when one team wins
-more often while the other wins faster there is no principled way to say which
-is better. So they build a metric. There are 36 things that can happen on a
-single Codenames turn, counting team cards revealed against which kind of card
-ended it, so a team is represented by how often each of the 36 occurs and scored
-with a trained linear function whose weights make the difference between two
-teams' scores predict which one wins a game between them.
+Archibald and Brosnahan's "Adapting to Teammates in a Cooperative Language Game"
+(arXiv:2403.00823) attacks the same mismatch from the other side, keeping an
+ensemble of experts and treating the choice of which one speaks this turn as a
+multi-armed bandit. That needs a score for how well a single turn went, which
+neither of the field's usual metrics gives, since win rate and win time are only
+known once a game is over and trade off against each other ambiguously. So they
+enumerate the 36 possible outcomes of a Codenames turn and fit a linear function
+over how often each occurs, trained so the gap between two teams' scores
+predicts which one wins.
 
 Both papers circle the problem I have to solve. A spymaster's similarity scores
 are its own, the guesser's sense of which words go together is related but
