@@ -6,54 +6,68 @@ Project proposal
 
 1. INTRODUCTION
 
-Codenames is a word-association board game. A grid of words is laid out, and one
-player per team, the spymaster, alone knows which words belong to their team,
-which to the opponent, which are neutral, and which single word is the assassin.
-Each turn the spymaster says one word and one number, and their teammate guesses
-which board words were meant. A clue has to signal the team's words while
-signalling as little as possible toward everything else, since picking a neutral
-or opponent word ends the turn and picking the assassin loses the game outright.
+Codenames is a popular word-association board game where two teams compete to guess secret agent words. One player per team, the spymaster, knows which words belong to their team, and must signal to their teammates by giving one-word clues, along with a number for how many words the clue is intended for.
 
-Codenames has attracted a fair amount of work, including a recurring Codenames AI
-competition built around a shared agent framework, but much of it either studies
-simplified abstractions in which the words are replaced by vectors, so that
-choosing a clue becomes a tractable optimization problem, or else hands the
-clue-giving to a large language model and measures how well the model plays.
+Codenames has attracted a fair amount of work, including a recurring Codenames AI competition built around a shared agent framework, but much of it either studies simplified abstractions in which the words are replaced by vectors, so that choosing a clue becomes a tractable optimization problem, or else hands the clue-giving to a large language model and measures how well the model plays.
 
-My project does neither. I want a model that gives clues on the real game, with
-real words, and without a language model producing the clue at any point. That
-forces the clue to come from structure the system computes for itself, and what
-makes the problem interesting is what that structure has to capture: not just
-which words are related, but how somebody else will read a relation the system
-can only see from its own side.
+My goal is to design a model that gives clues on the real game, intended for humans to interpret, and without a language model producing the clue at any point. My belief is that the best Codenames players do not rely entirely on their depth of language, or wordplay/trivia, but also a deep understanding of game theory and of how humans think. While non-LLM models may struggle with the former, they are exceptional at the latter, and I hope to develop models that incorporate such elements.
+
 
 
 2. BACKGROUND AND RELATED WORK
 
-Bills and Archibald's "A Deductive Agent Hierarchy: Strategic Reasoning in
-Codenames" (IEEE Conference on Games, 2023) works with a simplified version of
-Codenames where the board is no longer made of words but of high-dimensional
-vectors, and the spymaster picks a clue from some other set of vectors. Taking
-the language out reduces the game to a fairly clean optimization problem, which
-is what lets the paper concentrate on the strategic layer instead, in particular
-on agents that reason using an explicit model of their teammate, arranged in a
-hierarchy of increasing deductive depth. That abstraction is exactly what I give
-up by staying on the real board.
+The closest work to mine comes out of one group at BYU. Bills, Archibald and
+Blaylock's "Improving Cooperation in Language Games with Bayesian Inference and
+the Cognitive Hierarchy" (AAAI 2025) starts from the observation that a
+Codenames partner can be wrong about you in two separate ways. They call these
+semantics, meaning which word embedding the partner uses to decide that two
+words are related, and pragmatics, meaning what strategy they apply on top of
+it. A guesser who takes every word within some distance of the clue and a
+guesser who takes exactly as many as the number says can share an embedding and
+still play very differently.
 
-The same group's "Adapting to Teammates in a Cooperative Language Game"
-(arXiv:2403.00823) runs straight into the problem my project is organized
-around. Earlier Codenames agents commit to a single internal language model,
-which plays well with teammates whose sense of word association happens to match
-it and worse with everyone else, so the paper builds an ensemble holding several
-internal experts and works out during play which one fits the teammate in front
-of it. It also proposes a single metric for scoring a Codenames team, which turns
-out to be harder than it sounds.
+Their agent holds a probability distribution over a set of possible partners,
+each one a pairing of an embedding with a strategy, and updates that
+distribution with Bayes' rule as it watches the partner play. Because every
+model in the set has to be able to produce any observed action, or else the
+posterior collapses to zero everywhere, they make their otherwise deterministic
+agents stochastic by adding Gaussian noise to word embeddings. The spymaster
+then picks the clue maximizing expected utility, estimated by sampling each
+model guesser ten times with the clue word perturbed. Their utility gives +1 for
+a team card, -1 for an opponent card, 0 for a bystander and minus the team's
+card count for the assassin.
 
-The mismatch those authors adapt around is the same one I have to handle. A
-spymaster's similarity scores are its own, the guesser has a related but
-different sense of which words go together, and every number announced is a bet
-on how big that difference is.
+That paper builds on a deductive hierarchy from earlier work by Bills and
+Archibald, which is worth describing because it bears on what I want to do with
+game history. Level zero is a guesser that looks only at the current clue and
+the cards still face up. Above that, a level k spymaster best-responds to a
+level k guesser and a level k+1 guesser best-responds to a level k spymaster. A
+guesser above level zero keeps beliefs over every possible assignment of the
+board, throws out the ones inconsistent with the clues it has heard so far, and
+skips cards it has deduced are not its own. Agents one level apart play well
+together and agents further apart play badly, which is the brittleness the
+Bayesian version is meant to repair.
 
+The second paper, Archibald and Brosnahan's "Adapting to Teammates in a
+Cooperative Language Game" (arXiv:2403.00823), attacks the same mismatch from
+the other side. Rather than reasoning probabilistically about the partner, it
+keeps an ensemble of expert agents and treats the choice of which one speaks
+this turn as a multi-armed bandit, solved with UCB. That needs a number for how
+well the turn went, and neither of the metrics the field had been using works:
+win rate and win time are only known once a game is over, and when one team wins
+more often while the other wins faster there is no principled way to say which
+is better. So they build a metric. There are 36 things that can happen on a
+single Codenames turn, counting how many team cards were revealed against which
+kind of card ended it, and they represent a team by how often each of the 36
+occurs and score it with a trained linear function whose weights are fitted so
+that the difference between two teams' scores predicts which one wins a game
+between them.
+
+Both papers are circling the problem I have to solve. A spymaster's similarity
+scores are its own, the guesser has a related but different sense of which words
+go together, and every number announced is a bet on how big that difference is.
+Where they adapt to a partner over the course of a game, I am trying to give a
+good clue to a partner I never get to observe.
 
 3. PROBLEM DESCRIPTION
 
@@ -128,8 +142,12 @@ the report's comparisons come from.
 
 6. REFERENCES
 
+Bills, J., Archibald, C. and Blaylock, D. "Improving Cooperation in Language
+  Games with Bayesian Inference and the Cognitive Hierarchy." AAAI 2025.
+
 Bills, J. and Archibald, C. "A Deductive Agent Hierarchy: Strategic Reasoning in
-  Codenames." IEEE Conference on Games (CoG), 2023.
+  Codenames." IEEE Conference on Games (CoG), 2023. (Deductive hierarchy as
+  described in Bills, Archibald and Blaylock 2025.)
 
 Archibald, C. and Brosnahan, S. "Adapting to Teammates in a Cooperative
   Language Game." 2024. arXiv:2403.00823.
