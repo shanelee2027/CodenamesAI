@@ -8,7 +8,7 @@ Project proposal
 
 Codenames is a popular word-association board game where two teams compete to guess secret agent words. One player per team, the spymaster, knows which words belong to their team, and must signal to their teammates by giving one-word clues, along with a number for how many words the clue is intended for.
 
-Codenames has attracted a fair amount of work, including a recurring Codenames AI competition built around a shared agent framework, but much of it either studies simplified abstractions in which the words are replaced by vectors, so that choosing a clue becomes a tractable optimization problem, or else hands the clue-giving to a large language model and measures how well the model plays.
+Codenames has attracted a fair amount of work, including a recurring Codenames AI competition built around a shared agent framework, but much of it either studies simplified abstractions in which words are replaced by vectors, so that choosing a clue becomes a tractable optimization problem, or hands the clue-giving to a large language model and measures how well it plays.
 
 My goal is to design a model that gives clues on the real game, intended for humans to interpret, and without a language model producing the clue at any point. My belief is that the best Codenames players do not rely entirely on their depth of language, or wordplay/trivia, but also a deep understanding of game theory and of how humans think. While non-LLM models may struggle with the former, the latter is where they can compete, since reasoning about the game and about the guesser can be written down explicitly and measured. I hope to develop models that incorporate such elements.
 
@@ -61,11 +61,11 @@ ended it, so a team is represented by how often each of the 36 occurs and scored
 with a trained linear function whose weights make the difference between two
 teams' scores predict which one wins a game between them.
 
-Both papers are circling the problem I have to solve. A spymaster's similarity
-scores are its own, the guesser has a related but different sense of which words
-go together, and every number announced is a bet on how big that difference is.
-Where they adapt to a partner over the course of a game, I am trying to give a
-good clue to a partner I never get to observe.
+Both papers circle the problem I have to solve. A spymaster's similarity scores
+are its own, the guesser's sense of which words go together is related but
+different, and every number announced is a bet on how big that difference is.
+Where they adapt to a partner across a game, I am trying to give a good clue to
+a partner I never observe.
 
 
 3. PROBLEM DESCRIPTION
@@ -98,9 +98,9 @@ the second, and the whole difficulty of the game is in the trade between them.
 The first model will be a baseline using a single embedding space and the current
 board state only. Once it plays well enough to be worth measuring against, I will
 freeze it and use it as the opponent for every model I build afterward, which
-gives me one consistent metric in win rate against a fixed opponent. That is more
-informative than per-clue averages, because it prices every kind of mistake at
-what it actually costs in a game rather than counting mistakes separately.
+gives me one consistent metric in win rate against a fixed opponent. That beats
+per-clue averages, since it prices every kind of mistake at what it actually
+costs in a game rather than counting mistakes separately.
 
 After that I want to push in two fairly different directions. On the
 representation side, different embedding spaces are built from different sources
