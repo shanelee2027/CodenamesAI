@@ -16,40 +16,17 @@ My goal is to design a model that gives clues on the real game, intended for hum
 
 2. BACKGROUND AND RELATED WORK
 
-The closest work to mine comes out of one group at BYU. Bills, Archibald and
-Blaylock's "Improving Cooperation in Language Games with Bayesian Inference and
-the Cognitive Hierarchy" (AAAI 2025) separates two ways a partner can be wrong
-about you: semantics, meaning which word embedding they use to decide two words
-are related, and pragmatics, meaning what strategy they apply on top of it.
-Their agent keeps a probability distribution over possible partners, each one an
-embedding paired with a strategy, and updates it with Bayes' rule as it watches
-the partner play. To make its otherwise deterministic model agents stochastic it
-adds Gaussian noise to word embeddings, then picks the clue maximizing expected
-utility, estimated by sampling each model guesser ten times with the clue word
-perturbed.
 
-That paper builds on a deductive hierarchy from earlier work by Bills and
-Archibald. A level zero guesser looks only at the current clue and the cards
-still face up, while a guesser above that keeps beliefs over every possible
-assignment of the board and throws out the ones inconsistent with the clues it
-has heard. Agents one level apart play well together and agents further apart
-play badly, which is the brittleness the Bayesian version repairs.
+Archibald and Brosnahan's "Adapting to Teammates in a Cooperative Language Game" (arXiv:2403.00823) starts from the observation that a Codenames agent committed to one internal model of language plays well with teammates who happen to see words the same way and badly with everyone else. Their answer is to keep an ensemble of experts and treat the choice of which one speaks this turn as a multi-armed bandit. That needs a score for how well a single turn went, which neither of the field's usual metrics gives, since win rate and win time are only known once a game is over and trade off against each other ambiguously. So they enumerate the 36 possible outcomes of a Codenames turn and fit a linear function over how often each occurs, trained so the gap between two teams' scores predicts which one wins.
 
-Archibald and Brosnahan's "Adapting to Teammates in a Cooperative Language Game"
-(arXiv:2403.00823) attacks the same mismatch from the other side, keeping an
-ensemble of experts and treating the choice of which one speaks this turn as a
-multi-armed bandit. That needs a score for how well a single turn went, which
-neither of the field's usual metrics gives, since win rate and win time are only
-known once a game is over and trade off against each other ambiguously. So they
-enumerate the 36 possible outcomes of a Codenames turn and fit a linear function
-over how often each occurs, trained so the gap between two teams' scores
-predicts which one wins.
+The same group's later paper, Bills, Archibald and Blaylock's "Improving Cooperation in Language Games with Bayesian Inference and the Cognitive Hierarchy" (AAAI 2025), attacks the mismatch from the other side. It describes two ways a guesser can deviate from the spymaster's belief: semantics, meaning which word embedding they use to decide two words are related, and pragmatics, meaning what strategy they apply on top of it. They create a spymaster agent that keeps a probability distribution over possible guessers, each one an embedding paired with a strategy, and uses Bayesian inference to update it as it plays. To make its otherwise deterministic model agents stochastic, it adds Gaussian noise to word embeddings, then picks the clue maximizing expected utility, estimated by sampling each model guesser ten times.
 
 Both papers circle the problem I have to solve. A spymaster's similarity scores
 are its own, the guesser's sense of which words go together is related but
 different, and every number announced is a bet on how big that difference is.
 Where they adapt to a partner across a game, I am trying to give a good clue to
 a partner I never observe.
+
 
 
 3. PROBLEM DESCRIPTION
@@ -99,9 +76,10 @@ continuations including the opponent's likely moves and picking the clue that
 leads to a better distribution of future positions rather than the one that
 scores best this turn. That matters most when my remaining words are entangled
 with the opponent's, where revealing two words now can hand over a much easier
-board. Clue history is a second case, and the deductive hierarchy has
-already been over some of this ground, though from the guesser's side and by
-logical elimination. I want the spymaster's version of it, and a softer one. If I
+board. Clue history is a second case, and Bills and Archibald's
+earlier deductive hierarchy has been over some of this ground already, though
+from the guesser's side and by logical elimination, with a guesser that rules
+out board assignments inconsistent with the clues it has heard. I want the spymaster's version of it, and a softer one. If I
 give a clue and my teammate misses one of the words I meant, they usually still
 understood it and will take it on a later turn once something else clarifies it,
 so what carries forward is not a deduced card identity but a word that has
