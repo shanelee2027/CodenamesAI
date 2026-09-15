@@ -131,8 +131,8 @@ the report's comparisons come from.
 Bills, J. and Archibald, C. "A Deductive Agent Hierarchy: Strategic Reasoning in
   Codenames." IEEE Conference on Games (CoG), 2023.
 
-Archibald, C. et al. "Adapting to Teammates in a Cooperative Language Game."
-  2024. arXiv:2403.00823.
+Archibald, C. and Brosnahan, S. "Adapting to Teammates in a Cooperative
+  Language Game." 2024. arXiv:2403.00823.
 
 Koyyalagunta, D., Sun, A., Draelos, R. L. and Rudin, C. "Playing Codenames with
   Language Graphs and Word Embeddings." Journal of Artificial Intelligence
