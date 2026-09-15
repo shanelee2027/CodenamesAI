@@ -7,133 +7,123 @@ Project proposal
 1. INTRODUCTION
 
 Codenames is a word-association board game. A grid of words is laid out, and one
-player per team -- the spymaster -- alone knows which words belong to their team,
+player per team, the spymaster, alone knows which words belong to their team,
 which to the opponent, which are neutral, and which single word is the assassin.
 Each turn the spymaster says one word and one number, and their teammate guesses
-which board words were meant. The clue has to signal the team's words while
-signalling as little as possible toward everything else, because picking a
-neutral or opponent word ends the turn and picking the assassin loses the game
-outright.
+which board words were meant. A clue has to signal the team's words while
+signalling as little as possible toward everything else, since picking a neutral
+or opponent word ends the turn and picking the assassin loses the game outright.
 
-The game has attracted a fair amount of work, including a recurring Codenames AI
-competition built around a shared agent framework. That work divides roughly in
-two. One line studies simplified abstractions of the game, replacing words with
-vectors so that clue selection becomes a tractable optimization problem that can
-be reasoned about cleanly. The other, more recent line hands the clue-giving
-itself to a large language model and studies how well the model plays.
+Codenames has attracted a fair amount of work, including a recurring Codenames AI
+competition built around a shared agent framework, but much of it either studies
+simplified abstractions in which the words are replaced by vectors, so that
+choosing a clue becomes a tractable optimization problem, or else hands the
+clue-giving to a large language model and measures how well the model plays.
 
-This project takes neither route. The aim is a model that gives clues on the real
-game, with real words, without a language model producing the clue at any point.
-The clue has to come from structure the system computes itself, and the interest
-of the project lies in what that structure has to capture: not merely which words
-are related, but how a different person will read a relation the system can only
-see from its own side.
+My project does neither. I want a model that gives clues on the real game, with
+real words, and without a language model producing the clue at any point. That
+forces the clue to come from structure the system computes for itself, and what
+makes the problem interesting is what that structure has to capture: not just
+which words are related, but how somebody else will read a relation the system
+can only see from its own side.
 
 
 2. BACKGROUND AND RELATED WORK
 
-Two papers are closest to this project, and they come from the same group.
+Bills and Archibald's "A Deductive Agent Hierarchy: Strategic Reasoning in
+Codenames" (IEEE Conference on Games, 2023) works with a simplified version of
+Codenames where the board is no longer made of words but of high-dimensional
+vectors, and the spymaster picks a clue from some other set of vectors. Taking
+the language out reduces the game to a fairly clean optimization problem, which
+is what lets the paper concentrate on the strategic layer instead, in particular
+on agents that reason using an explicit model of their teammate, arranged in a
+hierarchy of increasing deductive depth. That abstraction is exactly what I give
+up by staying on the real board.
 
-Bills and Archibald, "A Deductive Agent Hierarchy: Strategic Reasoning in
-Codenames" (IEEE Conference on Games, 2023), studies a simplified version of
-Codenames in which the board is no longer words but high-dimensional vectors, and
-the spymaster chooses a clue from some other set of vectors. Stripping out the
-language reduces the game to a fairly clean optimization problem, which lets the
-paper concentrate on the strategic layer -- in particular on agents that reason
-using an explicit model of their teammate, arranged in a hierarchy of increasing
-deductive depth. The abstraction is what makes that analysis possible, and it is
-also what this project gives up by staying on the real board.
+The same group's "Adapting to Teammates in a Cooperative Language Game"
+(arXiv:2403.00823) runs straight into the problem my project is organized
+around. Earlier Codenames agents commit to a single internal language model,
+which plays well with teammates whose sense of word association happens to match
+it and worse with everyone else, so the paper builds an ensemble holding several
+internal experts and works out during play which one fits the teammate in front
+of it. It also proposes a single metric for scoring a Codenames team, which turns
+out to be harder than it sounds.
 
-Archibald et al., "Adapting to Teammates in a Cooperative Language Game"
-(arXiv:2403.00823), attacks a problem this project will run into directly.
-Previous Codenames agents commit to a single internal language model, which
-produces good play with teammates whose sense of word association happens to
-match and worse play with everyone else. The paper presents an ensemble agent
-that holds several internal experts, each with its own language model, and
-learns during play which one best matches the teammate in front of it, without
-prior knowledge of that teammate. It also proposes a single metric for scoring a
-Codenames team, which is a harder problem than it looks.
-
-That second paper matters here because the mismatch it identifies is exactly the
-difficulty this project is organized around. A spymaster's similarity scores are
-its own. The guesser has a related but different sense of which words belong
-together, and every announced number is a bet on the size of that difference.
+The mismatch those authors adapt around is the same one I have to handle. A
+spymaster's similarity scores are its own, the guesser has a related but
+different sense of which words go together, and every number announced is a bet
+on how big that difference is.
 
 
 3. PROBLEM DESCRIPTION
 
-Design a model that takes the current game state and returns a clue word together
-with a clue number, intended for a human guesser.
+I want to design a model that takes the current game state and returns a clue
+word together with a clue number, meant for a human guesser.
 
-The game state includes the board -- which words remain, and which of them belong
-to the team, the opponent, the neutral pile and the assassin -- and potentially
-the history of previous actions, which is relevant in Codenames in a way it is
-not in many games. A clue given two turns ago whose intended words were not all
-taken is still live information; so is what the opponent has revealed and how
-much of the board they have left.
+The game state includes the board, meaning which words are still unrevealed and
+which of those belong to my team, the opponent, the neutral pile and the
+assassin, and potentially the history of what has already happened, which matters
+in Codenames more than it does in most games. A clue given two turns ago whose
+intended words were not all taken is still live information, and so is what the
+opponent has revealed and how much of their board they have left.
 
-The output is constrained: exactly one word and one number, with the word subject
-to the game's legality rules. The target is a human reader, which rules out
-optimizing against any quantity that only a machine listener would track.
+The model outputs exactly one word and one number, and the word has to be legal
+under the game's rules. Because the guesser is a person, I cannot optimize
+against anything that only a machine listener would track.
 
 
 4. PLANNED APPROACHES
 
-Evaluation. Models will be compared by having a Claude agent play the guesser,
-on the assumption that its associations are closer to a human's than a simulated
-guesser's would be. The exact metrics are not settled, but a reasonable starting
-point is the average number of team words revealed per clue together with how
-often a clue leads to an opponent word or the assassin. These two have to be read
-together: a model that announces large numbers will score well on the first and
-badly on the second, and the whole difficulty of the game lies in the trade
-between them.
+To compare models I will use a Claude agent as the guesser, hoping that the way
+it associates words is closer to a human's than a simulated guesser would be. I
+have not settled on metrics yet, but a reasonable place to start is the average
+number of team words revealed per clue along with how often a clue leads the
+guesser to an opponent word or the assassin. Those two have to be read together,
+since a model that announces large numbers will look good on the first and bad on
+the second, and the whole difficulty of the game is in the trade between them.
 
-The first model will be a baseline that uses a single embedding space and the
-current board state only. Once it plays well enough to be worth measuring
-against, it will be frozen and used as the opponent for every model built
-afterward. That gives a single consistent metric -- win rate against a fixed
-opponent -- which is more informative than per-clue averages, since it prices
-every kind of mistake at its actual cost to the game rather than counting the
-mistakes separately.
+The first model will be a baseline using a single embedding space and the current
+board state only. Once it plays well enough to be worth measuring against, I will
+freeze it and use it as the opponent for every model I build afterward, which
+gives me one consistent metric in win rate against a fixed opponent. That is more
+informative than per-clue averages, because it prices every kind of mistake at
+what it actually costs in a game rather than counting mistakes separately.
 
-From there the work splits into two directions.
+After that I want to push in two fairly different directions. On the
+representation side, different embedding spaces are built from different sources
+and carry different knowledge, so a clue that one space scores highly can be
+invisible to another. Trying several spaces, and possibly learning which to trust
+in which situation, is the obvious first extension, with deep learning over those
+representations to follow once there is a training signal worth fitting.
 
-The first is representational. Different embedding spaces are built from
-different sources and carry different knowledge, so a clue that one space
-scores highly may be invisible to another. Trying several spaces, and
-potentially learning which to trust in which situation, is the natural first
-extension. Deep learning methods over these representations are the obvious
-follow-on once there is a training signal worth fitting.
+The other direction is about what the current board state leaves out. I would
+like to use Monte Carlo simulation to look ahead, rolling out plausible
+continuations including the opponent's likely moves and picking the clue that
+leads to a better distribution of future positions rather than the one that
+scores best this turn. That matters most when my remaining words are entangled
+with the opponent's, where revealing two words now can hand over a much easier
+board. Clue history is a second case. If I give a clue and my teammate misses one
+of the words I meant, they usually still understood it and will take it on a
+later turn once something else clarifies it, so treating that word as effectively
+revealed rather than as a failure to retry from scratch changes which clue is
+best next.
 
-The second is strategic, and concerns what the current board state leaves out.
-One idea is to use Monte Carlo simulation to look ahead: rolling out plausible
-continuations, including the opponent's likely actions, and choosing the clue
-that leads to the better distribution of future positions rather than the one
-that scores best this turn. This matters most when the team's remaining words
-are entangled with the opponent's, where a clue that reveals two words now may
-hand over a much easier board.
-
-A second idea uses clue history. If a clue is given and the teammate misses one
-of the intended words, that word is usually still understood -- the teammate will
-often take it on a later turn once something else clarifies it. Treating such a
-word as effectively revealed, rather than as a failure to be retried from
-scratch, changes which clue is best next.
-
-Beyond these, the plan is iteration: build a model, measure it against the frozen
-baseline, keep what works. One constraint holds throughout. Claude's guesses are
-never used as an input to any model, at training time or otherwise. The evaluation
-guesser has to stay independent of everything the models are fitted on; otherwise
-the models are being tuned to the specific listener they are then graded against,
-and the resulting numbers would measure overfitting rather than skill.
+Past that the plan is mostly iteration: build something, measure it against the
+frozen baseline, keep what works. One rule I intend to hold to throughout is that
+Claude's guesses never go into any model as an input, at training time or
+anywhere else. The evaluation guesser has to stay independent of whatever the
+models are fitted on, or else I am tuning models to the exact listener I then
+grade them against, and the numbers would be measuring overfitting instead of
+skill.
 
 
 5. DELIVERABLES
 
-The primary deliverable is a report covering each method attempted and how it
-performed, measured under the evaluation described above, including the ones that
-did not work and why. Alongside it: the code for the full pipeline, the frozen
-baseline model and every model built against it, and the recorded evaluation
-results that the report's comparisons are drawn from.
+The main deliverable is a report covering each method I tried and how it
+performed under the evaluation above, including the ones that did not work and
+why. Along with it I will hand in the code for the whole pipeline, the frozen
+baseline and every model built against it, and the recorded evaluation results
+the report's comparisons come from.
 
 
 6. REFERENCES
