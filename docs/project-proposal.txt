@@ -10,7 +10,7 @@ Codenames is a popular word-association board game where two teams compete to gu
 
 Codenames has attracted a fair amount of work, including a recurring Codenames AI competition built around a shared agent framework, but much of it either studies simplified abstractions in which the words are replaced by vectors, so that choosing a clue becomes a tractable optimization problem, or else hands the clue-giving to a large language model and measures how well the model plays.
 
-My goal is to design a model that gives clues on the real game, intended for humans to interpret, and without a language model producing the clue at any point. My belief is that the best Codenames players do not rely entirely on their depth of language, or wordplay/trivia, but also a deep understanding of game theory and of how humans think. While non-LLM models may struggle with the former, they are exceptional at the latter, and I hope to develop models that incorporate such elements.
+My goal is to design a model that gives clues on the real game, intended for humans to interpret, and without a language model producing the clue at any point. My belief is that the best Codenames players do not rely entirely on their depth of language, or wordplay/trivia, but also a deep understanding of game theory and of how humans think. While non-LLM models may struggle with the former, the latter is where they can compete, since reasoning about the game and about the guesser can be written down explicitly and measured. I hope to develop models that incorporate such elements.
 
 
 
@@ -38,8 +38,7 @@ a team card, -1 for an opponent card, 0 for a bystander and minus the team's
 card count for the assassin.
 
 That paper builds on a deductive hierarchy from earlier work by Bills and
-Archibald, which is worth describing because it bears on what I want to do with
-game history. Level zero is a guesser that looks only at the current clue and
+Archibald. Level zero is a guesser that looks only at the current clue and
 the cards still face up. Above that, a level k spymaster best-responds to a
 level k guesser and a level k+1 guesser best-responds to a level k spymaster. A
 guesser above level zero keeps beliefs over every possible assignment of the
@@ -57,17 +56,17 @@ well the turn went, and neither of the metrics the field had been using works:
 win rate and win time are only known once a game is over, and when one team wins
 more often while the other wins faster there is no principled way to say which
 is better. So they build a metric. There are 36 things that can happen on a
-single Codenames turn, counting how many team cards were revealed against which
-kind of card ended it, and they represent a team by how often each of the 36
-occurs and score it with a trained linear function whose weights are fitted so
-that the difference between two teams' scores predicts which one wins a game
-between them.
+single Codenames turn, counting team cards revealed against which kind of card
+ended it, so a team is represented by how often each of the 36 occurs and scored
+with a trained linear function whose weights make the difference between two
+teams' scores predict which one wins a game between them.
 
 Both papers are circling the problem I have to solve. A spymaster's similarity
 scores are its own, the guesser has a related but different sense of which words
 go together, and every number announced is a bet on how big that difference is.
 Where they adapt to a partner over the course of a game, I am trying to give a
 good clue to a partner I never get to observe.
+
 
 3. PROBLEM DESCRIPTION
 
@@ -116,11 +115,14 @@ continuations including the opponent's likely moves and picking the clue that
 leads to a better distribution of future positions rather than the one that
 scores best this turn. That matters most when my remaining words are entangled
 with the opponent's, where revealing two words now can hand over a much easier
-board. Clue history is a second case. If I give a clue and my teammate misses one
-of the words I meant, they usually still understood it and will take it on a
-later turn once something else clarifies it, so treating that word as effectively
-revealed rather than as a failure to retry from scratch changes which clue is
-best next.
+board. Clue history is a second case, and the deductive hierarchy has
+already been over some of this ground, though from the guesser's side and by
+logical elimination. I want the spymaster's version of it, and a softer one. If I
+give a clue and my teammate misses one of the words I meant, they usually still
+understood it and will take it on a later turn once something else clarifies it,
+so what carries forward is not a deduced card identity but a word that has
+already been most of the way communicated. Treating it that way, rather than as
+a failure to retry from scratch, changes which clue is best next.
 
 Past that the plan is mostly iteration: build something, measure it against the
 frozen baseline, keep what works. One rule I intend to hold to throughout is that
