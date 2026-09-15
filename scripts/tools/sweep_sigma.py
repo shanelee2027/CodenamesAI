@@ -55,7 +55,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from codenames.board import Board, Role, load_holdout_wordlist
+from codenames.board import Board, Card, OpponentBoardView, Role, load_holdout_wordlist
 from codenames.env import load_env
 from codenames.game import ROLE_REWARD
 from codenames.guessers.llm import LLMGuesser
@@ -84,9 +84,20 @@ class Turn:
 
 
 def positions(n: int, seed0: int = SEED0) -> list[Board]:
-    """Boards spanning the arc of a game, not just openings: sigma's
-    effect on the announced number depends on how many own words are
-    still live."""
+    """**Superseded -- see `positions_from_games` and use --positions-from.**
+
+    Reveals `(i * 2) % 13` cards chosen uniformly at random. That is a
+    bad model of a game's arc, and it biased the sigma this sweep was
+    built to choose. 16 of the 25 cards are distractors, so uniform
+    reveals clear distractors ~1.8x faster than own words and the board
+    gets *easier* as it progresses; real play takes an own word ~93% of
+    the time, so own words go first and the distractor field stays dense.
+    At a matched own-word count these boards carry 2-3 fewer live
+    distractors than real ones, which inflates the announced number --
+    measured 1.72 here against 1.16 in real games (see docs/log.md).
+
+    Kept so the original sweep in docs/clue-selection-theory.tex can be
+    reproduced, not because it should be used again."""
     vocab = load_holdout_wordlist()
     out = []
     for i in range(n):
@@ -97,6 +108,65 @@ def positions(n: int, seed0: int = SEED0) -> list[Board]:
         if board.remaining(Role.OWN) >= 2:
             out.append(board)
     return out
+
+
+def positions_from_games(n: int, db_path: Path, label_like: str = "%", seed: int = 0) -> list:
+    """Real positions: the board state before each turn of games already
+    played and recorded by codenames/llm_store.py::GameRecordStore.
+
+    This costs nothing -- the games are on disk -- and it reproduces the
+    distribution real play actually visits, which `positions` above does
+    not. A turn taken by team B is handed back as an OpponentBoardView,
+    so the spymaster sees that team's own words as Role.OWN exactly as it
+    did when the game was played.
+
+    Sampled uniformly across all recorded turns rather than taking the
+    first n, so the result spans openings through endgames in the
+    proportion games actually produce them.
+
+    One caveat worth stating: these positions were produced by games the
+    models under test played, so they are not independent of those
+    models. They are far closer to real play than random reveals, but a
+    fully independent set would need games from a spymaster that is not
+    being swept."""
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT seed, board, turns FROM game_records WHERE label LIKE ? ORDER BY id", (label_like,)
+    ).fetchall()
+    conn.close()
+
+    snapshots = []
+    for row in rows:
+        by_role = json.loads(row["board"])
+        # Regenerate from the seed rather than rebuilding from the stored
+        # role groups. The record keeps only {role: [words]}, so rebuilding
+        # from it orders the board own-first -- but `board.words` order is
+        # what becomes the candidate list, which is both the LLM prompt's
+        # word order and part of the response cache key. Grouped order
+        # would present a board no game ever showed and miss every cached
+        # response. Falls back to the grouped rebuild if the seed doesn't
+        # reproduce the recorded roles (a different board vocabulary).
+        regenerated = Board.generate(seed=row["seed"])
+        if all(regenerated.role_of(w).value == role for role, ws in by_role.items() for w in ws):
+            cards = regenerated.cards
+        else:
+            cards = tuple(Card(word=w, role=Role(role)) for role, words in by_role.items() for w in words)
+        revealed: list[str] = []
+        for turn in json.loads(row["turns"]):
+            # Rebuild from scratch per turn: Board.reveal mutates, and each
+            # snapshot has to stay independent of the ones after it.
+            board = Board(cards=cards, seed=0)
+            for w in revealed:
+                board.reveal(w)
+            if board.remaining(Role.OWN if turn["team"] == "A" else Role.OPPONENT) >= 1:
+                snapshots.append(board if turn["team"] == "A" else OpponentBoardView(board))
+            revealed.extend(w for w, _ in turn["guesses"])
+
+    rng = random.Random(seed)
+    return snapshots if len(snapshots) <= n else rng.sample(snapshots, n)
 
 
 def turns_for(sigma: float, boards: list[Board], sims: SimilarityTensor) -> list[Turn]:
@@ -132,6 +202,15 @@ def main() -> None:
     ap.add_argument("--sigma", type=float, action="append", default=None)
     ap.add_argument("--workers", type=int, default=12,
                     help="concurrent API calls (default 12)")
+    ap.add_argument(
+        "--positions-from",
+        type=Path,
+        default=None,
+        help="snapshot real positions from games recorded in this db (cache/llm_store.db) instead of "
+        "revealing cards at random -- see positions_from_games. Strongly preferred: the random-reveal "
+        "default builds boards easier than real play and biases the chosen sigma (docs/log.md).",
+    )
+    ap.add_argument("--positions-label", default="%", help="restrict --positions-from to game labels matching this LIKE pattern")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
@@ -141,7 +220,10 @@ def main() -> None:
     effort = None if effort in ("", "none") else effort
 
     sims = SimilarityTensor.load()
-    boards = positions(args.positions)
+    if args.positions_from is not None:
+        boards = positions_from_games(args.positions, args.positions_from, args.positions_label)
+    else:
+        boards = positions(args.positions)
     by_sigma = {s: turns_for(s, boards, sims) for s in sigmas}
 
     triples = {(t.clue, tuple(t.candidates), t.number)
