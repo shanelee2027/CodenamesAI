@@ -1,128 +1,43 @@
-CodenamesAI: A Non-LLM Clue Generator for Codenames
-
-Shane Lee (shane.lee@yale.edu)
-Project proposal
-
-
-1. INTRODUCTION
+Introduction
 
 Codenames is a popular word-association board game where two teams compete to guess secret agent words. One player per team, the spymaster, knows which words belong to their team, and must signal to their teammates by giving one-word clues, along with a number for how many words the clue is intended for.
 
 Codenames has attracted a fair amount of work, including a recurring Codenames AI competition built around a shared agent framework, but much of it either studies simplified abstractions in which words are replaced by vectors, so that choosing a clue becomes a tractable optimization problem, or hands the clue-giving to a large language model and measures how well it plays.
 
-My goal is to design a model that gives clues on the real game, intended for humans to interpret, and without a language model producing the clue at any point. My belief is that the best Codenames players do not rely entirely on their depth of language, or wordplay/trivia, but also a deep understanding of game theory and of how humans think. While non-LLM models may struggle with the former, the latter is where they can compete, since reasoning about the game and about the guesser can be written down explicitly and measured. I hope to develop models that incorporate such elements.
+My goal is to design a model that gives clues on the real game, intended for humans to interpret, and without a language model producing the clue at any point. My belief is that the best Codenames players rely on a mix of depth of language, theory of mind, and game theory to think of the best clues. Each of these elements can be properly modeled through a variety of techniques, and thus it is likely that sophisticated models for Codenames can be created that compete with strong human players.
+
+Background and Related Work
+
+Archibald and Brosnahan's "Adapting to Teammates in a Cooperative Language Game" (arXiv:2403.00823) starts from the observation that a Codenames agent using one embedding space plays well with teammates who happen to use the same embedding space, but poorly with everyone else. Their answer is to keep an ensemble of experts and choose which one speaks each turn with a multi-armed bandit, which also meant inventing a way to score a single turn, since win rate and win time are only known once a game is over. Bills, Archibald and Blaylock's later paper "Improving Cooperation in Language Games with Bayesian Inference and the Cognitive Hierarchy" (AAAI 2025) approaches the same problem differently. It describes two ways a guesser can deviate from the spymaster's belief: semantics, meaning which word embedding they use to decide two words are related, and pragmatics, meaning what strategy they apply on top of it. They create a spymaster agent that keeps a probability distribution over possible guessers, each one an embedding paired with a strategy, and uses Bayesian inference to update it as it plays. To make its otherwise deterministic model agents stochastic, it adds Gaussian noise to word embeddings, then picks the clue maximizing expected utility, estimated by sampling each model guesser ten times.
+
+Problem Description
+
+As described in the introduction, my goal is to design a model that takes the current game state and returns a clue that is intended for human guesser to interpret. Giving a clue requires stating both a clue word and a clue number, so my model needs to optimize over the space of possible clue words and clue numbers. The game state includes the board, meaning which words are still unrevealed and which of those belong to my team, the opponent, the neutral pile and the assassin, and potentially the history of what has already happened. The model outputs exactly one word and one number, and the word has to be legal under the game's rules. And in particular, because the target guesser is some abstract human, the model’s clues should generalize well across most English speakers, rather than using arbitrary conventions.
 
 
+Planned Approaches
 
-2. BACKGROUND AND RELATED WORK
+Throughout my time investigating different ideas, I will come up with lots of different models, and I need some consistent way to compare all of their performance. Because human judgement is inconsistent, subjective, and expensive, to compare models I will use a Claude agent as the guesser, hoping that the way it associates words is closer to a human's than a simulated guesser would be. I have not settled on metrics yet, but a reasonable place to start is the average number of team words revealed per clue along with how often a clue leads the guesser to an opponent word or the assassin.
 
+The first model will be a baseline using a single embedding space and the current board state only. Once it plays well enough to be worth measuring against, I will freeze it and use it as the opponent for every model I build afterward, which gives me one consistent metric in win rate against a fixed opponent.
 
-Archibald and Brosnahan's "Adapting to Teammates in a Cooperative Language Game" (arXiv:2403.00823) starts from the observation that a Codenames agent committed to one internal model of language plays well with teammates who happen to see words the same way and badly with everyone else. Their answer is to keep an ensemble of experts and treat the choice of which one speaks this turn as a multi-armed bandit. That needs a score for how well a single turn went, which neither of the field's usual metrics gives, since win rate and win time are only known once a game is over and trade off against each other ambiguously. So they enumerate the 36 possible outcomes of a Codenames turn and fit a linear function over how often each occurs, trained so the gap between two teams' scores predicts which one wins.
+After that I want to push in two fairly different directions. On the representation side, different embedding spaces are built from different sources and carry different knowledge. Trying several spaces, and possibly learning which to trust in which situation, is the obvious first extension, with deep learning over those representations to follow.
 
-The same group's later paper, Bills, Archibald and Blaylock's "Improving Cooperation in Language Games with Bayesian Inference and the Cognitive Hierarchy" (AAAI 2025), attacks the mismatch from the other side. It describes two ways a guesser can deviate from the spymaster's belief: semantics, meaning which word embedding they use to decide two words are related, and pragmatics, meaning what strategy they apply on top of it. They create a spymaster agent that keeps a probability distribution over possible guessers, each one an embedding paired with a strategy, and uses Bayesian inference to update it as it plays. To make its otherwise deterministic model agents stochastic, it adds Gaussian noise to word embeddings, then picks the clue maximizing expected utility, estimated by sampling each model guesser ten times.
+The other direction is about what the current board state leaves out. I would like to use Monte Carlo simulation to look ahead, rolling out plausible continuations including the opponent's likely moves and picking the clue that leads to a better distribution of future positions rather than the one that scores best this turn. That matters most when the team’s remaining words interact with the opponent's, where revealing words now can hand over a much easier board to the opponent. Clue history is a second case. If the model gives a clue and the guesser misses one of the words it meant, usually the actual intended word is obvious and the guesser will take it on a later turn, and treating that word as effectively revealed changes which clue is best next.
 
-Both papers circle the problem I have to solve. A spymaster's similarity scores
-are its own, the guesser's sense of which words go together is related but
-different, and every number announced is a bet on how big that difference is.
-Where they adapt to a partner across a game, I am trying to give a good clue to
-a partner I never observe.
+Past that the plan is mostly iteration of different ideas. One rule I intend to hold to throughout is that Claude's guesses never go into any model as an input, at training time or anywhere else, to avoid overfitting.
 
 
+Deliverables
 
-3. PROBLEM DESCRIPTION
+The main deliverable is a report covering each method I tried and how it performed under the evaluation above, including the ones that did not work and why. Along with it I will hand in the code for the whole pipeline.
 
-I want to design a model that takes the current game state and returns a clue
-word together with a clue number, meant for a human guesser.
-
-The game state includes the board, meaning which words are still unrevealed and
-which of those belong to my team, the opponent, the neutral pile and the
-assassin, and potentially the history of what has already happened, which matters
-in Codenames more than it does in most games. A clue given two turns ago whose
-intended words were not all taken is still live information, and so is what the
-opponent has revealed and how much of their board they have left.
-
-The model outputs exactly one word and one number, and the word has to be legal
-under the game's rules. Because the guesser is a person, I cannot optimize
-against anything that only a machine listener would track.
-
-
-4. PLANNED APPROACHES
-
-To compare models I will use a Claude agent as the guesser, hoping that the way
-it associates words is closer to a human's than a simulated guesser would be. I
-have not settled on metrics yet, but a reasonable place to start is the average
-number of team words revealed per clue along with how often a clue leads the
-guesser to an opponent word or the assassin. Those two have to be read together,
-since a model that announces large numbers will look good on the first and bad on
-the second, and the whole difficulty of the game is in the trade between them.
-
-The first model will be a baseline using a single embedding space and the current
-board state only. Once it plays well enough to be worth measuring against, I will
-freeze it and use it as the opponent for every model I build afterward, which
-gives me one consistent metric in win rate against a fixed opponent. That beats
-per-clue averages, since it prices every kind of mistake at what it actually
-costs in a game rather than counting mistakes separately.
-
-After that I want to push in two fairly different directions. On the
-representation side, different embedding spaces are built from different sources
-and carry different knowledge, so a clue that one space scores highly can be
-invisible to another. Trying several spaces, and possibly learning which to trust
-in which situation, is the obvious first extension, with deep learning over those
-representations to follow once there is a training signal worth fitting.
-
-The other direction is about what the current board state leaves out. I would
-like to use Monte Carlo simulation to look ahead, rolling out plausible
-continuations including the opponent's likely moves and picking the clue that
-leads to a better distribution of future positions rather than the one that
-scores best this turn. That matters most when my remaining words are entangled
-with the opponent's, where revealing two words now can hand over a much easier
-board. Clue history is a second case, and Bills and Archibald's
-earlier deductive hierarchy has been over some of this ground already, though
-from the guesser's side and by logical elimination, with a guesser that rules
-out board assignments inconsistent with the clues it has heard. I want the spymaster's version of it, and a softer one. If I
-give a clue and my teammate misses one of the words I meant, they usually still
-understood it and will take it on a later turn once something else clarifies it,
-so what carries forward is not a deduced card identity but a word that has
-already been most of the way communicated. Treating it that way, rather than as
-a failure to retry from scratch, changes which clue is best next.
-
-Past that the plan is mostly iteration: build something, measure it against the
-frozen baseline, keep what works. One rule I intend to hold to throughout is that
-Claude's guesses never go into any model as an input, at training time or
-anywhere else. The evaluation guesser has to stay independent of whatever the
-models are fitted on, or else I am tuning models to the exact listener I then
-grade them against, and the numbers would be measuring overfitting instead of
-skill.
-
-
-5. DELIVERABLES
-
-The main deliverable is a report covering each method I tried and how it
-performed under the evaluation above, including the ones that did not work and
-why. Along with it I will hand in the code for the whole pipeline, the frozen
-baseline and every model built against it, and the recorded evaluation results
-the report's comparisons come from.
-
-
-6. REFERENCES
+References
 
 Archibald, C. and Brosnahan, S. "Adapting to Teammates in a Cooperative
   Language Game." 2024. arXiv:2403.00823.
 
-Bills, J. and Archibald, C. "A Deductive Agent Hierarchy: Strategic Reasoning in
-  Codenames." IEEE Conference on Games (CoG), 2023. Known here through its
-  description in Bills, Archibald and Blaylock (2025).
-
 Bills, J., Archibald, C. and Blaylock, D. "Improving Cooperation in Language
   Games with Bayesian Inference and the Cognitive Hierarchy." AAAI 2025.
 
-Kim, A., Ruzmaykin, M., Truong, A. and Summerville, A. "Cooperation and
-  Codenames: Understanding Natural Language Processing via Codenames." AIIDE
-  2019.
 
-Koyyalagunta, D., Sun, A., Draelos, R. L. and Rudin, C. "Playing Codenames with
-  Language Graphs and Word Embeddings." Journal of Artificial Intelligence
-  Research 71, 2021. arXiv:2105.05885.
-
-Stephenson, M., Sidji, M. and Ronval, B. "Codenames as a Benchmark for Large
-  Language Models." 2024. arXiv:2412.11373.
