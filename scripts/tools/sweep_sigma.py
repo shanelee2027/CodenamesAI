@@ -59,6 +59,7 @@ from codenames.board import Board, Card, OpponentBoardView, Role, load_holdout_w
 from codenames.env import load_env
 from codenames.game import ROLE_REWARD
 from codenames.guessers.llm import LLMGuesser
+from codenames.guessers.registry import DEFAULT_POOL_CONFIG as DEFAULT_POOL
 from codenames.llm_store import LLMResponseCache
 from codenames.similarity import SimilarityTensor
 from codenames.spymasters.base import TurnContext
@@ -169,6 +170,66 @@ def positions_from_games(n: int, db_path: Path, label_like: str = "%", seed: int
     return snapshots if len(snapshots) <= n else rng.sample(snapshots, n)
 
 
+def positions_from_play(sigma: float, n_boards: int, guesser_name: str, sims: SimilarityTensor,
+                        n: int | None = None, seed: int = 0) -> list:
+    """Positions this sigma's OWN play reaches: plays `n_boards` boards
+    (both seatings) of expected_words at this sigma against a fixed
+    `centroid` opponent, with a free synthetic listener, and snapshots the
+    board before each of its turns.
+
+    This is what `positions_from_games` can't do. A cautious sigma that
+    announces 1s and an aggressive one that announces 4s reach genuinely
+    different boards, and scoring every sigma on one fixed position set
+    erases that difference -- which is part of what choosing a sigma
+    should be weighing. Here each sigma is scored under the distribution
+    its own play produces.
+
+    Costs nothing: only the LLM *scoring* of the resulting positions is
+    paid for, and reaching a position needs no LLM at all. The same board
+    seeds are used for every sigma, so the comparison stays paired at the
+    board level even though the positions within a board differ.
+
+    `guesser_name` should be a listener from a DIFFERENT embedding space
+    than the spymaster scores in. Measured against the 100 recorded LLM
+    games, noisy_wikipedia2vec reproduces their position distribution
+    best (L1 0.074, own-word rate 91.7% vs the LLM's 93.2%);
+    noisy_numberbatch is the same space expected_words scores in, so it
+    is a near-perfect listener at 99.9% and its games run unrealistically
+    clean."""
+    from codenames.game import play_two_team_game
+    from codenames.guessers.registry import load_pool
+    from codenames.spymasters.centroid import CentroidSpymaster
+
+    guesser = load_pool(DEFAULT_POOL)[guesser_name].guesser
+    sm = ExpectedWordsSpymaster(space="numberbatch", sigma=sigma, max_rarity=10.0)
+    opponent = CentroidSpymaster(seed=0)
+
+    snapshots = []
+    for board_seed in range(n_boards):
+        for swap in (False, True):
+            board = Board.generate(seed=board_seed)
+            teams = ((sm, guesser), (opponent, guesser)) if swap else ((opponent, guesser), (sm, guesser))
+            result = play_two_team_game(board, teams[0], teams[1], sims)
+            ours = "A" if swap else "B"
+            # Replay onto a fresh board: play_two_team_game mutated the
+            # one above, and each snapshot must be independent.
+            replay = Board.generate(seed=board_seed)
+            revealed: list[str] = []
+            for tt in result.turns:
+                if tt.team == ours:
+                    b = Board.generate(seed=board_seed)
+                    for w in revealed:
+                        b.reveal(w)
+                    view = b if ours == "A" else OpponentBoardView(b)
+                    if view.remaining(Role.OWN) >= 1:
+                        snapshots.append(view)
+                revealed.extend(w for w, _ in tt.turn.guesses)
+
+    if n is None or len(snapshots) <= n:
+        return snapshots
+    return random.Random(seed).sample(snapshots, n)
+
+
 def turns_for(sigma: float, boards: list[Board], sims: SimilarityTensor) -> list[Turn]:
     sm = ExpectedWordsSpymaster(space="numberbatch", sigma=sigma, max_rarity=10.0)
     out = []
@@ -211,6 +272,20 @@ def main() -> None:
         "default builds boards easier than real play and biases the chosen sigma (docs/log.md).",
     )
     ap.add_argument("--positions-label", default="%", help="restrict --positions-from to game labels matching this LIKE pattern")
+    ap.add_argument(
+        "--simulate",
+        type=int,
+        default=None,
+        metavar="N_BOARDS",
+        help="BEST OPTION. Generate each sigma's positions by simulating N_BOARDS boards of its own "
+        "play (both seatings) against a fixed centroid opponent, with a free synthetic listener. "
+        "Costs nothing extra -- only scoring the resulting positions is paid for. Each sigma is then "
+        "measured under the board distribution its own play produces, which neither --positions-from "
+        "nor the random-reveal default can do.",
+    )
+    ap.add_argument("--simulate-guesser", default="noisy_wikipedia2vec",
+                    help="listener for --simulate. Use a DIFFERENT space than the spymaster scores in "
+                         "(default matches the recorded LLM games' position distribution best).")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
@@ -220,19 +295,29 @@ def main() -> None:
     effort = None if effort in ("", "none") else effort
 
     sims = SimilarityTensor.load()
-    if args.positions_from is not None:
-        boards = positions_from_games(args.positions, args.positions_from, args.positions_label)
+    if args.simulate is not None:
+        by_sigma = {}
+        for sg in sigmas:
+            bs = positions_from_play(sg, args.simulate, args.simulate_guesser, sims, n=args.positions)
+            by_sigma[sg] = turns_for(sg, bs, sims)
+            print(f"  sigma {sg}: simulated {args.simulate} boards -> {len(bs)} positions", flush=True)
+        boards = None
     else:
-        boards = positions(args.positions)
-    by_sigma = {s: turns_for(s, boards, sims) for s in sigmas}
+        if args.positions_from is not None:
+            boards = positions_from_games(args.positions, args.positions_from, args.positions_label)
+        else:
+            boards = positions(args.positions)
+        by_sigma = {s: turns_for(s, boards, sims) for s in sigmas}
 
     triples = {(t.clue, tuple(t.candidates), t.number)
                for turns in by_sigma.values() for t in turns}
     cache = LLMResponseCache(CACHE_PATH)
     key = model if effort is None else f"{model}+effort={effort}"
     have = sum(1 for c, w, n in triples if cache.get(key, c, w, n) is not None)
-    print(f"positions {len(boards)}   sigmas {sigmas}   model {args.model}")
-    print(f"turns {len(boards) * len(sigmas)}   distinct prompts {len(triples)}   "
+    n_turns = sum(len(t) for t in by_sigma.values())
+    src = f"simulated per sigma ({args.simulate} boards)" if args.simulate else f"{len(boards)} shared"
+    print(f"positions {src}   sigmas {sigmas}   model {args.model}")
+    print(f"turns {n_turns}   distinct prompts {len(triples)}   "
           f"cached {have}   to buy {len(triples) - have}")
 
     if args.dry_run:
