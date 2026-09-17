@@ -53,6 +53,7 @@ thinking disabled either answers or errors) and is left alone.
 """
 from __future__ import annotations
 
+import math
 import os
 import threading
 from pathlib import Path
@@ -96,6 +97,11 @@ class OpenAICompatGuesser(Guesser):
         self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
         self.min_coverage = min_coverage
+        # Count of accepted responses where the model ranked only part of the
+        # board. Not zero in practice, and worth reporting rather than hiding:
+        # the tail of such a ranking is board order, so these entries must not
+        # be reused as if they were a full ranking.
+        self.partial_responses = 0
         # Lazy, same reason as LLMGuesser: building a pool that contains this
         # guesser must not require a key unless it is actually used.
         self._client = client
@@ -163,10 +169,12 @@ class OpenAICompatGuesser(Guesser):
                 request["reasoning_effort"] = self.reasoning_effort
             choice = self.client.chat.completions.create(**request).choices[0]
             text = choice.message.content or ""
-            ranking = LLMGuesser._parse_ranking(text, candidate_words)
-            problem = self._reject(choice, text, ranking, candidate_words)
+            named = self._named_by_model(text, candidate_words)
+            problem = self._reject(choice, text, named, candidate_words, number)
             if problem is None:
-                return ranking
+                if len(named) < len(candidate_words):
+                    self.partial_responses += 1
+                return self._ranking_from(text, candidate_words)
             problems.append(f"attempt {attempt} (budget {budget}): {problem}")
             budget *= 2
         raise RuntimeError(
@@ -176,28 +184,65 @@ class OpenAICompatGuesser(Guesser):
             "fabricated ranking into cache/llm_store.db (see this module's docstring)."
         )
 
-    def _reject(self, choice, text: str, ranking: list[str], candidate_words: list[str]) -> str | None:
+    def _reject(
+        self, choice, text: str, named: set[str], candidate_words: list[str], number: int | None
+    ) -> str | None:
         """None if the response is usable, else why it isn't.
 
-        `coverage` is what actually catches the failure: `_parse_ranking`
-        always returns every candidate word, so length proves nothing --
-        what matters is how many of them the *model* named, as opposed to
-        being backfilled in board order. A short ranking is tolerated
-        (`min_coverage`) because a model dropping one word of 25 is a
-        typo-level slip, while returning none of them is a broken call."""
+        The test is NOT "did the model rank everything". `_parse_ranking`
+        returns the model's own words first and board-order backfill after,
+        and a turn only ever consumes the top `number` entries
+        (codenames/game.py). So a response is usable exactly when the model
+        named enough words to cover what will be read off the top -- a
+        16-of-25 ranking is a fine answer to a clue for 2, while a 0-of-25
+        one is never an answer to anything.
+
+        Requiring full coverage instead would also bias the sample: the
+        positions a model half-answers are the awkward ones, and dropping
+        them quietly restricts the measurement to boards it found easy.
+
+        `number + 2` rather than `number` leaves room for a bonus guess
+        (Guesser.bonus_guesses) and keeps a margin so the consumed prefix is
+        never the very last thing the model said. When `number` is None the
+        caller wants a full ranking (score_candidates), so `min_coverage`
+        applies instead."""
+        n, total = len(named), len(candidate_words)
+        if total == 0:
+            return None
+        if number is not None:
+            required = min(total, max(number + 2, 3))
+            what = f"a clue for {number}"
+        else:
+            required = math.ceil(self.min_coverage * total)
+            what = f"a full ranking ({self.min_coverage:.0%} coverage)"
+        if n >= required:
+            return None
+        detail = ""
         if choice.finish_reason == "length":
-            return "hit max_completion_tokens (reasoning budget exhausted before the answer)"
-        if not text.strip():
-            return f"empty content (finish_reason={choice.finish_reason})"
-        named = sum(1 for w in ranking if w in self._named_by_model(text, candidate_words))
-        coverage = named / len(candidate_words) if candidate_words else 1.0
-        if coverage < self.min_coverage:
-            return (
-                f"model named only {named}/{len(candidate_words)} candidate words "
-                f"(coverage {coverage:.0%} < {self.min_coverage:.0%}); the rest would "
-                f"be board-order backfill"
-            )
-        return None
+            detail = " -- hit max_completion_tokens, so the reasoning budget ran out before the answer"
+        elif not text.strip():
+            detail = f" -- empty content (finish_reason={choice.finish_reason})"
+        return (
+            f"model named only {n}/{total} candidate words, need {required} for {what}; "
+            f"the rest would be board-order backfill{detail}"
+        )
+
+    @staticmethod
+    def _ranking_from(text: str, candidate_words: list[str]) -> list[str]:
+        """`LLMGuesser._parse_ranking` with duplicates removed. It filters by
+        membership without deduping, so a model that lists a word twice
+        yields a ranking longer than the board with a repeat near the top --
+        which would make the turn try to reveal the same card twice. Not
+        fixed in the shared parser because that would change what every
+        cached Anthropic ranking means; done here, where the reasoning
+        models that actually do this live."""
+        seen: set[str] = set()
+        out: list[str] = []
+        for w in LLMGuesser._parse_ranking(text, candidate_words):
+            if w not in seen:
+                seen.add(w)
+                out.append(w)
+        return out
 
     @staticmethod
     def _named_by_model(text: str, candidate_words: list[str]) -> set[str]:

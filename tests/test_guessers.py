@@ -807,18 +807,39 @@ class TestOpenAICompatGuesserStrictness:
         assert [c["max_completion_tokens"] for c in client.calls] == [1000, 2000]
 
     def test_response_naming_too_few_words_is_rejected(self):
-        """The parser backfills, so length proves nothing -- coverage is what
-        separates a real ranking from mostly-backfill."""
+        """The parser backfills, so length proves nothing -- what matters is
+        whether the model named enough to cover what the turn consumes."""
         partial = _FakeOpenAIChoice('["Car", "Apple"]')
         g, _ = self._guesser([partial, partial])
-        with pytest.raises(RuntimeError, match="coverage"):
-            g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        with pytest.raises(RuntimeError, match="named only 2/5"):
+            g.rank_candidates("vehicle", self.WORDS, None, number=3)
 
-    def test_one_missing_word_is_tolerated(self):
-        """A model dropping a single word of five is a slip, not a broken
-        call; min_coverage is what draws that line."""
-        g, _ = self._guesser([_FakeOpenAIChoice('["Car", "Apple", "Doghouse", "Banana"]')])
-        assert g.rank_candidates("vehicle", self.WORDS, None, number=2)[0] == "Car"
+    def test_partial_ranking_is_accepted_when_it_covers_the_guesses(self):
+        """A 16-of-25 ranking is a fine answer to a clue for 2: the turn only
+        reads the top `number` entries, and those are all model-ranked.
+        Rejecting it would also drop exactly the awkward positions and bias
+        the sample toward boards the model found easy."""
+        g, _ = self._guesser([_FakeOpenAIChoice('["Car", "Apple", "Doghouse"]')])
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=1)[:3] == [
+            "Car", "Apple", "Doghouse"
+        ]
+        assert g.partial_responses == 1
+
+    def test_full_ranking_request_still_needs_coverage(self):
+        """score_candidates passes number=None and wants the whole board
+        ordered, so the prefix rule does not apply there."""
+        partial = _FakeOpenAIChoice('["Car", "Apple"]')
+        g, _ = self._guesser([partial, partial])
+        with pytest.raises(RuntimeError, match="full ranking"):
+            g.score_candidates("vehicle", self.WORDS, None)
+
+    def test_duplicate_words_are_removed(self):
+        """A repeated word would otherwise survive into the ranking and make
+        the turn try to reveal the same card twice."""
+        g, _ = self._guesser([_FakeOpenAIChoice('["Car", "Car", "Apple", "Doghouse", "Banana"]')])
+        ranking = g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        assert ranking[:4] == ["Car", "Apple", "Doghouse", "Banana"]
+        assert len(ranking) == len(set(ranking)) == len(self.WORDS)
 
     def test_a_rejected_response_is_never_cached(self, tmp_path):
         """The whole point: a fabricated ranking in the store would outlive

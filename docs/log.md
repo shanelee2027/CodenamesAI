@@ -3958,3 +3958,80 @@ return a well-formed empty response. Any future listener on a reasoning model
 needs the strict path, and any listener at all should be sampled on a handful of
 real positions before a paid run -- this cost $0.0005 to find and would have
 cost the whole sweep to miss.
+
+## 2026-09-17 — sigma measured from cached rankings: ~2.0, and it is not constant
+
+`expected_words`'s `sigma` had never been measured. It was picked from the
+announced-number distribution on fresh boards, and the per-turn proxy that
+later re-picked it turned out to rank values backwards against real outcomes.
+Meanwhile DeepInfra caps us at ~0.6 calls/s (measured: 429 "Model busy" at
+32-way concurrency), which puts a 4-arm game sweep at ~11 hours.
+
+Shane's idea, and it is the better experiment: the model says a listener
+perceives `z_w + eps_w` and picks the max, and cache/llm_store.db already
+holds 5,747 rankings bought by earlier runs. That is a direct observation of
+the thing sigma parameterises. No new API calls at all.
+
+**Estimator.** Thurstone Case V with *known* utilities -- the z-scores come
+from the tensor, so sigma is the only unknown. Scored on the listener's top
+pick, where conditioning on the winner's own noise makes the field
+independent and the probability is an exact 1-D Gaussian integral.
+
+Two cheaper extensions were implemented, measured against planted sigmas, and
+discarded. The "probability this is the max of what remains, multiplied along
+the ranking" factorisation is exact only under Gumbel noise (Luce's axiom),
+not Gaussian; the pairwise composite conditions each pair on the winner
+having already won, which is a selection effect:
+
+    true sigma   exact top-1   sequential   pairwise(top3)
+          0.50         0.493       --             0.415
+          1.00         1.003       --             0.783
+          2.00         2.004      ~2.9            1.547
+          4.00         4.121       --             2.927
+
+Only the exact top-1 likelihood survives. `tests/test_listener_fit.py` plants
+sigmas and checks recovery before any number off real data is believed.
+
+**Result** (space=numberbatch, turn rankings only):
+
+    listener                          n     sigma      95% LI   obs top1  sim top1
+    claude-sonnet-5+effort=medium  3403     2.056  [2.00,2.11]     0.764     0.746
+    claude-sonnet-5                 770     2.009  [1.90,2.13]     0.683     0.671
+    deepinfra/gpt-oss-120b+low      352     2.195  [2.04,2.37]     0.798     0.770
+
+**The calibration check passes**: simulated top-1 rates land within ~2 points
+of observed and mean z-ranks within ~0.2, so sigma is measuring noise rather
+than absorbing gross misspecification. Effort barely moves Sonnet (2.06 vs
+2.01, overlapping intervals).
+
+**gpt-oss-120b's interval overlaps Sonnet's.** That is much stronger support
+for the cheap listener than the n=5 qualitative sample, and it cost nothing.
+
+**But sigma is not constant**, which the single-parameter model assumes:
+
+    by announced k:   k=1 1.97   k=2 2.00   k=3 2.17   k=4 2.63
+    by board size:  9-13 1.84  14-18 2.04  19-25 2.18
+
+Board size is already inside the model (more candidates, more chances a
+distractor wins on noise), so sigma rising with n means real errors grow
+faster than Gaussian noise predicts -- heavier tails. Two confounds keep this
+from being a clean decomposition: k was chosen by the spymaster, so k=4 clues
+are a selected subset where it believed four words were reachable and part of
+that 2.63 is its own optimism regressing to the mean; and k and board size
+are themselves correlated, since big boards are early game.
+
+**What this does and does not settle.** The shipped sigma is 2.5; the
+descriptive fit is ~2.06. But real games said sigma=1.5 beats sigma=2.5
+70-30 against centroid. Those are not in conflict -- they answer different
+questions. The listener genuinely behaves like sigma~2.0, and a spymaster
+apparently still plays better believing sigma=1.5, i.e. being optimistic,
+announcing bigger, and moving faster. In a race, tempo is worth more than the
+per-turn expected-value objective (with its -10 assassin charge) credits.
+Descriptive sigma and playing sigma are separate quantities and must be
+reported as such; this measures only the first.
+
+**Open, and now concrete:** sigma(k) rising with k means one global sigma is a
+compromise that is over-optimistic about large-k clues. A `sigma = a + b*k`
+variant is a real, data-grounded candidate for the next model -- but the
+selection confound above has to be handled first, since fitting sigma(k) on
+clues whose k the spymaster chose would bake its own optimism into the fit.
