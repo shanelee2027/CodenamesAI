@@ -68,6 +68,17 @@ def main() -> None:
              "Values parse as float, then int, then string. The override is recorded in the default "
              "--run-label so two settings of the same model cannot collide in the game store.",
     )
+    parser.add_argument(
+        "--param-a", action="append", default=[], metavar="KEY=VALUE",
+        help="override a constructor param on TEAM A's spymaster only (the --spymaster one). "
+             "Needed because --param is keyed by spymaster NAME, so it cannot express a model "
+             "playing itself at two settings -- e.g. expected_words at sigma=1.5 against "
+             "expected_words at sigma=2.5, which is the whole point of a sigma sweep.",
+    )
+    parser.add_argument(
+        "--param-b", action="append", default=[], metavar="KEY=VALUE",
+        help="same as --param-a, for TEAM B's spymaster (the --vs one). Requires --vs.",
+    )
     parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS (per team)")
     parser.add_argument(
         "--max-workers",
@@ -87,8 +98,17 @@ def main() -> None:
     parser.add_argument("--run-label", default=None, help="label stored alongside --record-games' rows (default: '<spymaster>+<guesser>')")
     args = parser.parse_args()
 
-    if args.vs == args.spymaster:
-        parser.error("--vs must name a different spymaster than --spymaster (use self-play mode instead)")
+    # Same name on both sides is only degenerate when the two sides also end
+    # up with the same PARAMS. A model against itself at two settings --
+    # expected_words at sigma=1.5 vs sigma=2.5 -- is the most sensitive form
+    # of a sigma sweep, and is exactly what --param-a/--param-b are for.
+    if args.vs == args.spymaster and not (args.param_a or args.param_b):
+        parser.error(
+            "--vs names the same spymaster as --spymaster with no side-scoped params, "
+            "which is just self-play with extra steps -- use self-play mode. To sweep a "
+            "parameter, differentiate the sides: --param-a sigma=1.5 --param-b sigma=2.5. "
+            "Passing both sides the SAME value is allowed and is a null control (expect 50%)."
+        )
 
     def _coerce(v):
         for cast in (int, float):
@@ -111,21 +131,48 @@ def main() -> None:
         if name not in entries:
             parser.error(f"--param names unknown spymaster {name!r}")
 
-    def spec_for(name):
-        cls, kwargs = entries[name].spec
-        return cls, {**kwargs, **overrides.get(name, {})}
+    def _side_overrides(specs, flag):
+        out: dict = {}
+        for spec in specs:
+            key, _, value = spec.partition("=")
+            if not (key and value):
+                parser.error(f"{flag} must be KEY=VALUE, got {spec!r}")
+            out[key] = _coerce(value)
+        return out
 
-    def label_for(name):
-        ov = overrides.get(name)
+    if args.param_b and args.vs is None:
+        parser.error("--param-b requires --vs (there is no team B in self-play)")
+    side_a = _side_overrides(args.param_a, "--param-a")
+    side_b = _side_overrides(args.param_b, "--param-b")
+
+    # Side-scoped overrides win over name-scoped ones: --param sets a default
+    # for a model wherever it appears, --param-a/--param-b say "this side".
+    def spec_for(name, side=None):
+        cls, kwargs = entries[name].spec
+        return cls, {**kwargs, **overrides.get(name, {}), **(side or {})}
+
+    def label_for(name, side=None):
+        ov = {**overrides.get(name, {}), **(side or {})}
         return name + ("" if not ov else "[" + ",".join(f"{k}={v}" for k, v in sorted(ov.items())) + "]")
 
-    spymaster_cls, spymaster_kwargs = spec_for(args.spymaster)
-    spymaster_label = label_for(args.spymaster)
+    spymaster_cls, spymaster_kwargs = spec_for(args.spymaster, side_a)
+    label_a = label_for(args.spymaster, side_a)
+    label_b = label_for(args.vs, side_b) if args.vs else None
+    # run_two_team_matchup keys its per-side stats by name, so two identical
+    # labels would collapse into one accumulator and silently pool both sides
+    # into a meaningless row. Identical sides are a *useful* run -- a model
+    # against itself must land at 50%, which is the cheapest harness check
+    # there is -- so disambiguate rather than refuse.
+    if label_b is not None and label_a == label_b:
+        label_a, label_b = f"{label_a}#A", f"{label_b}#B"
+        print(f"note: both sides are identical; labelled {label_a} / {label_b}. "
+              f"This is a null control -- expect ~50% and no A/B gap beyond the side advantage.")
+    spymaster_label = label_a
 
     kwargs = {}
     if args.max_turns is not None:
         kwargs["max_turns"] = args.max_turns
-    matchup_label = f"{spymaster_label}-vs-{label_for(args.vs)}" if args.vs else spymaster_label
+    matchup_label = f"{label_a}-vs-{label_b}" if args.vs else spymaster_label
     run_label = args.run_label if args.run_label is not None else f"{matchup_label}+{args.guesser}"
     if args.record_games is not None:
         kwargs["game_record_db"] = args.record_games
@@ -136,9 +183,9 @@ def main() -> None:
 
     if args.vs is not None:
         result = run_two_team_matchup(
-            spec_for(args.spymaster),
-            spec_for(args.vs),
-            (label_for(args.spymaster), label_for(args.vs)),
+            spec_for(args.spymaster, side_a),
+            spec_for(args.vs, side_b),
+            (label_a, label_b),
             args.guesser_pool_config,
             args.guesser,
             seeds,
@@ -149,7 +196,7 @@ def main() -> None:
         elapsed = time.time() - start
         print(
             f"\n{result.n_games} games ({result.n_boards} boards x 2 side assignments), "
-            f"{label_for(args.spymaster)} vs {label_for(args.vs)}, guesser {args.guesser}, in {elapsed:.1f}s"
+            f"{label_a} vs {label_b}, guesser {args.guesser}, in {elapsed:.1f}s"
         )
         if result.timeouts:
             print(f"({result.timeouts} ended in timeout, counted as a win for neither)")
@@ -160,7 +207,7 @@ def main() -> None:
         )
         print(header)
         print("-" * len(header))
-        for name in (label_for(args.spymaster), label_for(args.vs)):
+        for name in (label_a, label_b):
             st = result.sides[name]
             as_a = st.wins_as_first / st.games_as_first if st.games_as_first else 0.0
             games_as_b = st.games - st.games_as_first
@@ -175,7 +222,7 @@ def main() -> None:
         print("A large A-vs-B gap means the side advantage dominates the spymaster difference.")
         if args.record_games is not None:
             print(f"\ngames recorded to {args.record_games} under labels '{run_label}|A=...'")
-            print(f"  python scripts/tools/dump_game_records.py {args.record_games} --label '{run_label}|A={label_for(args.spymaster)},B={label_for(args.vs)}'")
+            print(f"  python scripts/tools/dump_game_records.py {args.record_games} --label '{run_label}|A={label_a},B={label_b}'")
         return
 
     result = run_two_team_self_play(
