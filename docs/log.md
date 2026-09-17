@@ -4174,3 +4174,73 @@ carries `turn_index`, so the plumbing for game state exists. Clue choice and
 mean k are free to measure (established earlier today: mean k is within 0.01-0.05
 between Sonnet and a free listener), so the whole change can be developed and
 screened at zero cost, with paid games only to confirm the win rate.
+
+## 2026-09-17 — distilled listener, tier 1: it works, it barely helps, and it found two bugs
+
+Shane's idea: train a local model on a cheap LLM's rankings so sweeps cost
+nothing. Built the pipeline and trained tier 1 on the 4,664 cached Sonnet
+positions we already own.
+
+**Formulation.** Conditional logit (McFadden). The model emits one scalar
+utility per candidate word; a softmax over the board turns those into a
+choice; the response is *which word the teacher picked* -- categorical over a
+choice set that changes size every turn, so there is no regression target and
+no fixed-width output. Each position contributes `k` choice events
+(Plackett-Luce to depth k), which is exactly as deep as the game ever reads a
+ranking: measured, 58.5% of turns read one word, 100% read at most four.
+
+Features are computed ONCE on the full board and reused across the PL steps,
+because `rank_candidates` is called once per turn and the game reads the top k
+off a single ordering -- so training and inference score identically.
+
+Note this uses Plackett-Luce as the *model*, after rejecting the same
+factorisation as a biased *approximation* when estimating sigma earlier today.
+Different roles: there it had to recover a Gaussian parameter, here `f` is an
+arbitrary learned function with no Gaussian claim.
+
+**Result: +0.0108 pooled, +0.0077 on step-1, over ranking by numberbatch z.**
+Real but small, with early stopping and a board-seed split.
+
+**Bug 1, mine, in the feature design.** Within a board,
+`rank_numberbatch`, `gaptop_numberbatch` and all three `p_max_sigma` features
+are monotone transforms of `z_numberbatch` -- measured within-group rank
+correlation exactly 1.000. Four more (`k`, `n_candidates`, `peak_z`,
+`lead_margin`) are constant within a board. So **nine of 21 features cannot
+reorder anything**; they can only gate interactions. The `p_max_sigma`
+features I argued hardest for -- the Gaussian model's own prediction -- encode
+board context, and board context cancels in a within-board softmax. Only
+`word_mean_sim` (rho 0.23), `word_sd_sim` (0.25), `rival_min_space` (0.41) and
+the two weaker spaces (~0.51) carry independent ordering information.
+
+**Bug 2, an evaluation bug that made a null model look excellent.** The target
+sits at index 0 of every group (features are built in the teacher's ranked
+order) and `np.argmax` returns the FIRST maximum -- so a constant-scoring
+model grades 100% correct by tie-breaking. It surfaced as early stopping
+choosing iteration 1 for every configuration, and as *more* regularisation
+scoring *better* (8 leaves 0.675 > 15 leaves 0.649 > 31 leaves 0.633), which
+is the giveaway: heavier regularisation means more tied leaves means more free
+credit. Fixed by scoring ties as 1/(number tied), the expectation under random
+tie-breaking. `tests/test_listener_features.py` asserts a constant model
+scores chance.
+
+**Also measured.** Without early stopping the model reaches 0.9951 training
+accuracy while validation *falls below* baseline -- capacity was never the
+problem. And the custom objective was a Python loop over ~6k groups per
+boosting round; vectorising with `reduceat` gave a bit-identical 30x speedup
+(21.70 -> 0.73 ms/round), which is the speedup that was actually available
+here. GPU would not help: 97k rows by 21 features is far too small, and a
+Python objective forces a host round-trip every round regardless.
+
+**What this says about the plan.** Tier 1 was largely the baseline wearing 21
+hats. The features carrying genuinely new within-board information are the
+ones deferred to tier 2 -- cohesion (thematic grouping, for the k>=3 regime
+where embeddings collapse to 0.36 top-1) and entity similarity (the 867k
+discarded Wikipedia2Vec ENTITY vectors). Those are the next test, not more
+data.
+
+**Training distribution is a known gap.** Every cached position came from a
+game where a spymaster chose a clue it believed was good, so the model has
+never seen a clue that is irrelevant to the board, or one that points at the
+opponent's words or the assassin. A spymaster's search scores ~111k candidate
+clues per turn and most are bad, so collection must deliberately sample junk
+and adversarial clues, not just clues a spymaster liked.
