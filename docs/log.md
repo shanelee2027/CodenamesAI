@@ -3893,3 +3893,68 @@ of CPU alone but 1.71s when 16 run at once -- memory-bandwidth contention -- so
 effective speedup is 4.6x on 16 cores, not 16x. ~10,000 clue searches at that
 rate is the runtime. Making it faster needs a cheaper search, not more workers,
 and candidate blocking is not that lever.
+
+## 2026-09-17 — gpt-oss-120B as a cheap listener: two silent bugs before any data
+
+Goal: a listener cheap enough to afford a sigma sweep with enough games to
+settle the sigma=1.5 vs 2.5 question that the per-turn proxy got backwards.
+Picked `openai/gpt-oss-120b` on DeepInfra, wired through a new
+`OpenAICompatGuesser`, and sampled 5 real recorded positions beside Sonnet
+before spending anything at scale.
+
+**Expected:** a qualitative read on how the open-weight model interprets clues.
+**Got:** rankings that were identical to the board's own order in all five
+positions, for *both* models on some of them. Two independent bugs.
+
+**Bug 1 — the guesser fabricated rankings.** gpt-oss-120b is a reasoning model:
+chain of thought goes in `reasoning_content`, the answer in `content`. Left
+unset, `reasoning_effort` defaults to medium; with `max_tokens=512` it spent all
+512 on reasoning and returned `finish_reason="length"` with `content=""`.
+`LLMGuesser._parse_ranking` is deliberately tolerant -- it backfills anything the
+model omitted from board order -- so an empty response became a complete,
+well-formed, entirely fabricated ranking, cached to `cache/llm_store.db` as if
+paid for. Nothing in the output said so.
+
+Board order is role-shuffled (`codenames/board.py`), so in play this degrades to
+a *random* guesser, not a biased one. That is the dangerous part: a sweep run
+this way would have reported "the open-weight model is a weak listener" and
+looked entirely normal. It would not have crashed.
+
+Fixed by making `OpenAICompatGuesser` strict where the Anthropic guesser is
+tolerant: reject `finish_reason="length"`, empty content, or a response naming
+fewer than `min_coverage` (0.8) of the candidates; retry once at double budget,
+then raise. Deliberately *not* done by changing `_parse_ranking`, which the
+Anthropic path and 5,742 cached rows depend on and which is correct for its own
+case. Defaults moved to `reasoning_effort="low"`, `max_tokens=4096`. Eight
+regression tests added; the 5 poisoned rows were deleted from the store.
+
+**Bug 2 — the sampler leaked the answer.** `sample_guesser.py` built its
+candidate list by iterating the recorded board, which is stored grouped by role,
+so the prompt listed every own word, then every opponent word, then neutrals.
+That both hands the model block structure to exploit and makes a board-order
+fallback score a perfect 4/4 for team A and 0/4 for team B -- which is exactly
+the pattern the first run showed. Real play passes `board.words` order. The
+original order is not recoverable from the record, so the fix is a per-position
+shuffle seeded by (seed, clue).
+
+**After both fixes, on the same 5 positions:** gpt-oss-120b took 11/16 intended
+words, Sonnet 5 took 11/16. Identical top-3 on `munich` and `infrared`; gpt-oss
+beat Sonnet 4/4 vs 3/4 on `accidentally` and ranked the assassin lower (safer) on
+`mice` (8 vs 5). n=5 is anecdotal and is not evidence of parity -- it is only
+evidence that the cheap model reads clues in the same kind of way.
+
+**Cost, measured head to head on one 25-word position rather than from token
+prices:** Sonnet 5 at effort=medium $0.00477/call (250 in, 427 out);
+gpt-oss-120b at effort=low $0.000102 (555 completion tokens) -- **47x cheaper**;
+at effort=medium $0.000775 (4509 completion tokens), only 6x cheaper. Per token
+the open-weight model is ~55x cheaper, so most of the advantage is spent on
+reasoning tokens. The effort setting, not the sticker price, is what decides
+whether this is worth doing -- and an earlier note in this repo claiming
+"~1/150th of Sonnet" was a per-token figure that ignored that entirely.
+
+**Standing caution.** The tolerant parser is the right default for a guesser
+that either answers or errors. It is the wrong default for anything that can
+return a well-formed empty response. Any future listener on a reasoning model
+needs the strict path, and any listener at all should be sampled on a handful of
+real positions before a paid run -- this cost $0.0005 to find and would have
+cost the whole sweep to miss.

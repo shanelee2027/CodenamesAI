@@ -34,6 +34,7 @@ from codenames.guessers.confidence_threshold import ConfidenceThresholdGuesser
 from codenames.guessers.history_aware import HistoryAwareGuesser
 from codenames.guessers.llm import LLMGuesser
 from codenames.guessers.noisy import NoisyGuesser
+from codenames.guessers.openai_compat import OpenAICompatGuesser
 from codenames.guessers.rank_based import RankBasedGuesser
 from codenames.guessers.single_space import SingleSpaceGuesser
 
@@ -47,6 +48,7 @@ GUESSER_CLASSES: dict[str, type[Guesser]] = {
     "confidence_threshold": ConfidenceThresholdGuesser,
     "history_aware": HistoryAwareGuesser,
     "llm": LLMGuesser,
+    "openai_compat": OpenAICompatGuesser,
 }
 
 

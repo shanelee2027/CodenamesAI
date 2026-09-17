@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import threading
 import time
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -15,6 +17,7 @@ from codenames.guessers.confidence_threshold import ConfidenceThresholdGuesser
 from codenames.guessers.history_aware import HistoryAwareGuesser
 from codenames.guessers.llm import LLMGuesser
 from codenames.guessers.noisy import NoisyGuesser
+from codenames.guessers.openai_compat import OpenAICompatGuesser
 from codenames.guessers.rank_based import RankBasedGuesser
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG, held_out_pool, load_pool, training_pool
 from codenames.guessers.single_space import SingleSpaceGuesser
@@ -733,3 +736,109 @@ class TestLLMGuesserEffort:
         ).rank_candidates("vehicle", self.WORDS, None)
         assert third.messages.calls == []
         assert ranking[0] == "Car"
+
+
+class _FakeOpenAIChoice:
+    def __init__(self, content: str | None, finish_reason: str = "stop"):
+        self.finish_reason = finish_reason
+        self.message = SimpleNamespace(content=content)
+
+
+class _FakeCompletions:
+    """Returns each scripted response in turn, so a test can script a first
+    truncated call followed by a good one and assert on the retry."""
+
+    def __init__(self, choices: list[_FakeOpenAIChoice]):
+        self._choices = list(choices)
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        choice = self._choices.pop(0) if self._choices else self._choices_exhausted()
+        return SimpleNamespace(choices=[choice])
+
+    @staticmethod
+    def _choices_exhausted():
+        raise AssertionError("guesser made more calls than the test scripted")
+
+
+class _FakeOpenAIClient:
+    def __init__(self, choices: list[_FakeOpenAIChoice]):
+        self.chat = SimpleNamespace(completions=_FakeCompletions(choices))
+
+    @property
+    def calls(self) -> list[dict]:
+        return self.chat.completions.calls
+
+
+class TestOpenAICompatGuesserStrictness:
+    """A reasoning model that overruns its token budget returns
+    `finish_reason="length"` with empty content. `LLMGuesser._parse_ranking`
+    is deliberately tolerant and turns that into a complete board-order
+    ranking -- a fabricated answer that is indistinguishable from a real one
+    and that would be written into cache/llm_store.db as if it had been paid
+    for. This guesser must raise instead. See codenames/guessers/openai_compat.py.
+    """
+
+    WORDS = ["Apple", "Banana", "Car", "Doghouse", "Elephant"]
+    RANKING = '["Car", "Apple", "Doghouse", "Banana", "Elephant"]'
+
+    def _guesser(self, choices, **kwargs):
+        client = _FakeOpenAIClient(choices)
+        return OpenAICompatGuesser(model="openai/gpt-oss-120b", client=client, **kwargs), client
+
+    def test_good_response_is_returned(self):
+        g, _ = self._guesser([_FakeOpenAIChoice(self.RANKING)])
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=2) == [
+            "Car", "Apple", "Doghouse", "Banana", "Elephant"
+        ]
+
+    def test_truncated_response_raises_rather_than_returning_board_order(self):
+        g, _ = self._guesser([_FakeOpenAIChoice("", "length")] * 2)
+        with pytest.raises(RuntimeError, match="max_completion_tokens"):
+            g.rank_candidates("vehicle", self.WORDS, None, number=2)
+
+    def test_truncation_retries_once_at_double_the_budget(self):
+        g, client = self._guesser(
+            [_FakeOpenAIChoice("", "length"), _FakeOpenAIChoice(self.RANKING)],
+            max_tokens=1000,
+        )
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=2)[0] == "Car"
+        assert [c["max_completion_tokens"] for c in client.calls] == [1000, 2000]
+
+    def test_response_naming_too_few_words_is_rejected(self):
+        """The parser backfills, so length proves nothing -- coverage is what
+        separates a real ranking from mostly-backfill."""
+        partial = _FakeOpenAIChoice('["Car", "Apple"]')
+        g, _ = self._guesser([partial, partial])
+        with pytest.raises(RuntimeError, match="coverage"):
+            g.rank_candidates("vehicle", self.WORDS, None, number=2)
+
+    def test_one_missing_word_is_tolerated(self):
+        """A model dropping a single word of five is a slip, not a broken
+        call; min_coverage is what draws that line."""
+        g, _ = self._guesser([_FakeOpenAIChoice('["Car", "Apple", "Doghouse", "Banana"]')])
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=2)[0] == "Car"
+
+    def test_a_rejected_response_is_never_cached(self, tmp_path):
+        """The whole point: a fabricated ranking in the store would outlive
+        the run that produced it and be served to every later comparison."""
+        db = tmp_path / "store.db"
+        g, _ = self._guesser([_FakeOpenAIChoice("", "length")] * 2, cache_path=db)
+        with pytest.raises(RuntimeError):
+            g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        assert sqlite3.connect(db).execute("SELECT COUNT(*) FROM responses").fetchone()[0] == 0
+
+    def test_reasoning_effort_defaults_to_low_and_is_sent(self):
+        """Unset means the provider's default, which on gpt-oss-120b is
+        medium -- 8x the tokens for the same one-shot judgment."""
+        g, client = self._guesser([_FakeOpenAIChoice(self.RANKING)])
+        assert g.reasoning_effort == "low"
+        g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        assert client.calls[0]["reasoning_effort"] == "low"
+
+    def test_effort_is_part_of_the_cache_identity(self):
+        low = OpenAICompatGuesser(model="m", client=object())
+        high = OpenAICompatGuesser(model="m", reasoning_effort="high", client=object())
+        assert low.cache_model_id != high.cache_model_id
+        assert low.cache_model_id == "deepinfra/m+effort=low"
