@@ -4083,3 +4083,50 @@ Not changing the shipped sigma on this. 1.5 is ahead on one weak opponent,
 and sigma=1.0 remains untested and announces bigger still -- it may be better
 again or past the peak. That, plus a second opponent, is what a shipping
 decision needs.
+
+## 2026-09-17 — the sigma curve has a plateau, and the failure mode moves along it
+
+Filled in sigma=1.0 and 1.25 against centroid, Sonnet effort=medium, same 50
+seeds and side-swap as every other arm. 2,043 billed calls, ~$9.75.
+
+    sigma  win%  mean k | win/words  win/gift | loss/words  loss/assassin
+      1.0   69%    2.67 |        56        13 |         17             14
+     1.25   70%    2.27 |        59        11 |         22              8
+      1.5   70%    1.93 |        60        10 |         24              6
+      2.0   57%    1.42 |        47        10 |         41              2
+      2.5   51%    1.16 |        38        13 |         46              3
+
+**Win rate plateaus across sigma 1.0-1.5** at 69-70%, then falls off a cliff:
+57% at 2.0, 51% at 2.5. Paired sign tests on matched (seed, side) put the
+three plateau arms at p=1.0 against each other -- genuinely indistinguishable,
+not merely close.
+
+**But the failure mode moves along the plateau.** From 1.5 to 1.0,
+losses-on-words fall 24 -> 17, so the extra tempo really does win more races;
+assassin deaths climb 6 -> 14 and eat the entire gain. sigma=1.0 converts race
+losses into catastrophic losses at close to par. The assassin difference is
+established at 1.0 (14/100 vs 3/100 at sigma=2.5, Fisher p=0.009) where it was
+not at 1.5 (6/100, p=0.498).
+
+So within the plateau **sigma=1.25-1.5 dominates sigma=1.0**: the same win
+rate for roughly half the assassin rate. That is a risk-adjusted preference of
+exactly the kind docs/design-decisions.md argues for reporting separately
+rather than collapsing into one number.
+
+**The control worked.** Wins handed over by centroid's own assassin are flat
+across every arm (13, 11, 10, 10, 13), which they must be -- our sigma cannot
+change how centroid plays. So none of the spread is opponent-blunder luck; it
+is all in the on-words columns.
+
+**Multiplicity.** Ten pairwise tests. Under Bonferroni (alpha=0.005) only
+1.5-vs-2.5 (p=0.0043) survives; 1.0-vs-2.5 (0.0096) and 1.25-vs-2.5 (0.0079)
+do not. The weight of evidence is that all three plateau arms beat both
+high-sigma arms consistently, not any single p-value.
+
+**Where this leaves the shipping decision.** Shipped is 2.5, which is now
+clearly the worst setting tested. The descriptive fit (sigma~2.06) is also in
+the bad region -- more evidence that modelling the listener accurately is not
+the objective. The plateau means the choice inside 1.25-1.5 cannot be made on
+win rate against this opponent and should be made on risk, or on a second
+opponent that is not centroid. Still not changing the config on one weak
+opponent; that needs a docs/versions/ entry and a stronger test.
