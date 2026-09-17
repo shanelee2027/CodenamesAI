@@ -47,9 +47,24 @@ WORD_STATS = CACHE / "word_stats.npz"
 DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
 
 
-def board_lookup(max_seed: int) -> list[tuple[int, frozenset[str]]]:
-    """(seed, word set) for every board the arenas could have played."""
-    return [(s, frozenset(w.lower() for w in Board.generate(seed=s).words)) for s in range(max_seed)]
+def board_lookup(max_seed: int, collected: int = 0) -> list[tuple[int, frozenset[str]]]:
+    """(seed, word set) for every board a cached response could have come from.
+
+    Two sources, built with different vocabularies and disjoint seed ranges:
+    arena games use `Board.generate(seed)` over all 400 board words, while
+    scripts/data/collect_listener_data.py generates from the 250-word TRAINING
+    list at seeds >= 1e6 (the holdout guard -- see that script). Both must be
+    searched or one source silently resolves to nothing and is dropped whole.
+    """
+    from codenames.board import load_training_wordlist
+
+    out = [(s, frozenset(w.lower() for w in Board.generate(seed=s).words)) for s in range(max_seed)]
+    if collected:
+        vocab = load_training_wordlist()
+        base = 1_000_000
+        out += [(base + i, frozenset(w.lower() for w in Board.generate(seed=base + i, vocabulary=vocab).words))
+                for i in range(collected)]
+    return out
 
 
 def resolve_seed(candidates: list[str], boards: list[tuple[int, frozenset[str]]]) -> int | None:
@@ -66,7 +81,7 @@ def resolve_seed(candidates: list[str], boards: list[tuple[int, frozenset[str]]]
     return hits[0] if len(hits) == 1 else None
 
 
-def load_positions(db: Path, model: str, max_seed: int):
+def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
     sims = SimilarityTensor.load(DEFAULT_CACHE_DIR)
     stats = ClueStats.load(DEFAULT_CACHE_DIR)
     clue_index = {w.lower(): i for i, w in enumerate(stats.clue_words)}
@@ -76,7 +91,7 @@ def load_positions(db: Path, model: str, max_seed: int):
         print("building per-word column statistics (one-off, reads the full tensor)...", flush=True)
         wstats = WordStats.build(sims)
         wstats.save(WORD_STATS)
-    boards = board_lookup(max_seed)
+    boards = board_lookup(max_seed, collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = conn.execute(
@@ -237,7 +252,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", type=Path, default=DB)
     ap.add_argument("--model", default=DEFAULT_MODEL, help="which teacher's cached rankings to distil")
-    ap.add_argument("--max-seed", type=int, default=60, help="board seeds to try when resolving positions")
+    ap.add_argument("--max-seed", type=int, default=60, help="arena board seeds to try when resolving")
+    ap.add_argument("--collected", type=int, default=10000,
+                    help="generated-board seeds to try (scripts/data/collect_listener_data.py)")
     ap.add_argument("--val-frac", type=float, default=0.25, help="fraction of BOARD SEEDS held out")
     ap.add_argument("--rounds", type=int, default=3000, help="upper bound; early stopping decides")
     ap.add_argument("--seed", type=int, default=0)
@@ -246,7 +263,7 @@ def main() -> None:
     args = ap.parse_args()
 
     t0 = time.time()
-    positions, dropped = load_positions(args.db, args.model, args.max_seed)
+    positions, dropped = load_positions(args.db, args.model, args.max_seed, args.collected)
     print(f"teacher: {args.model}")
     print(f"usable positions: {len(positions)}   dropped: {dropped}")
     if not positions:

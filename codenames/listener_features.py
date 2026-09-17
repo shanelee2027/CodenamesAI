@@ -57,6 +57,12 @@ P_MAX_SIGMAS = (1.0, 2.0, 3.0)
 # a useful covariate, not a maximum-likelihood estimate.
 _U_LO, _U_HI, _U_N = -6.0, 6.0, 49
 
+# How many of the clue's strongest candidates define "the cluster" for the
+# cohesion features. Small on purpose: a clue for 4 points at a handful of
+# words, and averaging over the whole board would drown the signal in words
+# the clue never meant.
+COHESION_TOP = 5
+
 FEATURE_NAMES: list[str] = [
     # per-word signal, one per embedding space
     "z_glove", "z_numberbatch", "z_wiki2vec",
@@ -73,6 +79,11 @@ FEATURE_NAMES: list[str] = [
     # per-word column statistics: z normalises per CLUE (row), not per WORD.
     # "Bank" is moderately close to everything, "Platypus" to almost nothing.
     "word_mean_sim", "word_sd_sim",
+    # tier 2: thematic grouping. Is w part of the cluster the clue points at,
+    # as opposed to merely close to the clue on its own? This is what a
+    # listener does at k>=3, and the regime where pairwise clue-word
+    # similarity collapses (0.36 top-1 at k=4).
+    "cohesion", "cohesion_rank", "cohesion_minus_own",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
@@ -145,6 +156,38 @@ def _ranks(values: np.ndarray) -> np.ndarray:
     return r / (n - 1)
 
 
+def _cohesion(
+    candidates: list[str], idxs: list[int], z_nb: np.ndarray, sims, clue_stats, clue_index: dict[str, int]
+) -> np.ndarray:
+    """Mean z of w against the clue's top candidates, excluding w itself.
+
+    "Is w in the group?" rather than "is w near the clue?". A word can sit
+    close to the clue by accident; a word that is also close to the OTHER
+    words the clue selects is part of a theme, which is what a listener is
+    looking for when told to find four of something.
+    """
+    n = len(candidates)
+    out = np.full(n, np.nan)
+    top = np.argsort(-z_nb)[: COHESION_TOP + 1]
+    rows = []
+    for t in top:
+        ci = clue_index.get(candidates[t].lower())
+        if ci is None:
+            continue
+        sd = float(clue_stats.std[ci, 1])
+        if not np.isfinite(sd) or sd <= 0:
+            continue
+        sim = np.asarray(sims.tensor[ci, idxs, 1], dtype=np.float64)
+        rows.append(((sim - float(clue_stats.mean[ci, 1])) / sd, int(t)))
+    if not rows:
+        return out
+    for i in range(n):
+        vals = [r[i] for r, t in rows if t != i]
+        if vals:
+            out[i] = float(np.mean(vals))
+    return out
+
+
 def extract(
     clue: str,
     candidates: list[str],
@@ -207,6 +250,16 @@ def extract(
     wi = np.asarray(idxs)
     cols.append(np.asarray(word_stats.mean[wi, 1], dtype=np.float64))
     cols.append(np.asarray(word_stats.sd[wi, 1], dtype=np.float64))
+
+    # Cohesion: mean similarity of w to the other candidates the clue points
+    # at most strongly. Uses word-to-word similarity, available because 396 of
+    # the 400 board words are themselves in the clue vocabulary (only the
+    # multi-word ones are not -- those fall back to NaN, which LightGBM
+    # routes on its own).
+    coh = _cohesion(candidates, idxs, z[:, 1], sims, clue_stats, clue_index)
+    cols.append(coh)
+    cols.append(_ranks(np.nan_to_num(coh, nan=-np.inf)))
+    cols.append(coh - z[:, 1])
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

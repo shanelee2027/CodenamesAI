@@ -4244,3 +4244,47 @@ never seen a clue that is irrelevant to the board, or one that points at the
 opponent's words or the assassin. A spymaster's search scores ~111k candidate
 clues per turn and most are bad, so collection must deliberately sample junk
 and adversarial clues, not just clues a spymaster liked.
+
+## 2026-09-17 — 8.6k adversarial positions bought; two feature hypotheses, both null
+
+Collected 8,648 generated positions from gpt-oss-120b (2.6 h, $0.88, 4.2%
+rejected by the strict guard). Deliberately adversarial: clues drawn 40/20/10/
+10/20 across own / opponent / assassin / neutral / uniform-random, on boards
+revealed to a random depth, from the 250-word training list at seeds >= 1e6.
+Rejection was near-uniform by kind (93.6% retained on junk clues, 96-97%
+elsewhere), so the adversarial half survived intact.
+
+**The data did what it was bought to do.** Baseline agreement (rank by
+numberbatch z) fell from 0.6030 on game-derived Sonnet positions to 0.4276 on
+these -- numberbatch is a much worse predictor of a listener when the clue
+points at the opponent or at nothing, which is exactly the regime a
+spymaster's search must get right and which no game-derived data contains.
+
+**But the model's lift barely moved.** +0.0139 pooled on 15,976 training
+choice events against +0.0108 on 5,951. 2.7x the data, +0.003. That is a
+feature ceiling, not a data ceiling, and it means another 10k positions would
+have been wasted money.
+
+**Cohesion (tier 2) is null.** "Is w part of the cluster the clue points at",
+mean z of w against the clue's top-5 candidates, plus its rank and its margin
+over w's own clue similarity:
+
+    without cohesion   all 0.4416 (+0.0139)   step-1 0.6392 (+0.0060)
+    with cohesion      all 0.4414 (+0.0137)   step-1 0.6396 (+0.0065)
+
+`cohesion_minus_own` came 4th of 24 by gain importance -- the trees used it
+heavily -- and held-out accuracy did not move. Gain importance measures
+training-loss reduction, not generalisation, and this is a clean example of
+the difference.
+
+**Where that leaves the distilled listener.** It is barely beating "rank by
+numberbatch z", which is a guesser the project already has for free. And the
+sigma fit says a listener *is* numberbatch plus N(0, 2.06) (2.20 for gpt-oss),
+with calibration passing. If that model is right, the calibrated distillation
+is `noisy_numberbatch` at the fitted sigma -- no training, no features, no
+data purchase -- and the GBT's only job is to beat it. That comparison is free
+and is the next thing to run, ahead of extracting entity vectors.
+
+Also note top-1 agreement may be the wrong yardstick: a guesser only has to
+make the same GAME decisions, and the real test is whether it reproduces the
+sigma ladder (69/70/70/57/51) better than noisy_glove's 54/41/26.
