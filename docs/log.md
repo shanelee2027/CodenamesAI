@@ -4288,3 +4288,57 @@ and is the next thing to run, ahead of extracting entity vectors.
 Also note top-1 agreement may be the wrong yardstick: a guesser only has to
 make the same GAME decisions, and the real test is whether it reproduces the
 sigma ladder (69/70/70/57/51) better than noisy_glove's 54/41/26.
+
+## 2026-09-17 — the teacher is 84-99% self-consistent: the gap is missing knowledge, not noise
+
+Shane's read, against mine. I had argued the distillation plateau might be
+irreducible: vague clues have no right answer, so 0.35 could already be the
+ceiling. Measured it instead -- 750 collected positions re-asked with the
+response cache bypassed, 150 per clue kind, $0.08 and 12 minutes.
+
+    kind        n    teacher self-agreement   our model   headroom
+    own       149      0.987 [0.97, 1.00]        0.729      26 pts
+    assassin  145      0.952 [0.92, 0.99]        0.721      23 pts
+    opponent  150      0.947 [0.91, 0.98]        0.726      22 pts
+    neutral   149      0.933 [0.89, 0.97]        0.740      19 pts
+    random    144      0.840 [0.78, 0.90]        0.352      49 pts
+
+**The noise hypothesis is dead.** gpt-oss reproduces its own top pick on a
+*meaningless* clue 84% of the time, and on targeted clues 93-99%. Weighting by
+dataset composition the ceiling is ~0.94 against our ~0.64: about 30 points of
+reproducible structure the features do not capture, worst by far on junk clues.
+
+This is consistent with the earlier free estimate -- cross-model agreement
+(0.756 on vague positions) lower-bounds self-consistency, and self-consistency
+indeed came in above it.
+
+**What it does and does not establish.** Self-consistency measures determinism,
+not learnability: a teacher can be perfectly reproducible while relying on
+knowledge no embedding holds. So this rules out "the residual is noise" and
+makes "the residual is knowledge we lack" the live hypothesis -- which is what
+justifies spending on new sources rather than more data or more model.
+
+**Also measured: both teachers have a prompt primacy bias.** Mean normalised
+position of the chosen word in the prompt list (0.5 = unbiased):
+
+    gpt-oss-120b     0.4609 [0.454, 0.468]
+    claude-sonnet-5  0.4772 [0.468, 0.486]
+
+Both exclude 0.5. Part of what our features cannot explain is not semantic at
+all -- it is where a word sits in the prompt. No embedding space will supply
+it. Candidate order is board order, which is role-shuffled, so this adds noise
+rather than bias to game outcomes, but it is a real property of the measuring
+instrument and it is a free feature if we want fidelity over cleanliness.
+
+**Also: adversarial clues are not the hard case.** Clues aimed at the
+opponent (0.715 baseline) or the assassin (0.713) are predicted as well as
+clues aimed at one's own words (0.727). The hard case is the absence of any
+anchor: junk clues sit at 0.320. That was not what the adversarial collection
+was expected to show.
+
+**Next, in order.** SWOW free-association norms first: "what word comes to
+mind given this cue" is precisely the junk-clue regime, where there is no
+strong semantic anchor but the teacher is still 84% determined. Then the
+Wikipedia2Vec ENTITY vectors already on disk, then ConceptNet graph edges.
+Coverage of our 11,145-word clue pool has to be checked before any of them,
+since a source that covers a tenth of the pool cannot move a pooled metric.
