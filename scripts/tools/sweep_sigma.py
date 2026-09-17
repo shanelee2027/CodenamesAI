@@ -45,9 +45,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
-from concurrent.futures import ThreadPoolExecutor
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,7 +63,7 @@ from codenames.game import ROLE_REWARD
 from codenames.guessers.llm import LLMGuesser
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG as DEFAULT_POOL
 from codenames.llm_store import LLMResponseCache
-from codenames.similarity import SimilarityTensor
+from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 from codenames.spymasters.base import TurnContext
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
 
@@ -82,6 +84,95 @@ class Turn:
     clue: str
     number: int
     candidates: list[str]
+
+
+
+# --------------------------------------------------------------------------
+# CPU parallelism.
+#
+# Scoring one board against the clue vocabulary takes ~530ms, and a full
+# --simulate sweep needs ~7000 of them (6000 to play the games, 1000 to score
+# the resulting positions) -- an hour serially. torch defaults to 8 intra-op
+# threads here and they are nearly worthless on this shape of work: measured
+# 604ms on one thread against 526ms on eight, a 1.15x return for 8 cores. One
+# process per core with torch pinned to a single thread each is ~14x instead.
+# --------------------------------------------------------------------------
+
+_W: dict = {}
+
+
+def _pool_init(cache_dir: Path) -> None:
+    # Set these BEFORE importing torch. torch.set_num_threads(1) alone runs
+    # after OpenMP has already built its pool, and OpenMP busy-waits by
+    # default -- 16 workers x 8 spinning threads on 16 cores burned 43
+    # minutes of kernel time in a 7m55s run. "spawn" gives each worker a
+    # fresh interpreter, so setting them here lands before torch loads.
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        os.environ[var] = "1"
+    os.environ.setdefault("OMP_WAIT_POLICY", "PASSIVE")
+    import torch
+
+    torch.set_num_threads(1)
+    _W["sims"] = SimilarityTensor.load(cache_dir)
+    _W["spymasters"] = {}
+    _W["guessers"] = {}
+
+
+def _spymaster(sigma: float):
+    if sigma not in _W["spymasters"]:
+        _W["spymasters"][sigma] = ExpectedWordsSpymaster(space="numberbatch", sigma=sigma, max_rarity=10.0)
+    return _W["spymasters"][sigma]
+
+
+def _clue_task(task):
+    """(sigma, board_seed, team, revealed) -> the clue that sigma plays there."""
+    from codenames.guessers.registry import load_pool  # noqa: F401  (kept warm in workers)
+
+    sigma, board_seed, team, revealed = task
+    board = Board.generate(seed=board_seed)
+    for w in revealed:
+        board.reveal(w)
+    view = board if team == "A" else OpponentBoardView(board)
+    ctx = TurnContext(board=view, turn_index=len(revealed))
+    clue, number, _ = _spymaster(sigma).top_clues(ctx, _W["sims"], 1)[0]
+    cands = tuple(w for w in view.words if not view.is_revealed(w))
+    return board_seed, team, revealed, clue, number, cands
+
+
+def _play_task(task):
+    """(sigma, board_seed, guesser_name) -> one board's two seatings, as
+    (team, revealed-before-turn) snapshots of this sigma's own turns."""
+    from codenames.game import play_two_team_game
+    from codenames.guessers.registry import load_pool
+    from codenames.spymasters.centroid import CentroidSpymaster
+
+    sigma, board_seed, guesser_name = task
+    if guesser_name not in _W["guessers"]:
+        _W["guessers"][guesser_name] = load_pool(DEFAULT_POOL)[guesser_name].guesser
+    guesser = _W["guessers"][guesser_name]
+    sm, opponent = _spymaster(sigma), CentroidSpymaster(seed=0)
+
+    out = []
+    for swap in (False, True):
+        board = Board.generate(seed=board_seed)
+        teams = ((sm, guesser), (opponent, guesser)) if swap else ((opponent, guesser), (sm, guesser))
+        result = play_two_team_game(board, teams[0], teams[1], _W["sims"])
+        ours = "A" if swap else "B"
+        revealed: list[str] = []
+        for tt in result.turns:
+            if tt.team == ours:
+                out.append((ours, tuple(revealed)))
+            revealed.extend(w for w, _ in tt.turn.guesses)
+    return board_seed, out
+
+
+def _pool(workers: int):
+    return ProcessPoolExecutor(
+        max_workers=workers,
+        mp_context=multiprocessing.get_context("spawn"),
+        initializer=_pool_init,
+        initargs=(DEFAULT_CACHE_DIR,),
+    )
 
 
 def positions(n: int, seed0: int = SEED0) -> list[Board]:
@@ -286,6 +377,9 @@ def main() -> None:
     ap.add_argument("--simulate-guesser", default="noisy_wikipedia2vec",
                     help="listener for --simulate. Use a DIFFERENT space than the spymaster scores in "
                          "(default matches the recorded LLM games' position distribution best).")
+    ap.add_argument("--cpu-workers", type=int, default=None,
+                    help="processes for clue scoring and game simulation (default: os.cpu_count()). "
+                         "Each pins torch to 1 thread -- torch's own 8 threads return only 1.15x here.")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
@@ -295,12 +389,38 @@ def main() -> None:
     effort = None if effort in ("", "none") else effort
 
     sims = SimilarityTensor.load()
+    workers = args.cpu_workers or (os.cpu_count() or 8)
+
     if args.simulate is not None:
-        by_sigma = {}
-        for sg in sigmas:
-            bs = positions_from_play(sg, args.simulate, args.simulate_guesser, sims, n=args.positions)
-            by_sigma[sg] = turns_for(sg, bs, sims)
-            print(f"  sigma {sg}: simulated {args.simulate} boards -> {len(bs)} positions", flush=True)
+        # Fan out every (sigma, board) pair at once rather than a sigma at a
+        # time: 10 sigmas x 25 boards is 250 independent games, and doing
+        # them one sigma at a time leaves most cores idle at each stage.
+        play_tasks = [(sg, seed, args.simulate_guesser) for sg in sigmas for seed in range(args.simulate)]
+        snaps: dict[float, list] = {sg: [] for sg in sigmas}
+        done = 0
+        by_sigma = {sg: [] for sg in sigmas}
+        with _pool(workers) as ex:
+            for (sg, _, _), (board_seed, turns) in zip(play_tasks, ex.map(_play_task, play_tasks)):
+                snaps[sg].extend((board_seed, team, rev) for team, rev in turns)
+                done += 1
+                if done % 50 == 0:
+                    print(f"  simulated {done}/{len(play_tasks)} boards", flush=True)
+
+            rng = random.Random(0)
+            clue_tasks = []
+            for sg in sigmas:
+                picked = snaps[sg] if len(snaps[sg]) <= args.positions else rng.sample(snaps[sg], args.positions)
+                clue_tasks.extend((sg, seed, team, rev) for seed, team, rev in picked)
+                print(f"  sigma {sg}: {len(snaps[sg])} positions -> {len(picked)} sampled", flush=True)
+
+            for (sg, *_), (board_seed, team, revealed, clue, number, cands) in zip(
+                clue_tasks, ex.map(_clue_task, clue_tasks)
+            ):
+                board = Board.generate(seed=board_seed)
+                for w in revealed:
+                    board.reveal(w)
+                view = board if team == "A" else OpponentBoardView(board)
+                by_sigma[sg].append(Turn(board=view, clue=clue, number=number, candidates=list(cands)))
         boards = None
     else:
         if args.positions_from is not None:
@@ -354,24 +474,30 @@ def main() -> None:
         for s in sigmas
     }
 
-    n = len(boards)
-    print(f"\n{'sigma':>6}{'announced':>11}{'delivered':>11}{'gap':>7}"
-          f"{'reward':>9}{'assassin':>10}{'opp':>6}{'neut':>6}{'clean':>7}")
+    # Per sigma, not len(boards): with --simulate each sigma has its own
+    # position set and there is no shared `boards` list at all.
+    print(f"\n{'sigma':>6}{'n':>5}{'announced':>11}{'delivered':>11}{'gap':>7}"
+          f"{'reward':>9}{'s.e.':>7}{'assassin':>10}{'opp':>6}{'neut':>6}{'clean':>7}")
     best = None
     for s in sigmas:
         r = rows[s]
+        n = len(r)
         ann = sum(x["announced"] for x in r) / n
         del_ = sum(x["own"] for x in r) / n
         rew = sum(x["reward"] for x in r) / n
+        var = sum((x["reward"] - rew) ** 2 for x in r) / (n - 1) if n > 1 else 0.0
+        se = (var / n) ** 0.5
         c = {k: sum(1 for x in r if x["cause"] == k)
              for k in ("assassin", "opponent", "neutral", "used the number")}
-        print(f"{s:>6}{ann:>11.2f}{del_:>11.2f}{del_ - ann:>+7.2f}{rew:>9.3f}"
+        print(f"{s:>6}{n:>5}{ann:>11.2f}{del_:>11.2f}{del_ - ann:>+7.2f}{rew:>9.3f}{se:>7.3f}"
               f"{c['assassin']:>10}{c['opponent']:>6}{c['neutral']:>6}"
               f"{c['used the number']:>7}")
         if best is None or rew > best[1]:
-            best = (s, rew)
+            best = (s, rew, se)
 
-    print(f"\nbest realized reward: sigma = {best[0]} at {best[1]:+.3f} per turn")
+    print(f"\nbest realized reward: sigma = {best[0]} at {best[1]:+.3f} +/- {best[2]:.3f} per turn")
+    print("Compare sigmas against these standard errors -- neighbouring values")
+    print("are often within noise of each other.")
     if args.out:
         args.out.write_text(json.dumps(
             {str(s): rows[s] for s in sigmas}, indent=2))

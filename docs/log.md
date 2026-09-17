@@ -3755,3 +3755,80 @@ at random. That re-run costs API money and has not been done.
 `positions()`'s own docstring says the intent was "boards spanning the
 arc of a game, not just openings," so this is an implementation flaw in
 the approximation, not a deliberate choice.
+
+## 2026-09-17 — sigma re-swept on simulated positions: no basis to move it
+
+Acting on the previous entry: `positions()` built sweep boards by
+revealing cards at random, which made them easier than real play, so the
+sigma that the only model's only free parameter was set to had been
+chosen on a distribution real games never visit. Re-ran the sweep with
+each sigma scored on positions its *own* play reaches
+(`sweep_sigma.py --simulate 25`, Claude Sonnet at medium effort, 100
+positions per sigma, 881 calls, ~$4).
+
+**The correction validated first, for free.** Mean announced number at
+sigma=2.5: 1.72 under random reveals, **1.20** under simulated positions,
+1.22 under snapshots of recorded games — against **1.16** measured in the
+100 real games of the centroid matchup. The diagnosis was right and the
+new position source reproduces real play. The sweep's own table then
+reported 1.16 at sigma=2.5, matching the matchup exactly.
+
+**Expected:** a shifted optimum, since the old boards were systematically
+easy. (I guessed it would move up, toward more caution. Wrong on two
+counts.)
+
+**Got:** no optimum worth acting on.
+
+| sigma | announced | delivered | reward | s.e. | assassin | clean |
+|---|---|---|---|---|---|---|
+| 0.25 | 3.67 | 1.39 | 0.232 | 0.281 | 8 | 13 |
+| 0.5 | 3.37 | 1.37 | 0.488 | 0.271 | 5 | 20 |
+| **1.0** | 2.78 | 1.69 | **1.106** | 0.235 | 3 | 47 |
+| 1.5 | 1.95 | 1.34 | 0.852 | 0.198 | 3 | 63 |
+| 2.0 | 1.39 | 1.15 | 0.978 | 0.119 | 1 | 83 |
+| 2.5 | 1.16 | 1.06 | 0.984 | 0.058 | 0 | 90 |
+| 3.0 | 1.10 | 1.03 | 0.984 | 0.049 | 0 | 93 |
+| 4.0 | 1.01 | 0.96 | 0.926 | 0.034 | 0 | 95 |
+| 6.0 | 1.00 | 0.92 | 0.798 | 0.114 | 1 | 92 |
+| 10.0 | 1.00 | 0.71 | 0.400 | 0.163 | 2 | 71 |
+
+sigma=1.0 has the highest mean, and is not significantly better than
+anything: vs 1.5 p=0.41, vs 2.0 p=0.63, vs 2.5 p=0.62, vs 3.0 p=0.61, vs
+4.0 p=0.45. Its apparent lead is an artifact of its own variance.
+
+**The errors are strongly heteroscedastic, and that is the lesson.**
+Reward sd is 2.35 at sigma=1.0 against 0.58 at sigma=2.5, because a
+larger announced number means occasional -10 assassin turns. Taking the
+argmax of a noisy curve whose arms have 4-5x different variance
+systematically favours the high-variance arm -- it has the most chances
+to look good by luck. The original sweep reported no standard errors at
+all, which is how sigma=2.5 (1.314) came to look like a clean peak over
+2.0 (1.172) and 3.0 (1.174) when those three differ by less than one
+s.e. The table now prints s.e. per row.
+
+**Separating them is not affordable.** sigma=1.0 vs sigma=2.5 would need
+~3,100 positions per arm for 80% power, roughly $253 for those two arms
+alone, against $4 for the whole sweep at n=100.
+
+**Decision: keep sigma=2.5.** Not because it won -- nothing won -- but
+because it is statistically indistinguishable from the nominal best while
+having the tightest error bar (0.058), zero assassin hits in 100
+positions, and 90/100 clean finishes. Moving it would be chasing noise.
+sigma=3.0 is an equally defensible choice on identical evidence (0.984,
+s.e. 0.049, 93 clean); there is no reason to prefer either.
+
+What genuinely changed is confidence in the number rather than the number
+itself: sigma=2.5 was previously justified by a peak that the corrected
+positions do not reproduce (1.314 there, 0.984 here), and is now
+justified by being indistinguishable from every plausible alternative
+while carrying the least risk.
+
+**Incidental, on CPU cost.** The sweep needs ~7,000 full-vocabulary clue
+searches at ~530ms each -- an hour serially. torch defaults to 8 intra-op
+threads and they return almost nothing on this shape of work: 604ms on
+one thread against 526ms on eight, 1.15x for 8 cores. One process per
+core with `OMP_NUM_THREADS=1` set *before* torch imports (setting
+`torch.set_num_threads(1)` afterwards is too late -- the OpenMP pool
+already exists and busy-waits) brings it to ~7 min of CPU phase. Kernel
+time stayed high (39 min) even after the fix, so something else is still
+contending; not chased further.

@@ -1,0 +1,6022 @@
+{
+  "0.25": [
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "opponent",
+      "reward": 2.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "assassin",
+      "reward": -7.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "assassin",
+      "reward": -8.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "opponent",
+      "reward": 2.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "assassin",
+      "reward": -7.0,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "assassin",
+      "reward": -8.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "assassin",
+      "reward": -8.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "opponent",
+      "reward": 2.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "assassin",
+      "reward": -9.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "assassin",
+      "reward": -9.0,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    }
+  ],
+  "0.5": [
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "assassin",
+      "reward": -8.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "opponent",
+      "reward": 2.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "assassin",
+      "reward": -9.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    }
+  ],
+  "1.0": [
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 3
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "opponent",
+      "reward": 2.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 3
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 4
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "neutral",
+      "reward": 2.8,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "assassin",
+      "reward": -9.0,
+      "announced": 4
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 3
+    }
+  ],
+  "1.5": [
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 4
+    },
+    {
+      "own": 4,
+      "cause": "used the number",
+      "reward": 4.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "assassin",
+      "reward": -8.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "assassin",
+      "reward": -9.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "assassin",
+      "reward": -9.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "neutral",
+      "reward": 1.8,
+      "announced": 4
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 3
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    }
+  ],
+  "2.0": [
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "assassin",
+      "reward": -9.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 3,
+      "cause": "used the number",
+      "reward": 3.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    }
+  ],
+  "2.5": [
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "opponent",
+      "reward": 1.0,
+      "announced": 3
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    }
+  ],
+  "3.0": [
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "neutral",
+      "reward": 0.8,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 2,
+      "cause": "used the number",
+      "reward": 2.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    }
+  ],
+  "4.0": [
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "opponent",
+      "reward": 0.0,
+      "announced": 2
+    }
+  ],
+  "6.0": [
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    }
+  ],
+  "10.0": [
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "assassin",
+      "reward": -10.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "opponent",
+      "reward": -1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    },
+    {
+      "own": 1,
+      "cause": "used the number",
+      "reward": 1.0,
+      "announced": 1
+    },
+    {
+      "own": 0,
+      "cause": "neutral",
+      "reward": -0.2,
+      "announced": 1
+    }
+  ]
+}
