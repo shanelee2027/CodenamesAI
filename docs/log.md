@@ -4035,3 +4035,51 @@ compromise that is over-optimistic about large-k clues. A `sigma = a + b*k`
 variant is a real, data-grounded candidate for the next model -- but the
 selection confound above has to be handled first, since fitting sigma(k) on
 clues whose k the spymaster chose would bake its own optimism into the fit.
+
+## 2026-09-17 — sigma=2.0 played for real: the measured sigma is not the best sigma
+
+The listener fit put Sonnet at sigma=2.06 [2.00, 2.11]. Shipped is 2.5, and
+the only head-to-head said 1.5 beat 2.5. So the obvious question was what the
+*measured* value actually does in games. sigma=2.0 had never been played --
+only simulated in the clue-number arc.
+
+Ran it on the same footing as the others: 50 boards (seeds 0-49), sides
+swapped, vs centroid, Sonnet at effort=medium. 1,014 newly billed calls out
+of 1,120 clues (~10% cache hits on shared opening positions), ~$4.84.
+
+    sigma   mean k (sonnet)   mean k (noisy_glove)   win% vs centroid
+      1.5              1.93                   1.90              70.0%
+      2.0              1.42                   1.43              57.0%
+      2.5              1.16                   1.21              51.0%
+
+Paired on matched (board seed, side), sign test on discordant pairs:
+
+    1.5 vs 2.0   25-12 discordant   p=0.047
+    1.5 vs 2.5   30-11 discordant   p=0.0043
+    2.0 vs 2.5   17-11 discordant   p=0.345
+
+**sigma=1.5 beats both; 2.0 and 2.5 are indistinguishable.** Three tests, so
+under Bonferroni (0.0167) only 1.5-vs-2.5 survives -- 1.5-vs-2.0 is
+suggestive, not established. Still one weak opponent, and the pairing is on
+board and side only: the games diverge after the first move, so this is
+matched, not controlled.
+
+**The headline: descriptive sigma and playing sigma are genuinely different
+numbers, now measured separately.** The listener really does behave like
+sigma~2.06, and a spymaster that believes it plays no better than one that
+believes 2.5, while one that believes 1.5 -- announcing 1.93 words a clue
+instead of 1.42 -- wins more. Modelling the listener accurately is not the
+objective; winning the race is, and tempo is worth more than the per-turn
+expected-value objective (with its -10 assassin charge) credits.
+
+**Useful side finding: mean clue number barely depends on the listener.**
+1.42 vs 1.43 at sigma=2.0, 1.93 vs 1.90 at sigma=1.5, 1.16 vs 1.21 at 2.5 --
+Sonnet against free noisy_glove. Clue choice never consults the guesser; only
+the trajectory does, and the trajectories are close enough that the mean
+survives. Mean k can therefore be swept for free from here on, and only win
+rate needs paid games.
+
+Not changing the shipped sigma on this. 1.5 is ahead on one weak opponent,
+and sigma=1.0 remains untested and announces bigger still -- it may be better
+again or past the peak. That, plus a second opponent, is what a shipping
+decision needs.
