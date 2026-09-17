@@ -4130,3 +4130,47 @@ the objective. The plateau means the choice inside 1.25-1.5 cannot be made on
 win rate against this opponent and should be made on risk, or on a second
 opponent that is not centroid. Still not changing the config on one weak
 opponent; that needs a docs/versions/ entry and a stronger test.
+
+## 2026-09-17 — the model re-gives clues that just failed (found by random sampling)
+
+Shane asked for a random sample of sigma=1.5 games rather than selected ones.
+The curated picks had shown one game repeating 'forbes'; the random draw of 6
+had a repeat in 2 of them, which prompted counting it properly.
+
+**Clue repetition is systematic and scales with aggression:**
+
+    arm          games with a repeat   repeated clues / all clues
+    sigma=1.0              38%                14.2%
+    sigma=1.25             32%                 9.0%
+    sigma=1.5              30%                 8.6%
+    sigma=2.0              25%                 6.6%
+    sigma=2.5              19%                 4.1%
+    centroid                 -                 3.2%
+
+**Every repeat follows a miss.** Of 43 repeats at sigma=1.5: 24 came after a
+neutral, 19 after an opponent word, and *zero* after a clean
+`exhausted_guesses` turn. So the model never re-uses a clue that worked -- it
+re-uses only clues that have just been shown not to work.
+
+The mechanism is plain once seen: the failed guess removes a distractor from
+the board, which *raises* that clue's score, so it returns as the argmax. The
+guesser's demonstrated misreading is nowhere in the model's state, because
+`expected_words` scores each turn from the board alone. One game gave 'forbes'
+n=3 (took a neutral), then 'forbes' n=4 -- escalating the number after a
+failure -- and hit the assassin.
+
+The repeats do badly: 15/43 got no own word at all, 24/43 ended in another
+miss, 1 in the assassin. 28/43 got at least one own word, so it is not pure
+waste -- but re-running a known-failed experiment is not why.
+
+This is exactly the gap docs/design-decisions.md names as the open direction:
+"a clue only has to be distinguishable from the clues already given." It also
+explains part of why low sigma is risky: bigger k means more partial failures,
+which means more distractor removals, which feeds the repetition.
+
+**Why this is a good next model.** The fix needs no lookahead and no LLM:
+exclude (or penalise) clues already given in this game. `TurnContext` already
+carries `turn_index`, so the plumbing for game state exists. Clue choice and
+mean k are free to measure (established earlier today: mean k is within 0.01-0.05
+between Sonnet and a free listener), so the whole change can be developed and
+screened at zero cost, with paid games only to confirm the win rate.
