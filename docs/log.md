@@ -3832,3 +3832,64 @@ core with `OMP_NUM_THREADS=1` set *before* torch imports (setting
 already exists and busy-waits) brings it to ~7 min of CPU phase. Kernel
 time stayed high (39 min) even after the fix, so something else is still
 contending; not chased further.
+
+## 2026-09-17 — sigma=1.5 beats sigma=2.5 by 19 points, and the sweep ranked them backwards
+
+`expected_words[sigma=1.5]` vs `centroid`, 50 boards x both seatings, Claude
+Sonnet at medium effort -- the same seeds, opponent and listener as the
+sigma=2.5 matchup already in the store, so the two are directly comparable.
+
+| | win% (95% CI) | assassin% | mean k | own/clue | own% |
+|---|---|---|---|---|---|
+| sigma=2.5 | 51 [41.3, 60.6] | 3 | 1.16 | 1.07 | 93.2 |
+| **sigma=1.5** | **70 [60.4, 78.1]** | 6 | 1.93 | **1.33** | 78.9 |
+
++19pp, z = 2.75, **p = 0.006**. Paired by board it is the same story: sigma=1.5
+won more games on 21 boards, fewer on 6, tied on 23 (sign test p = 0.006).
+
+The mechanism is pace. sigma=1.5 is less accurate per guess (78.9% own against
+93.2%) and hits the assassin twice as often (6% against 3%), but delivers 1.33
+own words per clue against 1.07, and over a full game that compounds into a
+decisive lead. sigma=2.5's caution was buying accuracy that did not pay.
+
+**The part that matters beyond the parameter: the per-turn reward proxy ranked
+these backwards.** The simulated sweep scored sigma=1.5 at 0.852 -- the *worst*
+of the 1.0-3.0 range -- against sigma=2.5's 0.984. In real games sigma=1.5 wins
+19 points more. That proxy is the only basis on which sigma has ever been
+chosen, and it is now known to be anti-correlated with game outcomes over at
+least part of the range. The likely cause: per-turn reward charges -10 for an
+assassin and +1 per word, which overweights rare catastrophes against the
+compounding value of pace, and it scores isolated turns that are never played
+forward, so it cannot see a game lost on the clock.
+
+Not yet acted on. Two things first: this is one weak opponent (faster play beats
+a weak opponent more reliably than a strong one), and sigma=1.0 is untested but
+announces bigger still (2.19 pooled) -- it may be better again or past the peak.
+
+## 2026-09-17 — cache-blocking the clue search: tried, measured, reverted
+
+`gain_and_penalty` scores all ~11k candidates at once, allocating ~68MB for one
+intermediate. Candidates never interact, so blocking into cache-sized slices is
+an exact refactor. An isolated benchmark showed 3.55x at block=128, bit-identical
+output (max|diff| = 0).
+
+**The 3.55x was a benchmarking error.** That test ran one process against
+worst-case *fresh-board* array dimensions while 16 arc workers were saturating
+memory bandwidth, so it measured a starved process rather than the workload.
+A/B on the real thing -- the arc tool, 16 workers, 8 games per sigma each way:
+
+    unblocked     94.69s wall, 1264.64 user, 33.79 sys
+    blocked(128)  94.41s wall, 1272.04 user, 24.21 sys
+
+No difference, and none on an idle single process either (507ms unblocked vs
+525ms blocked). Real arc turns are mostly mid-game, where n_own and n_non_own
+have shrunk and the arrays are already cache-resident; the optimization solved a
+problem this workload does not have. Reverted rather than kept as harmless
+complexity in the model's hot path.
+
+**Where the 20 minutes actually goes**, since that was the original question:
+85% core occupancy, so the pool is not the limit. Each clue search costs 0.60s
+of CPU alone but 1.71s when 16 run at once -- memory-bandwidth contention -- so
+effective speedup is 4.6x on 16 cores, not 16x. ~10,000 clue searches at that
+rate is the runtime. Making it faster needs a cheaper search, not more workers,
+and candidate blocking is not that lever.
