@@ -104,6 +104,41 @@ def calibration(conf: np.ndarray, hit: np.ndarray, label: str) -> float:
     return ece
 
 
+def by_context(ng: np.ndarray, nm: np.ndarray, sizes: np.ndarray,
+               step: np.ndarray, gname: str) -> None:
+    """Break the comparison down by how many words are left and how deep into
+    the turn we are.
+
+    These get conflated: a 3-word candidate set means either a mostly-revealed
+    BOARD (still the listener's first pick -- the decision the spymaster cares
+    about) or a late STEP inside a turn (the teacher has taken its favourites
+    and is ranking words it does not want). Raw log loss is not comparable
+    across the bins because chance moves with n, so report the gap to uniform:
+    how many nats of the available information each model actually captures.
+    """
+    unif = np.log(sizes.astype(float))
+    print("\ninformation captured over uniform (nats) -- higher is better")
+    print(f"  {'candidates':>10s} {'step':>9s} {'n':>6s} {'available':>10s} "
+          f"{'Gauss':>7s} {'GBT':>7s} {'GBT share':>10s}")
+    for lo, hi in [(2, 8), (9, 16), (17, 25)]:
+        for label, sel in (("1 (first)", step == 0), ("2+", step > 0)):
+            m = (sizes >= lo) & (sizes <= hi) & sel
+            if m.sum() < 50:
+                continue
+            u = unif[m].mean()
+            gi, mi = u - ng[m].mean(), u - nm[m].mean()
+            print(f"  {lo:2d}-{hi:2d}{'':5s} {label:>9s} {m.sum():6d} {u:10.3f} "
+                  f"{gi:7.3f} {mi:7.3f} {mi / u:9.1%}")
+    print("\nby step index alone (all board sizes):")
+    print(f"  {'step':>5s} {'n':>6s} {'available':>10s} {'Gauss':>7s} {'GBT':>7s}")
+    for j in range(5):
+        m = step == j
+        if m.sum() < 50:
+            continue
+        u = unif[m].mean()
+        print(f"  {j+1:5d} {m.sum():6d} {u:10.3f} {u - ng[m].mean():7.3f} {u - nm[m].mean():7.3f}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", type=Path, default=PROJECT_ROOT / "cache" / "llm_store.db")
@@ -183,6 +218,9 @@ def main() -> None:
     print(f"information captured vs uniform: Gaussian {u - scored[gname][0].mean():.4f} nats, "
           f"GBT {u - scored[mname][0].mean():.4f} nats "
           f"({(u - scored[mname][0].mean()) / (u - scored[gname][0].mean()) - 1:+.1%})")
+
+    step = np.array([j for p in va_pos for j in range(min(p["k"], p["n"] - 1))])
+    by_context(scored[gname][0], scored[mname][0], np.array(gv), step, gname)
 
 
 if __name__ == "__main__":

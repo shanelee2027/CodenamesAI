@@ -4677,3 +4677,59 @@ listener assumption you should optimise against are different objects.
 optimum 2.4 is 1.8955, against 1.8961 at 2.5 -- 0.0006 nats, next to the GBT's
 0.1675 advantage. The curve is flat across 2.2--2.6, so no choice of sigma
 rescues it; the deficit is the functional form, not the parameter.
+
+## Does the listener hold up on a mostly-revealed board?
+
+Shane asked how the model generalises when fewer than 25 words remain. The
+honest worry was data: the collector reveals a random number of words, so
+small candidate sets are rarer (2--8 words is 22% of training choice events,
+2--4 alone only 4%). And the Gaussian already shows an n-dependence -- step-1
+alone wants sigma 2.1 while pooling pushes it to 2.4.
+
+Answer: **board size is not the problem. Step index is.** Reported as nats
+captured over uniform, because chance moves with n and raw log loss across
+bins is not comparable. `scripts/tools/eval_listener_calibration.py` now
+prints this breakdown.
+
+    candidates      step      n  available   Gauss     GBT  GBT share
+     2- 8      1 (first)   1080      1.876   0.935   1.057     56.4%
+     2- 8             2+   2418      1.703   0.092   0.196     11.5%
+     9-16      1 (first)   2482      2.509   1.200   1.342     53.5%
+     9-16             2+   3646      2.509   0.188   0.373     14.9%
+    17-25      1 (first)   2763      3.039   1.474   1.671     55.0%
+    17-25             2+   3377      3.006   0.359   0.559     18.6%
+
+At step 1 the GBT captures 56.4% / 53.5% / 55.0% of the available information
+as the board shrinks -- flat to within noise. The Gaussian is equally flat at
+~48--50%. Neither model degrades with board size at all in relative terms, and
+the GBT's edge over the Gaussian survives everywhere (paired, +0.110 at 2--8
+words, +0.168 at 9--16, +0.199 at 17--25, all CIs clear of zero).
+
+What collapses is depth into the turn:
+
+      step      n  available   Gauss     GBT
+         1   6325      2.632   1.275   1.437
+         2   4704      2.547   0.373   0.559
+         3   3167      2.455   0.106   0.271
+         4   1570      2.331   0.020   0.152
+
+The Gaussian captures 0.020 nats at step 4 -- indistinguishable from knowing
+nothing. The GBT is better at every depth but also falls off a cliff.
+
+**This is a property of the teacher, not of the models.** Once gpt-oss has
+taken the words it actually wants, the rest of its ranking is close to
+arbitrary, and it matches the measured self-consistency: re-asking the same
+position agreed on the top pick 84--99% of the time depending on clue kind, and
+there is no reason the tail should be anywhere near that stable.
+
+**Two consequences worth acting on.**
+
+1. Every pooled number in this log is dominated by near-noise. Steps 3 and 4
+   are 4,737 of 15,766 validation events (30%) carrying 0.271 and 0.152 nats.
+   The pooled 0.4611 accuracy and 1.7286 log loss are real but they are mostly
+   a measurement of how well we fit a coin flip.
+2. The PL expansion weights step 4 exactly as heavily as step 1 in the
+   objective, so a meaningful share of model capacity is spent fitting the
+   teacher's arbitrary tail. Mean k in real games is 1.42, so steps 3+ barely
+   occur in play. Down-weighting or truncating later steps is a training-side
+   change needing no new data, and it is the obvious next experiment.
