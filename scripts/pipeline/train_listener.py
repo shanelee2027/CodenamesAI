@@ -51,6 +51,25 @@ SWOW_TABLES = CACHE / "swow.npz"
 ENTITY_SIMS = CACHE / "entity_sims.npz"
 DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
 
+# Named feature blocks, so an ablation is a flag rather than an edit. The point
+# of `nb` is that it is EXACTLY what a numberbatch-only model can see: the three
+# numberbatch views, plus every derived feature that happens to be computed from
+# the numberbatch column alone (peak_z, lead_margin, p_max_*, word_*, cohesion_*
+# all index space 1). Anything reading glove, wiki2vec, SWOW or entity is out.
+FEATURE_BLOCKS: dict[str, list[str]] = {
+    "nb": ["z_numberbatch", "rank_numberbatch", "gaptop_numberbatch",
+           "k", "n_candidates", "peak_z", "lead_margin",
+           "p_max_sigma1", "p_max_sigma2", "p_max_sigma3",
+           "word_mean_sim", "word_sd_sim",
+           "cohesion", "cohesion_rank", "cohesion_minus_own"],
+    "spaces": ["z_glove", "z_wiki2vec", "rank_glove", "rank_wiki2vec",
+               "gaptop_glove", "gaptop_wiki2vec",
+               "own_min_space", "rival_min_space", "gap_vs_rival_min"],
+    "swow": ["swow1", "swow2", "swow2_rank", "swow2_share", "swow_has"],
+    "entity": ["ent_sim", "ent_rank", "ent_has"],
+}
+assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
+
 
 def board_lookup(max_seed: int, collected: int = 0) -> list[tuple[int, frozenset[str]]]:
     """(seed, word set) for every board a cached response could have come from.
@@ -196,7 +215,8 @@ def baseline_accuracy(X: np.ndarray, groups: list[int], y: np.ndarray) -> float:
     return top1_accuracy(X[:, FEATURE_NAMES.index("z_numberbatch")], groups, y)
 
 
-def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0):
+def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
+          names: list[str] | None = None):
     """LightGBM >= 4 takes a custom objective through `params["objective"]`.
 
     Early stopping on held-out group accuracy is not optional here: with 21
@@ -207,8 +227,9 @@ def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0):
     """
     import lightgbm as lgb
 
-    dtr = lgb.Dataset(Xtr, label=ytr, feature_name=FEATURE_NAMES, free_raw_data=False)
-    dva = lgb.Dataset(Xva, label=yva, feature_name=FEATURE_NAMES, reference=dtr, free_raw_data=False)
+    names = list(names) if names is not None else list(FEATURE_NAMES)
+    dtr = lgb.Dataset(Xtr, label=ytr, feature_name=names, free_raw_data=False)
+    dva = lgb.Dataset(Xva, label=yva, feature_name=names, reference=dtr, free_raw_data=False)
     params = {
         "objective": group_softmax_objective(gtr),
         "learning_rate": 0.05,
@@ -278,6 +299,9 @@ def main() -> None:
     ap.add_argument("--rounds", type=int, default=3000, help="upper bound; early stopping decides")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--learning-curve", action="store_true")
+    ap.add_argument("--blocks", default="all",
+                    help="comma-separated feature blocks to keep: "
+                         + ",".join(FEATURE_BLOCKS) + " (default: all)")
     ap.add_argument("--out", type=Path, default=CACHE / "listener_gbt.txt")
     args = ap.parse_args()
 
@@ -300,7 +324,23 @@ def main() -> None:
     Xva, yva, gva, _ = build_groups(va_pos)
     print(f"choice events: {len(gtr)} train / {len(gva)} val   rows: {len(Xtr)} / {len(Xva)}")
 
-    nb = Xva[:, FEATURE_NAMES.index("z_numberbatch")]
+    # Feature ablation. Columns are dropped AFTER extraction so every run sees
+    # identical rows, groups and split -- the only thing that differs is what
+    # the trees are allowed to look at.
+    if args.blocks == "all":
+        names = list(FEATURE_NAMES)
+    else:
+        want = [b.strip() for b in args.blocks.split(",") if b.strip()]
+        bad = [b for b in want if b not in FEATURE_BLOCKS]
+        if bad:
+            raise SystemExit(f"unknown block(s) {bad}; known: {list(FEATURE_BLOCKS)}")
+        keep = {n for b in want for n in FEATURE_BLOCKS[b]}
+        names = [n for n in FEATURE_NAMES if n in keep]
+        cols = [FEATURE_NAMES.index(n) for n in names]
+        Xtr, Xva = Xtr[:, cols], Xva[:, cols]
+        print(f"blocks: {','.join(want)} -> {len(names)}/{N_FEATURES} features")
+
+    nb = Xva[:, names.index("z_numberbatch")]
     step1 = first_step_mask(va_pos)
     base_all = accuracy_on(nb, gva, yva)
     base_s1 = accuracy_on(nb, gva, yva, step1)
@@ -314,18 +354,20 @@ def main() -> None:
             keep = set(tr_seeds[: max(1, int(len(tr_seeds) * frac))])
             sub = [p for p in tr_pos if p["seed"] in keep]
             Xs, ys, gs, _ = build_groups(sub)
-            _, acc = train(Xs, ys, gs, Xva, yva, gva, args.rounds, args.seed)
+            if args.blocks != "all":
+                Xs = Xs[:, cols]
+            _, acc = train(Xs, ys, gs, Xva, yva, gva, args.rounds, args.seed, names)
             print(f"  {frac:4.0%}  {len(sub):5d} positions, {len(gs):5d} events -> val top-1 {acc:.4f}"
                   f"   (baseline {base:.4f})")
         return
 
-    booster, acc = train(Xtr, ytr, gtr, Xva, yva, gva, args.rounds, args.seed)
+    booster, acc = train(Xtr, ytr, gtr, Xva, yva, gva, args.rounds, args.seed, names)
     preds = booster.predict(Xva, raw_score=True)
     m_all, m_s1 = accuracy_on(preds, gva, yva), accuracy_on(preds, gva, yva, step1)
     print(f"model    : all steps {m_all:.4f} ({m_all-base_all:+.4f})   "
           f"step-1 only {m_s1:.4f} ({m_s1-base_s1:+.4f})")
 
-    imp = sorted(zip(FEATURE_NAMES, booster.feature_importance("gain")), key=lambda t: -t[1])
+    imp = sorted(zip(names, booster.feature_importance("gain")), key=lambda t: -t[1])
     print("\nfeature importance (gain):")
     for name, g in imp:
         print(f"  {name:22s} {g:12.1f}")

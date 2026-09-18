@@ -4529,3 +4529,50 @@ game-weighted, against a measured teacher self-consistency ceiling of ~0.94.
 It recovers roughly a third of the way from chance to what the teacher can
 reproduce of itself, and no amount of the evidence available to it closes the
 rest.
+
+## Per-block ablation: what is numberbatch alone worth?
+
+The `baseline` line the training script has always printed is the *raw*
+`z_numberbatch` argmax, which conflates two different questions: how much does
+a learned model add over a linear rule, and how much do the non-numberbatch
+sources add over numberbatch. Added `--blocks` to
+`scripts/pipeline/train_listener.py` so the four blocks can be selected
+independently; columns are dropped after extraction, so every run below sees
+identical rows, groups, split and seed, and the only thing that changes is what
+the trees may look at. gpt-oss teacher, 47,171 train / 15,766 val choice events.
+
+| model                     | features | pooled | step-1 |
+|---------------------------|---------:|-------:|-------:|
+| raw numberbatch z argmax  |        1 | 0.4229 | 0.6364 |
+| GBT, numberbatch only     |       15 | 0.4387 | 0.6419 |
+| + glove, wiki2vec         |       24 | 0.4446 | 0.6462 |
+| + SWOW, entity            |       23 | 0.4526 | 0.6604 |
+| all blocks                |       32 | 0.4611 | 0.6618 |
+
+Paired bootstrap over the 15,766 validation events (2,000 draws), since every
+model is scored on identical boards and an unpaired SE overstates the spread:
+
+    nb          -> nb+spaces    +0.0058  [+0.0019, +0.0099]
+    nb          -> nb+swow+ent  +0.0139  [+0.0098, +0.0180]
+    nb+spaces   -> all          +0.0165  [+0.0120, +0.0210]
+    nb+swow+ent -> all          +0.0084  [+0.0044, +0.0126]
+
+All four intervals exclude zero, so every block is carrying something. The
+ordering is the useful part: the association/entity block is worth about three
+times what the two extra embedding spaces are worth (+0.0139 vs +0.0058), and
+it carries essentially all of the step-1 gain (+0.0240 of the +0.0254). That is
+consistent with the original motivation -- glove and wiki2vec measure the same
+kind of thing numberbatch does, so they mostly re-ask a question already
+answered, while free-association is a different kind of evidence.
+
+**This corrects a claim made earlier in the session.** After the leak fix I
+described the SWOW/entity/cohesion group as worth ~+1.7 points and as "the kind
+of feature block that has now produced nothing twice". The +1.7 figure came from
+a leave-one-out against a different feature set; measured properly as a block,
+SWOW+entity is the single largest contributor of the three additions
+(0.4446 -> 0.4611), not the smallest. The leak destroyed the original +23.7
+claim, but it did not make the block worthless, and I overcorrected.
+
+The blocks are slightly superadditive (spaces alone +0.0058, swow+ent alone
++0.0139, both +0.0224 > 0.0197), which is what you would expect if the trees use
+one source to decide when to trust another.

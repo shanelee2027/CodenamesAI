@@ -17,9 +17,12 @@ role-derived feature would be silent cheating -- the distilled guesser would
 look excellent in the arena while being worthless as a model of a listener.
 `tests/test_listener_features.py` asserts the signature cannot see roles.
 
-**Tier 1 (this file) is 21 features.** Deliberately small: there are only
-~9k choice events available, and each further block should be added as a named
-hypothesis and measured, not poured in at the start. See docs/log.md.
+**32 features, added as four named blocks.** Each block went in as a stated
+hypothesis and was measured on its own rather than poured in at the start; the
+per-block ablation is `scripts/pipeline/train_listener.py --blocks` and the
+numbers are in docs/log.md. Tier 1 -- the numberbatch views plus everything
+derived from them -- was the original 21; glove/wiki2vec, SWOW and the entity
+vectors came after.
 
 Two of them are worth explaining.
 
