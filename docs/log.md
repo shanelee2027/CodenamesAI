@@ -4779,3 +4779,40 @@ Reverted. This is the fourth feature block to measure null or negative
 negative). The only block that ever moved the metric materially was SWOW, and
 the pattern across all five is that a genuinely different *kind* of evidence
 helps and another view of distributional similarity does not.
+
+## Reverse SWOW: the largest single feature gain so far
+
+Hypothesis from the block pattern: four blocks measured null or negative and
+the only one that moved anything was SWOW, so what helps is a different *kind*
+of evidence, not another view of distributional similarity. The cheapest test
+of that was sitting in data already on disk.
+
+Association is asymmetric. "nurse" cues "doctor" far more often than "doctor"
+cues "nurse". `build_swow_tables.py` only ever walked clue -> intermediate ->
+board word, which asks the *spymaster's* question: does the clue bring this
+word to mind? The reverse walk asks the *listener's* question: does this word
+bring the clue to mind -- and the listener is the thing being modelled. Same
+edges, same intermediate layer, traversed the other way. No download, no new
+data, one extra sparse multiply (rev one-hop 39,131 nnz, rev two-hop 1,806,450).
+
+Five features: `swow_rev1`, `swow_rev2`, `swow_rev2_rank`, `swow_rev2_share`,
+and `swow_asym` (the gap between the directions, as shares rather than raw
+strengths -- the two walks traverse different numbers of edges and their scales
+are not comparable).
+
+    32 baseline          trees=177   R2 0.3249   step-1 R2 0.5517
+    37 +reverse          trees=282   R2 0.3365   step-1 R2 0.5628
+    32 rev-only (-fwd)   trees=231   R2 0.3282   step-1 R2 0.5528
+
+    pooled gain: +0.0294 nats  95% CI [+0.0250, +0.0342]
+    step-1 gain: +0.0291 nats  95% CI [+0.0227, +0.0354]
+
+**Reverse is worth more than forward.** Forward SWOW was +0.0139 nats when it
+went in; reverse adds +0.0294 *on top of* forward and everything else. And the
+rev-only arm (0.3282) beats the fwd-only baseline (0.3249) on equal feature
+count, so this is not simply more columns. Direction is doing real work, and
+the direction that matters is the listener's.
+
+Worth stating plainly for the defence: this was free. The data has been on disk
+since the SWOW download and half of it was being discarded because the build
+script was written from the spymaster's point of view.

@@ -95,6 +95,12 @@ FEATURE_NAMES: list[str] = [
     # Two hops because the raw graph is sparse (0.57 of a 25-word board direct,
     # 15.6 at two hops); see scripts/data/build_swow_tables.py.
     "swow1", "swow2", "swow2_rank", "swow2_share", "swow_has",
+    # tier 2: the SAME association graph walked backwards. Association is
+    # asymmetric -- "nurse" cues "doctor" far more than the reverse -- and the
+    # forward tables ask the spymaster's question ("does the clue bring this
+    # word to mind") while these ask the listener's ("does this word bring the
+    # clue to mind"). swow_asym is the gap between the two directions.
+    "swow_rev1", "swow_rev2", "swow_rev2_rank", "swow_rev2_share", "swow_asym",
     # tier 2: Wikipedia2Vec ENTITY vectors, which the tensor build discards.
     # A word vector for "nikon" encodes how the token is used; the ENTITY
     # vector for the company sits near Olympus and Canon because the articles
@@ -119,6 +125,8 @@ class SwowTables:
     one: object
     two: object
     board_pos: dict[str, int]
+    rone: object = None
+    rtwo: object = None
 
     @classmethod
     def load(cls, path: Path) -> "SwowTables":
@@ -128,10 +136,20 @@ class SwowTables:
         one = sp.csr_matrix((d["one_data"], d["one_indices"], d["one_indptr"]), shape=tuple(d["one_shape"]))
         two = sp.csr_matrix((d["two_data"], d["two_indices"], d["two_indptr"]), shape=tuple(d["two_shape"]))
         bw = [str(w) for w in d["board_words"]]
-        return cls(one=one, two=two, board_pos={w: i for i, w in enumerate(bw)})
+
+        def csr(prefix):
+            if f"{prefix}_data" not in d:
+                return None
+            return sp.csr_matrix((d[f"{prefix}_data"], d[f"{prefix}_indices"],
+                                  d[f"{prefix}_indptr"]), shape=tuple(d[f"{prefix}_shape"]))
+
+        return cls(one=one, two=two, board_pos={w: i for i, w in enumerate(bw)},
+                   rone=csr("rone"), rtwo=csr("rtwo"))
 
     def row(self, which, clue_i: int, cols: np.ndarray) -> np.ndarray:
-        m = self.one if which == 1 else self.two
+        m = {1: self.one, 2: self.two, "r1": self.rone, "r2": self.rtwo}[which]
+        if m is None:
+            return np.full(len(cols), np.nan)
         lo, hi = m.indptr[clue_i], m.indptr[clue_i + 1]
         if lo == hi:
             return np.full(len(cols), np.nan)
@@ -363,7 +381,7 @@ def extract(
     cols.append(coh - z[:, 1])
 
     if swow is None:
-        for _ in range(5):
+        for _ in range(10):
             cols.append(np.full(n, np.nan))
     else:
         bcols = np.array([swow.board_pos.get(w.lower(), -1) for w in candidates])
@@ -375,8 +393,22 @@ def extract(
         # Share of the board's total association mass -- a word reachable from
         # the clue matters less when every word is.
         tot = np.nansum(s2)
-        cols.append(s2 / tot if tot > 0 else np.full(n, np.nan))
+        fwd_share = s2 / tot if tot > 0 else np.full(n, np.nan)
+        cols.append(fwd_share)
         cols.append(np.where(np.isnan(s2), 0.0, 1.0))
+
+        r1 = swow.row("r1", ci, bcols)
+        r2 = swow.row("r2", ci, bcols)
+        rtot = np.nansum(r2)
+        rev_share = r2 / rtot if rtot > 0 else np.full(n, np.nan)
+        cols.append(r1)
+        cols.append(r2)
+        cols.append(_ranks(r2))
+        cols.append(rev_share)
+        # Direction gap. Shares rather than raw strengths, because the two
+        # walks traverse different numbers of edges and their scales are not
+        # comparable; shares put both on the board's own simplex.
+        cols.append(rev_share - fwd_share)
 
     if entity is None:
         for _ in range(3):

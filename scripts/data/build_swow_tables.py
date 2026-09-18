@@ -20,10 +20,17 @@ from a clue to a word is real evidence of relatedness, and summing accumulates
 it where a max would discard all but one. That also makes the whole thing one
 sparse matrix multiply.
 
-Output is `cache/swow.npz`: two sparse (n_clue_pool x n_board_words) matrices,
-one-hop and two-hop, aligned to the similarity tensor's own clue and board
-indices so the feature extractor can look up a row without re-deriving
-anything.
+**Both directions.** Association is asymmetric: "nurse" cues "doctor" far more
+often than "doctor" cues "nurse". The forward tables answer "does the clue
+bring this board word to mind", which is the spymaster's question. The reverse
+tables answer "does this board word bring the clue to mind", which is closer to
+what a listener actually does -- they are looking at the word, not the clue.
+Same walk, same intermediate layer, edges traversed the other way.
+
+Output is `cache/swow.npz`: four sparse (n_clue_pool x n_board_words)
+matrices -- one-hop and two-hop, forward and reverse -- aligned to the
+similarity tensor's own clue and board indices so the feature extractor can
+look up a row without re-deriving anything.
 
 Data is CC BY-NC-ND 3.0 and lives under the gitignored data/ directory; only
 this derived table is cached.
@@ -126,11 +133,52 @@ def main() -> None:
     two = (A @ B).tocsr()
     print(f"  one-hop nnz {one.nnz:,}   two-hop nnz {two.nnz:,}")
 
+    # Reverse direction: board word -> intermediate -> clue. Ab and Bc are the
+    # same edge set as A and B, read the other way, so nothing new is loaded.
+    clue_pos = {w: i for i, w in enumerate(clue_words)}
+    ri, rj, rv = [], [], []
+    for w, d in fwd.items():
+        bi_ = board_pos.get(w)
+        if bi_ is None:
+            continue
+        for r, s_ in d.items():
+            ri.append(bi_); rj.append(mid_pos[r]); rv.append(s_)
+    Ab = sp.csr_matrix((rv, (ri, rj)), shape=(len(board_words), len(mid)), dtype=np.float32)
+
+    ci_, cj_, cv_ = [], [], []
+    for w, d in fwd.items():
+        wi = mid_pos[w]
+        for r, s_ in d.items():
+            j = clue_pos.get(r)
+            if j is not None:
+                ci_.append(wi); cj_.append(j); cv_.append(s_)
+    Bc = sp.csr_matrix((cv_, (ci_, cj_)), shape=(len(mid), len(clue_words)), dtype=np.float32)
+    print(f"  Ab nnz {Ab.nnz:,}   Bc nnz {Bc.nnz:,}")
+
+    # One hop reverse is the direct board-word -> clue edge.
+    oi, oj, ov = [], [], []
+    for w, d in fwd.items():
+        bi_ = board_pos.get(w)
+        if bi_ is None:
+            continue
+        for r, s_ in d.items():
+            j = clue_pos.get(r)
+            if j is not None:
+                oi.append(bi_); oj.append(j); ov.append(s_)
+    rev_one = sp.csr_matrix((ov, (oi, oj)), shape=(len(board_words), len(clue_words)), dtype=np.float32)
+    print("multiplying for reverse two-hop...", flush=True)
+    rev_two = (Ab @ Bc).tocsr()
+    rone = rev_one.T.tocsr()
+    rtwo = rev_two.T.tocsr()
+    print(f"  rev one-hop nnz {rone.nnz:,}   rev two-hop nnz {rtwo.nnz:,}")
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         args.out,
         one_data=one.data, one_indices=one.indices, one_indptr=one.indptr, one_shape=one.shape,
         two_data=two.data, two_indices=two.indices, two_indptr=two.indptr, two_shape=two.shape,
+        rone_data=rone.data, rone_indices=rone.indices, rone_indptr=rone.indptr, rone_shape=rone.shape,
+        rtwo_data=rtwo.data, rtwo_indices=rtwo.indices, rtwo_indptr=rtwo.indptr, rtwo_shape=rtwo.shape,
         board_words=np.array(board_words),
     )
     print(f"saved -> {args.out}  ({args.out.stat().st_size/1e6:.1f} MB)")

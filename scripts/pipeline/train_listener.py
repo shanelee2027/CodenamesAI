@@ -66,6 +66,7 @@ FEATURE_BLOCKS: dict[str, list[str]] = {
                "gaptop_glove", "gaptop_wiki2vec",
                "own_min_space", "rival_min_space", "gap_vs_rival_min"],
     "swow": ["swow1", "swow2", "swow2_rank", "swow2_share", "swow_has"],
+    "swowrev": ["swow_rev1", "swow_rev2", "swow_rev2_rank", "swow_rev2_share", "swow_asym"],
     "entity": ["ent_sim", "ent_rank", "ent_has"],
 }
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
