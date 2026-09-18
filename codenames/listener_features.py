@@ -111,6 +111,15 @@ FEATURE_NAMES: list[str] = [
     # rather than SWOW's 59%. See scripts/data/build_lm_pmi.py for why PMI and
     # not the raw conditional (tokenisation bias cancels in the difference).
     "pmi", "pmi_rank", "pmi_gaptop", "pmi_share",
+    # tier 2: two embedding spaces outside the tensor. glove840 is GloVe
+    # Common Crawl (2.2M cased tokens) where the tensor carries glove.6B
+    # (400k) -- a bigger model, not a newer one, since GloVe has had no release
+    # since 2014. fasttext is subword-based, so it is the only space here that
+    # can build a vector for a word it never saw. Both are the SAME KIND of
+    # evidence as the tensor's three, which five null blocks say does not help;
+    # measured as its own block so the answer is unambiguous.
+    "g840_z", "g840_rank", "g840_gaptop",
+    "ft_z", "ft_rank", "ft_gaptop",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
@@ -186,6 +195,39 @@ class EntitySims:
         out = np.full(len(cols), np.nan)
         ok = cols >= 0
         out[ok] = self.sims[r, cols[ok]]
+        return out
+
+
+@dataclass(frozen=True)
+class ExtraSims:
+    """Already-z-scored similarity rows for spaces outside the tensor.
+
+    The z-scoring happens at build time, over all 400 board words, so the value
+    cannot silently become "normalised over whatever is still unrevealed" --
+    which would make the feature depend on how far into the game we are.
+    """
+
+    spaces: dict[str, np.ndarray]
+    row_of: dict[int, int]
+    board_pos: dict[str, int]
+
+    @classmethod
+    def load(cls, path: Path) -> "ExtraSims":
+        d = np.load(path, allow_pickle=False)
+        bw = [str(w) for w in d["board_words"]]
+        spaces = {k: d[k] for k in d.files if k not in ("clue_rows", "board_words")}
+        return cls(spaces=spaces,
+                   row_of={int(c): i for i, c in enumerate(d["clue_rows"])},
+                   board_pos={w: i for i, w in enumerate(bw)})
+
+    def row(self, space: str, clue_i: int, cols: np.ndarray) -> np.ndarray:
+        m = self.spaces.get(space)
+        r = self.row_of.get(clue_i)
+        if m is None or r is None:
+            return np.full(len(cols), np.nan)
+        out = np.full(len(cols), np.nan)
+        ok = cols >= 0
+        out[ok] = m[r, cols[ok]]
         return out
 
 
@@ -321,6 +363,7 @@ def extract(
     swow: "SwowTables | None" = None,
     entity: "EntitySims | None" = None,
     pmi: "EntitySims | None" = None,
+    extra: "ExtraSims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -440,6 +483,17 @@ def extract(
         ex = np.exp(v - np.nanmax(v)) if np.isfinite(v).any() else np.full(n, np.nan)
         tot = np.nansum(ex)
         cols.append(ex / tot if tot > 0 else np.full(n, np.nan))
+
+    if extra is None:
+        for _ in range(6):
+            cols.append(np.full(n, np.nan))
+    else:
+        xcols = np.array([extra.board_pos.get(w.lower(), -1) for w in candidates])
+        for space in ("glove840", "fasttext"):
+            v = extra.row(space, ci, xcols)
+            cols.append(v)
+            cols.append(_ranks(v))
+            cols.append(v - np.nanmax(v) if np.isfinite(v).any() else np.full(n, np.nan))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

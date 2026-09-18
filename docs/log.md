@@ -4865,3 +4865,44 @@ Running total for the session: R2 0.3249 -> 0.3439 on 32 -> 41 features,
 step-1 0.5517 -> 0.5687, entirely from evidence sources rather than from more
 views of the three embedding spaces. gpt2-large is the smallest sensible model
 here and an obvious upgrade path if this line is pushed further.
+
+## Two more embedding spaces: small but real, and my prediction was wrong
+
+Shane asked whether newer versions of the three tensor spaces exist. Mostly
+not: GloVe has had no release since 2014, Numberbatch 19.08 is current, and
+Wikipedia2Vec's newest pretrained dump is the enwiki_20180420 we already use.
+But the tensor carries `glove.6B` -- Wikipedia+Gigaword, 400k tokens, the
+*weakest* GloVe release -- where `glove.840B` (Common Crawl, 2.2M cased) exists.
+Added that plus fastText (Common Crawl, 2M words, subword).
+
+Built as side tables (`cache/extra_sims.npz`), not as tensor slots. The tensor's
+vocabulary is deliberately the intersection of its spaces, so adding to it would
+shrink the legal clue set and silently invalidate every cached rollout and every
+number in this log. Z-scoring happens at build time over all 400 board words, so
+the feature cannot accidentally become "normalised over whatever is still
+unrevealed". Coverage is 100% of the clue pool and 396/400 board words -- the
+four misses are the multi-word board entries, same as everywhere else.
+
+    41 no-extra            trees=298   R2 0.3439   step-1 R2 0.5687
+    47 +extra              trees=382   R2 0.3469   step-1 R2 0.5722
+    38 extra, no glove/wiki trees=198  R2 0.3437   step-1 R2 0.5674
+
+    pooled gain: +0.0078 nats  95% CI [+0.0042, +0.0112]
+    step-1 gain: +0.0093 nats  95% CI [+0.0047, +0.0140]
+
+**I predicted this would land inside the noise and it did not.** The claim was
+that five null blocks had established that another view of distributional
+similarity buys nothing; the interval here excludes zero comfortably. The
+correct version of the claim is weaker: another view of distributional
+similarity buys *little*, about a quarter of what reverse SWOW bought and under
+half of LM PMI, but not nothing.
+
+The third arm is the interesting one. Dropping glove and wiki2vec from the
+tensor features while keeping the two new spaces scores 0.3437 against the
+41-feature baseline's 0.3439 -- statistically the same model on three fewer
+features. So glove840 and fastText are straight substitutes for glove.6B and
+wiki2vec, and it is only their *union* that adds anything.
+
+Session running total: R2 0.3249 -> 0.3469 (32 -> 47 features), step-1
+0.5517 -> 0.5722. Of the +0.022, roughly +0.012 came from the two association
+directions, +0.007 from LM PMI, +0.003 from the new embedding spaces.

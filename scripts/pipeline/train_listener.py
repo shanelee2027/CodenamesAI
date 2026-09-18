@@ -40,7 +40,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from codenames.board import Board
 from codenames.clue_stats import ClueStats
 from codenames.listener_features import (
-    FEATURE_NAMES, N_FEATURES, EntitySims, SwowTables, WordStats, extract,
+    FEATURE_NAMES, N_FEATURES, EntitySims, ExtraSims, SwowTables, WordStats, extract,
 )
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
@@ -50,6 +50,7 @@ WORD_STATS = CACHE / "word_stats.npz"
 SWOW_TABLES = CACHE / "swow.npz"
 ENTITY_SIMS = CACHE / "entity_sims.npz"
 LM_PMI = CACHE / "lm_pmi.npz"
+EXTRA_SIMS = CACHE / "extra_sims.npz"
 DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
 
 # Named feature blocks, so an ablation is a flag rather than an edit. The point
@@ -70,6 +71,7 @@ FEATURE_BLOCKS: dict[str, list[str]] = {
     "swowrev": ["swow_rev1", "swow_rev2", "swow_rev2_rank", "swow_rev2_share", "swow_asym"],
     "entity": ["ent_sim", "ent_rank", "ent_has"],
     "pmi": ["pmi", "pmi_rank", "pmi_gaptop", "pmi_share"],
+    "extraspaces": ["g840_z", "g840_rank", "g840_gaptop", "ft_z", "ft_rank", "ft_gaptop"],
 }
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
 
@@ -123,8 +125,10 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
     # lm_pmi.npz has the same layout as entity_sims.npz, so it loads through
     # the same class rather than a near-duplicate one.
     pmi = EntitySims.load(LM_PMI) if LM_PMI.exists() else None
+    extra = ExtraSims.load(EXTRA_SIMS) if EXTRA_SIMS.exists() else None
     print(f"SWOW: {'loaded' if swow else 'ABSENT'}   entity sims: "
-          f"{'loaded' if entity else 'ABSENT'}   LM PMI: {'loaded' if pmi else 'ABSENT'}")
+          f"{'loaded' if entity else 'ABSENT'}   LM PMI: {'loaded' if pmi else 'ABSENT'}"
+          f"   extra spaces: {'loaded' if extra else 'ABSENT'}")
     boards = board_lookup(max_seed, collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -153,7 +157,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
         shuffled = [rank[i] for i in perm]
         where = {orig: new for new, orig in enumerate(perm)}
         targets = [where[j] for j in range(len(rank))]  # teacher's j-th pick -> its row
-        feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi)
+        feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi, extra)
         if feats is None:
             dropped["features"] += 1
             continue
