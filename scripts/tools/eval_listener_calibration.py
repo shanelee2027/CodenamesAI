@@ -141,7 +141,12 @@ def main() -> None:
     # Both baselines get their free parameter fitted on the calibration boards.
     soft_T = min((0.25, 0.4, 0.5, 0.7, 1.0, 1.4, 2.0, 3.0),
                  key=lambda t: nll(softmax_probs(zc, Bc, t), Tc).mean())
-    sigma = min((0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0),
+    # Fine grid near the optimum on purpose. A coarse one (..., 2.0, 2.5, 3.0)
+    # returns 2.5 for gpt-oss, which happens to equal the shipped config value
+    # and reads as though the fit recovered it; the actual pooled optimum is
+    # 2.4. This sigma describes the TEACHER and has nothing to do with the
+    # config -- see docs/log.md.
+    sigma = min((1.0, 1.25, 1.5, 1.75, 2.0, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.8, 3.0, 3.5),
                 key=lambda s: nll(gauss_probs(zc, Bc, s), Tc).mean())
     print(f"fitted on held-out boards: softmax T={soft_T}, Gaussian sigma={sigma}", flush=True)
 

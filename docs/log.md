@@ -4632,3 +4632,48 @@ observed at low sigma, and it is a bug the accuracy metric could never surface.
 The practical consequence is that wiring the GBT into `expected_words` in place
 of `p_is_max` is now the best-motivated next change to the spymaster -- and,
 unlike the feature work, it does not need any more teacher data.
+
+### Clarification: three different sigmas, and one coincidence
+
+The calibration table above reports the incumbent as "Gaussian p_is_max
+sigma=2.5", which invites the reading that it is the shipped config value.
+It is not. That sigma was grid-searched against the gpt-oss rankings, and it
+landed on 2.5 only because the grid was coarse (..., 2.0, 2.5, 3.0). On a fine
+grid the pooled optimum is **2.4**, and the agreement with the config was an
+artefact of grid resolution. Grid widened in the script so it cannot mislead
+again.
+
+Three quantities in this project are all called sigma:
+
+1. **Config sigma = 2.5** -- what `expected_words` assumes and what the
+   `noisy_glove` synthetic guesser plays at. A *shipping* choice, currently
+   the worst of the five values the arena ladder tested.
+2. **Descriptive sigma** -- which Gaussian best *describes* a real listener.
+   `listener_fit.py` reports 2.06 for Sonnet and 2.20 for gpt-oss by exact
+   top-1 MLE.
+3. **The calibration fit** -- which Gaussian best predicts the teacher's pick
+   by log loss over all choice events.
+
+(2) and (3) estimate the same thing by different criteria on different events,
+and they disagree because the answer depends on which events you score:
+
+        gpt-oss, fine grid      pooled NLL      step-1 NLL
+        sigma = 2.1               1.9061          1.3430  <- best step-1
+        sigma = 2.2               1.9000          1.3452
+        sigma = 2.4               1.8955  <- best  1.3579
+        sigma = 2.5               1.8961          1.3674
+
+Step-1 alone wants 2.1, matching listener_fit's 2.20 top-1 MLE as it should --
+same estimand. Pooling later steps pushes the answer to 2.4: choices from a
+partly-revealed board are noisier than the opening pick, so a single Gaussian
+splits the difference. That is itself a small argument against the fixed-sigma
+model, which has no way to express "later steps are noisier".
+
+None of these is the *playing* sigma. The arena ladder had Sonnet winning most
+at 1.25--1.5 while behaving descriptively like 2.06; a listener model and a
+listener assumption you should optimise against are different objects.
+
+**The calibration conclusion is unaffected.** The Gaussian's NLL at its true
+optimum 2.4 is 1.8955, against 1.8961 at 2.5 -- 0.0006 nats, next to the GBT's
+0.1675 advantage. The curve is flat across 2.2--2.6, so no choice of sigma
+rescues it; the deficit is the functional form, not the parameter.
