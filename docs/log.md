@@ -4576,3 +4576,59 @@ claim, but it did not make the block worthless, and I overcorrected.
 The blocks are slightly superadditive (spaces alone +0.0058, swow+ent alone
 +0.0139, both +0.0224 > 0.0197), which is what you would expect if the trees use
 one source to decide when to trust another.
+
+## Scoring the listener as a probability model instead of an argmax
+
+Shane's observation, and it reframes the whole distillation effort: top-1
+accuracy is not what the spymaster consumes. `expected_words` never looks at
+the listener's favourite word -- it needs P(guess w) over the whole board for
+gain and penalty, and a turn where the top word is 95% likely and one where it
+is 40% likely are completely different turns that score identically under
+accuracy.
+
+The incumbent is therefore not "numberbatch argmax". It is the Gaussian
+`perceived = z + N(0, sigma)` that `expected_words` already assumes, i.e.
+`listener_features.p_is_max`, and the honest question is whether the GBT's
+softmax beats it as a *distribution*. `scripts/tools/eval_listener_calibration.py`,
+gpt-oss teacher, 15,766 validation choice events, every baseline's free
+parameter fitted on held-out training boards:
+
+| model                      | log loss | Brier  | top-1  | mean conf |
+|----------------------------|---------:|-------:|-------:|----------:|
+| uniform                    |   2.5413 | 0.9084 | 0.0929 |    0.0916 |
+| numberbatch softmax T=1.4  |   1.9052 | 0.7268 | 0.4229 |    0.4304 |
+| Gaussian p_is_max s=2.5    |   1.8961 | 0.7262 | 0.4229 |    0.3869 |
+| GBT                        |   1.7286 | 0.6784 | 0.4535 |    0.4581 |
+
+Gaussian -> GBT is +0.1675 nats, 95% CI [+0.1588, +0.1764] by paired bootstrap.
+Against uniform the Gaussian captures 0.645 nats and the GBT 0.813, so the
+distilled model recovers **26% more information than the incumbent** -- a much
+larger relative gain than the +3.1 accuracy points, because accuracy was
+measuring the wrong thing.
+
+**The GBT needs no temperature correction: T* = 1.0.** The group-softmax
+objective is a proper scoring rule, so it produces calibrated probabilities
+directly. ECE 0.0087, and the reliability table is close to the diagonal in
+every bin. This was nearly missed: fitting the temperature on the GBT's *own*
+training scores gives T*=0.8 and makes validation worse (1.7443 vs 1.7164),
+because overfit training scores make the fit conclude the model should be
+sharpened. The temperature has to be fitted on boards the model never saw.
+
+**The Gaussian is miscalibrated in a way that matters for clue choice.**
+ECE 0.0550, six times the GBT's, and it is not a uniform shift:
+
+    predicted 0.35 -> actual 0.43   (underconfident in the middle)
+    predicted 0.45 -> actual 0.53
+    predicted 0.85 -> actual 0.74   (overconfident at the top)
+    predicted 0.95 -> actual 0.82
+
+It compresses everything toward the middle -- it calls the top word >0.8 on
+only 8.1% of turns where the GBT does so on 14.0% -- and then over-trusts the
+confident end it does reach. Both halves push `expected_words` the same way:
+the safe turns it cannot recognise as safe, and the turns it does call safe are
+riskier than it thinks. That is a plausible contributor to the assassin deaths
+observed at low sigma, and it is a bug the accuracy metric could never surface.
+
+The practical consequence is that wiring the GBT into `expected_words` in place
+of `p_is_max` is now the best-motivated next change to the spymaster -- and,
+unlike the feature work, it does not need any more teacher data.
