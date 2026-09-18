@@ -111,3 +111,4 @@ class TestRanksCannotLeakPosition:
         b = _ranks(np.array([5.0, 2.0, 5.0, 2.0]))
         assert a[0] == a[2] and a[1] == a[3]
         assert sorted(a.tolist()) == sorted(b.tolist())
+

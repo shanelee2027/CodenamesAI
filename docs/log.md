@@ -4733,3 +4733,49 @@ there is no reason the tail should be anywhere near that stable.
    teacher's arbitrary tail. Mean k in real games is 1.42, so steps 3+ barely
    occur in play. Down-weighting or truncating later steps is a training-side
    change needing no new data, and it is the obvious next experiment.
+
+## Raw rival z-scores: a negative result, reverted
+
+Shane's question: does the hand-engineering earn its keep, or would the trees
+do better handed the similarities themselves? Every competition feature here
+collapses the board to order statistics (`rival_min_space`, `gaptop_*`,
+`lead_margin`), so the test is to add the raw numbers and see.
+
+Two design problems had to be solved before it was worth running.
+
+**Fixed columns per board word leak position.** Laying out `sim_word1,
+sim_word2, ...` makes the column index list position, which is arbitrary --
+the same failure that produced the `_ranks` leak. Fixed by sorting rivals and
+emitting order statistics, which is permutation-invariant by construction.
+
+**Sorting per space destroys cross-space structure**, which Shane spotted
+before it was built: a board where one rival leads in every space and a board
+where two rivals each lead in one produce identical per-space sorted vectors,
+and telling those apart is the entire point of `rival_min_space`. Fixed by
+ranking rivals *once*, by mean z across the three spaces, then emitting each
+rival's full triple in that shared order. The mean is only a sort key; no value
+is averaged into a feature. Ties fall through to numberbatch, glove, wiki2vec
+rather than to `argsort`'s index order.
+
+Depth 5 (Shane's call), so 15 features, 32 -> 47.
+
+    32 (no raw5)   trees=177   R2 0.3249   step-1 R2 0.5517
+    47 (+raw5)     trees=186   R2 0.3229   step-1 R2 0.5498
+
+    pooled log-loss change: -0.0051  95% CI [-0.0076, -0.0028]
+    step-1                  -0.0050  95% CI [-0.0083, -0.0016]
+
+Both intervals lie entirely below zero, so this is a real if small **harm**,
+not a null. Accuracy could not resolve it (0.4589 -> 0.4588 pooled), which is
+another instance of the metric being the wrong one.
+
+Best explanation: the 15 columns are largely redundant with order statistics
+the model already has, and they dilute `feature_fraction=0.8` -- each tree now
+samples 38 of 47 columns rather than 26 of 32, so a larger share of every
+tree's candidate splits are on near-duplicate information.
+
+Reverted. This is the fourth feature block to measure null or negative
+(Tier-1 redundant, cohesion null, entity ~2% of SHAP contribution, raw5
+negative). The only block that ever moved the metric materially was SWOW, and
+the pattern across all five is that a genuinely different *kind* of evidence
+helps and another view of distributional similarity does not.

@@ -233,12 +233,23 @@ def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
     params = {
         "objective": group_softmax_objective(gtr),
         "learning_rate": 0.05,
-        "num_leaves": 31,
-        "min_data_in_leaf": 40,
+        # From scripts/tools/sweep_listener_params.py over 60 configs, ranked by
+        # McFadden R2 on the calibration boards. The sweep's real finding is that
+        # capacity barely matters here: the whole grid spans R2 0.3295-0.3329 and
+        # the winner beat the old hand-set values by +0.0002 on held-out data,
+        # which is noise. lambda_l2 is the only parameter that moved anything --
+        # every config in the top ten had it at 10.0, the largest value tried, so
+        # it sits AT the grid edge and the optimum may be higher. num_leaves is
+        # near-irrelevant because early stopping trades tree size against tree
+        # count (15 leaves x 1666 trees scored the same as 127 x 301); 127 is
+        # kept because it reaches the plateau in the fewest trees, which is what
+        # inference cost scales with.
+        "num_leaves": 127,
+        "min_data_in_leaf": 100,
         "feature_fraction": 0.8,
         "bagging_fraction": 0.8,
         "bagging_freq": 1,
-        "lambda_l2": 1.0,
+        "lambda_l2": 10.0,
         "verbosity": -1,
         "seed": seed,
         "feature_pre_filter": False,
@@ -322,6 +333,7 @@ def main() -> None:
 
     Xtr, ytr, gtr, _ = build_groups(tr_pos)
     Xva, yva, gva, _ = build_groups(va_pos)
+    Xva_full = Xva
     print(f"choice events: {len(gtr)} train / {len(gva)} val   rows: {len(Xtr)} / {len(Xva)}")
 
     # Feature ablation. Columns are dropped AFTER extraction so every run sees
@@ -340,7 +352,10 @@ def main() -> None:
         Xtr, Xva = Xtr[:, cols], Xva[:, cols]
         print(f"blocks: {','.join(want)} -> {len(names)}/{N_FEATURES} features")
 
-    nb = Xva[:, names.index("z_numberbatch")]
+    # A block selection can exclude the baseline column itself; fall back to
+    # the full matrix so an ablation arm still reports a comparable baseline.
+    nb = (Xva[:, names.index("z_numberbatch")] if "z_numberbatch" in names
+          else Xva_full[:, FEATURE_NAMES.index("z_numberbatch")])
     step1 = first_step_mask(va_pos)
     base_all = accuracy_on(nb, gva, yva)
     base_s1 = accuracy_on(nb, gva, yva, step1)

@@ -66,6 +66,7 @@ _U_LO, _U_HI, _U_N = -6.0, 6.0, 49
 # the clue never meant.
 COHESION_TOP = 5
 
+
 FEATURE_NAMES: list[str] = [
     # per-word signal, one per embedding space
     "z_glove", "z_numberbatch", "z_wiki2vec",
