@@ -62,21 +62,17 @@ DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
 # the numberbatch column alone (peak_z, lead_margin, p_max_*, word_*, cohesion_*
 # all index space 1). Anything reading glove, wiki2vec, SWOW or entity is out.
 FEATURE_BLOCKS: dict[str, list[str]] = {
-    "nb": ["z_numberbatch", "rank_numberbatch", "gaptop_numberbatch",
-           "k", "n_candidates", "peak_z", "lead_margin",
-           "p_max_sigma1", "p_max_sigma2", "p_max_sigma3",
-           "word_mean_sim", "word_sd_sim",
-           "cohesion", "cohesion_rank", "cohesion_minus_own"],
-    "spaces": ["z_glove", "z_wiki2vec", "rank_glove", "rank_wiki2vec",
-               "gaptop_glove", "gaptop_wiki2vec",
-               "own_min_space", "rival_min_space", "gap_vs_rival_min"],
-    "swow": ["swow1", "swow2", "swow2_rank", "swow2_share", "swow_has"],
-    "swowrev": ["swow_rev1", "swow_rev2", "swow_rev2_rank", "swow_rev2_share", "swow_asym"],
-    "entity": ["ent_sim", "ent_rank", "ent_has"],
-    "pmi": ["pmi", "pmi_rank", "pmi_gaptop", "pmi_share"],
-    "extraspaces": ["g840_z", "g840_rank", "g840_gaptop", "ft_z", "ft_rank", "ft_gaptop"],
-    "norms": ["conc", "conc_rank", "conc_sd", "pct_known", "log_freq"],
-    "wordnet": ["wn_wup", "wn_wup_rank", "wn_lcs_depth"],
+    "nb": ["z_numberbatch", "gaptop_numberbatch",
+           "k", "n_candidates", "peak_z", "lead_margin", "p_max_sigma2",
+           "word_mean_sim", "word_sd_sim", "cohesion", "cohesion_minus_own"],
+    "spaces": ["z_glove", "gaptop_glove", "gaptop_wiki2vec", "own_min_space"],
+    "swow": ["swow1", "swow2", "swow_has"],
+    "swowrev": ["swow_rev1", "swow_rev2", "swow_rev2_share", "swow_asym"],
+    "entity": ["ent_rank", "ent_has"],
+    "pmi": ["pmi_gaptop"],
+    "extraspaces": ["g840_z", "g840_rank", "g840_gaptop", "ft_z", "ft_gaptop"],
+    "norms": ["conc", "conc_sd", "pct_known", "log_freq"],
+    "wordnet": ["wn_wup", "wn_wup_rank"],
 }
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
 

@@ -50,10 +50,11 @@ from pathlib import Path
 import numpy as np
 from scipy.special import log_ndtr
 
-# Noise levels for the Gaussian argmax feature. 2.0 brackets the measured
-# listener sigma (2.06 for Sonnet, 2.20 for gpt-oss); 1 and 3 give the trees
-# a spread to interpolate between rather than one point estimate.
-P_MAX_SIGMAS = (1.0, 2.0, 3.0)
+# Noise level for the Gaussian argmax feature: 2.0 brackets the measured
+# listener sigma (2.06 for Sonnet, 2.20 for gpt-oss). Three levels were carried
+# originally so the trees could interpolate; the prune found 1.0 and 3.0 both
+# leave-one-out negative, so the spread was costing more than it bought.
+P_MAX_SIGMA = 2.0
 
 # Quadrature grid for that integral. Coarser than listener_fit's 129 points
 # because this runs once per turn inside games, and the feature only has to be
@@ -69,17 +70,19 @@ COHESION_TOP = 5
 
 FEATURE_NAMES: list[str] = [
     # per-word signal, one per embedding space
-    "z_glove", "z_numberbatch", "z_wiki2vec",
-    "rank_glove", "rank_numberbatch", "rank_wiki2vec",
+    # Only two raw z survive the leave-one-out prune, and none of the within-
+    # board ranks: the gaptop columns (z minus the board's best) already carry
+    # the ordering, and a rank throws away how far behind a word is.
+    "z_glove", "z_numberbatch",
     "gaptop_glove", "gaptop_numberbatch", "gaptop_wiki2vec",
     # board context (constant within a board; earns its place via tree
     # interactions -- a constant cannot change a softmax over the board, but it
     # can gate a split on a per-word feature)
     "k", "n_candidates", "peak_z", "lead_margin",
     # the analytic listener model's own prediction
-    "p_max_sigma1", "p_max_sigma2", "p_max_sigma3",
+    "p_max_sigma2",
     # multi-space competition
-    "own_min_space", "rival_min_space", "gap_vs_rival_min",
+    "own_min_space",
     # per-word column statistics: z normalises per CLUE (row), not per WORD.
     # "Bank" is moderately close to everything, "Platypus" to almost nothing.
     "word_mean_sim", "word_sd_sim",
@@ -87,30 +90,30 @@ FEATURE_NAMES: list[str] = [
     # as opposed to merely close to the clue on its own? This is what a
     # listener does at k>=3, and the regime where pairwise clue-word
     # similarity collapses (0.36 top-1 at k=4).
-    "cohesion", "cohesion_rank", "cohesion_minus_own",
+    "cohesion", "cohesion_minus_own",
     # tier 2: measured HUMAN association (SWOW). Embeddings measure similarity
     # -- words used in similar contexts. Association measures relatedness --
     # words that come to mind together. "nikon" and "Olympus" are not similar,
     # they are associated, and that is the kind of link a listener follows.
     # Two hops because the raw graph is sparse (0.57 of a 25-word board direct,
     # 15.6 at two hops); see scripts/data/build_swow_tables.py.
-    "swow1", "swow2", "swow2_rank", "swow2_share", "swow_has",
+    "swow1", "swow2", "swow_has",
     # tier 2: the SAME association graph walked backwards. Association is
     # asymmetric -- "nurse" cues "doctor" far more than the reverse -- and the
     # forward tables ask the spymaster's question ("does the clue bring this
     # word to mind") while these ask the listener's ("does this word bring the
     # clue to mind"). swow_asym is the gap between the two directions.
-    "swow_rev1", "swow_rev2", "swow_rev2_rank", "swow_rev2_share", "swow_asym",
+    "swow_rev1", "swow_rev2", "swow_rev2_share", "swow_asym",
     # tier 2: Wikipedia2Vec ENTITY vectors, which the tensor build discards.
     # A word vector for "nikon" encodes how the token is used; the ENTITY
     # vector for the company sits near Olympus and Canon because the articles
     # do. Aimed at the encyclopedic residue (schmidt -> Scorpion).
-    "ent_sim", "ent_rank", "ent_has",
+    "ent_rank", "ent_has",
     # tier 2: language-model PMI. Same syntagmatic axis SWOW measures, but read
     # off a corpus instead of off people, so it covers the whole clue pool
     # rather than SWOW's 59%. See scripts/data/build_lm_pmi.py for why PMI and
     # not the raw conditional (tokenisation bias cancels in the difference).
-    "pmi", "pmi_rank", "pmi_gaptop", "pmi_share",
+    "pmi_gaptop",
     # tier 2: two embedding spaces outside the tensor. glove840 is GloVe
     # Common Crawl (2.2M cased tokens) where the tensor carries glove.6B
     # (400k) -- a bigger model, not a newer one, since GloVe has had no release
@@ -119,19 +122,19 @@ FEATURE_NAMES: list[str] = [
     # evidence as the tensor's three, which five null blocks say does not help;
     # measured as its own block so the answer is unambiguous.
     "g840_z", "g840_rank", "g840_gaptop",
-    "ft_z", "ft_rank", "ft_gaptop",
+    "ft_z", "ft_gaptop",
     # tier 2: human word norms (Brysbaert et al. 2014). Word-level priors with
     # no clue involvement, added because SHAP put word_mean_sim/word_sd_sim --
     # the only other such features -- second and third by contribution per
     # feature. A listener told "animal" and looking at LION and SPIRIT has a
     # reason to prefer the one they can picture.
-    "conc", "conc_rank", "conc_sd", "pct_known", "log_freq",
+    "conc", "conc_sd", "pct_known", "log_freq",
     # tier 2: WordNet taxonomic similarity. Neither distributional nor
     # associative -- a hand-built is-a hierarchy knows LION and WHALE are both
     # mammals without any corpus or free-association evidence. lcs_depth
     # separates "both are dogs" from "both are entities", which the Wu-Palmer
     # ratio alone does not.
-    "wn_wup", "wn_wup_rank", "wn_lcs_depth",
+    "wn_wup", "wn_wup_rank",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
@@ -423,8 +426,8 @@ def extract(
     n = len(candidates)
 
     cols: list[np.ndarray] = []
-    cols.extend(z[:, s] for s in range(3))
-    cols.extend(_ranks(z[:, s]) for s in range(3))
+    cols.append(z[:, 0])
+    cols.append(z[:, 1])
     cols.extend(z[:, s] - z[:, s].max() for s in range(3))
 
     k = float(number) if number is not None else -1.0
@@ -436,21 +439,16 @@ def extract(
     cols.append(np.full(n, float(z_nb.max())))
     cols.append(np.full(n, lead))
 
-    for s in P_MAX_SIGMAS:
-        cols.append(p_is_max(z_nb, s))
+    # One sigma, not three. The other two were leave-one-out negative, and each
+    # is a 49-point quadrature over an (n, U, n) tensor -- the single most
+    # expensive thing extract() does -- so dropping them is the one prune that
+    # buys real inference time.
+    cols.append(p_is_max(z_nb, P_MAX_SIGMA))
 
-    own_min = z.min(axis=1)  # strong in EVERY space
-    if n > 1:
-        # For each word, the best rival's own_min -- max over the others.
-        order = np.argsort(-own_min)
-        best, second = own_min[order[0]], own_min[order[1]]
-        rival = np.where(np.arange(n) == order[0], second, best)
-    else:
-        rival = np.full(n, -np.inf)
-    rival = np.where(np.isfinite(rival), rival, 0.0)
-    cols.append(own_min)
-    cols.append(rival)
-    cols.append(own_min - rival)
+    # `rival_min_space` and `gap_vs_rival_min` were both leave-one-out negative
+    # and are gone. Keeping own_min: "strong in EVERY space" still separates a
+    # genuine match from one space's quirk, which no single z does.
+    cols.append(z.min(axis=1))
 
     wi = np.asarray(idxs)
     cols.append(np.asarray(word_stats.mean[wi, 1], dtype=np.float64))
@@ -463,11 +461,10 @@ def extract(
     # routes on its own).
     coh = _cohesion(candidates, idxs, z[:, 1], sims, clue_stats, clue_index)
     cols.append(coh)
-    cols.append(_ranks(coh))
     cols.append(coh - z[:, 1])
 
     if swow is None:
-        for _ in range(10):
+        for _ in range(8):
             cols.append(np.full(n, np.nan))
     else:
         bcols = np.array([swow.board_pos.get(w.lower(), -1) for w in candidates])
@@ -475,13 +472,10 @@ def extract(
         s2 = swow.row(2, ci, bcols)
         cols.append(s1)
         cols.append(s2)
-        cols.append(_ranks(s2))
-        # Share of the board's total association mass -- a word reachable from
-        # the clue matters less when every word is.
+        cols.append(np.where(np.isnan(s2), 0.0, 1.0))
+        # Kept only to normalise the reverse direction against.
         tot = np.nansum(s2)
         fwd_share = s2 / tot if tot > 0 else np.full(n, np.nan)
-        cols.append(fwd_share)
-        cols.append(np.where(np.isnan(s2), 0.0, 1.0))
 
         r1 = swow.row("r1", ci, bcols)
         r2 = swow.row("r2", ci, bcols)
@@ -489,7 +483,6 @@ def extract(
         rev_share = r2 / rtot if rtot > 0 else np.full(n, np.nan)
         cols.append(r1)
         cols.append(r2)
-        cols.append(_ranks(r2))
         cols.append(rev_share)
         # Direction gap. Shares rather than raw strengths, because the two
         # walks traverse different numbers of edges and their scales are not
@@ -497,61 +490,56 @@ def extract(
         cols.append(rev_share - fwd_share)
 
     if entity is None:
-        for _ in range(3):
+        for _ in range(2):
             cols.append(np.full(n, np.nan))
     else:
         ecols = np.array([entity.board_pos.get(w.lower(), -1) for w in candidates])
         e = entity.row(ci, ecols)
-        cols.append(e)
         cols.append(_ranks(e))
         cols.append(np.where(np.isnan(e), 0.0, 1.0))
 
     if pmi is None:
-        for _ in range(4):
+        for _ in range(1):
             cols.append(np.full(n, np.nan))
     else:
         pcols = np.array([pmi.board_pos.get(w.lower(), -1) for w in candidates])
         v = pmi.row(ci, pcols)
-        cols.append(v)
-        cols.append(_ranks(v))
-        # PMI is a log ratio, so a difference is a ratio of ratios -- the right
-        # scale on which to ask "how far behind the leader is this word".
+        # Only the gap to the board's best survives the prune, and it is the
+        # right survivor: PMI is a log ratio, so a difference is a ratio of
+        # ratios. The raw value, its rank and its softmax share were all
+        # leave-one-out negative -- they re-encode an ordering this already has.
         cols.append(v - np.nanmax(v) if np.isfinite(v).any() else np.full(n, np.nan))
-        ex = np.exp(v - np.nanmax(v)) if np.isfinite(v).any() else np.full(n, np.nan)
-        tot = np.nansum(ex)
-        cols.append(ex / tot if tot > 0 else np.full(n, np.nan))
 
     if extra is None:
-        for _ in range(6):
+        for _ in range(5):
             cols.append(np.full(n, np.nan))
     else:
         xcols = np.array([extra.board_pos.get(w.lower(), -1) for w in candidates])
         for space in ("glove840", "fasttext"):
             v = extra.row(space, ci, xcols)
             cols.append(v)
-            cols.append(_ranks(v))
+            if space == "glove840":       # ft_rank was leave-one-out negative
+                cols.append(_ranks(v))
             cols.append(v - np.nanmax(v) if np.isfinite(v).any() else np.full(n, np.nan))
 
     if norms is None:
-        for _ in range(5):
+        for _ in range(4):
             cols.append(np.full(n, np.nan))
     else:
         nv = norms.rows(candidates)
         cols.append(nv[:, 0])
-        cols.append(_ranks(nv[:, 0]))
         cols.append(nv[:, 1])
         cols.append(nv[:, 2])
         cols.append(nv[:, 3])
 
     if wordnet is None:
-        for _ in range(3):
+        for _ in range(2):
             cols.append(np.full(n, np.nan))
     else:
         wcols = np.array([wordnet.board_pos.get(w.lower(), -1) for w in candidates])
         wup = wordnet.row("wup", ci, wcols)
         cols.append(wup)
         cols.append(_ranks(wup))
-        cols.append(wordnet.row("lcs_depth", ci, wcols))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

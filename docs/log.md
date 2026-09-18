@@ -4957,3 +4957,66 @@ approximate.
 
 Session running total: R2 0.3249 -> 0.3507 (32 -> 55 features), step-1
 0.5517 -> 0.5734.
+
+## Pruning: 19 of 55 features go for free, and extract() halves
+
+`scripts/tools/prune_listener_features.py`. Leave-one-out rather than SHAP,
+because SHAP says how much the fitted model *uses* a feature and not whether it
+could do without it -- and with five overlapping association and similarity
+blocks that is the entire question. Selection on the calibration boards, final
+comparison on val.
+
+    calib: full 0.3583 (55 feat) -> pruned 0.3566 (36 feat)   delta -0.00169
+    val  : full 0.3495           -> pruned 0.3500             delta +0.00047
+
+Nineteen features are free to drop. Accuracy moves the other way by a hair
+(0.4775 -> 0.4739 val top-1) while R2 does not, which is the two metrics
+disagreeing inside the noise; R2 is the one the model is trained on and the one
+the spymaster consumes.
+
+**What went, and why it makes sense:**
+
+- **All three within-board `rank_*` columns.** The `gaptop_*` columns already
+  encode the ordering *and* how far behind each word is; a rank throws the
+  distance away. Same story for `swow2_rank`, `swow_rev2_rank`, `cohesion_rank`,
+  `conc_rank`, `ft_rank`, `pmi_rank` -- seven of the nineteen are ranks whose
+  underlying value is also present.
+- **Two of the three `p_max` sigmas.** Carried originally so the trees could
+  interpolate between noise levels; 1.0 and 3.0 are both leave-one-out negative.
+- **Three of the four PMI features**, leaving only `pmi_gaptop`. That is the
+  right survivor: PMI is a log ratio, so a difference is a ratio of ratios.
+- **`rival_min_space` and `gap_vs_rival_min`**, which is a straightforward
+  negative result on a feature block this project argued for at length in
+  listener_features.py's own docstring.
+
+**The prune buys real inference time**, unusually for a parsimony exercise:
+`extract()` drops from 1647 to 752 us per clue, because two of the three
+49-point `p_is_max` quadratures are gone and those dominated the cost. A
+full-pool turn falls from 18.4 s to 8.4 s.
+
+Verified numerically rather than by eye: a snapshot of all 55 columns over nine
+(board, clue, k) cases was taken before editing `extract`, and every surviving
+column matches it exactly.
+
+SHAP on the pruned model, for the record -- note `pmi_gaptop` alone now carries
+13.9% of total attribution:
+
+    block              n  sum |SHAP|   share  per feature
+    nb                11      0.8507   36.0%       0.0773
+    pmi                1      0.3292   13.9%       0.3292
+    spaces             4      0.2564   10.9%       0.0641
+    extraspaces        5      0.2381   10.1%       0.0476
+    swowrev            4      0.2114    9.0%       0.0528
+    norms              4      0.2027    8.6%       0.0507
+    swow               3      0.1947    8.2%       0.0649
+    wordnet            2      0.0562    2.4%       0.0281
+    entity             2      0.0204    0.9%       0.0102
+
+**A process note worth keeping.** The first run of the prune tool deadlocked
+for 16 minutes with zero output: it fitted the full-feature baseline in the
+parent before creating the worker pool, which starts LightGBM's OpenMP threads,
+and the forked children then inherited a mutex held by a thread that does not
+exist in them. Eight workers at exactly 00:00:00 CPU was the tell, and
+instantaneous %CPU was not -- cumulative CPU time is the diagnostic. The
+baseline is now a pool job like any other, and the hazard is documented in
+`loo`'s docstring. The earlier hyperparameter sweep avoided this by accident.
