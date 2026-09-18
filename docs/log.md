@@ -4389,3 +4389,21 @@ and the diagnosis that matters is which *kind* of evidence is missing.
 Data is CC BY-NC-ND 3.0, lives under gitignored data/, and only the derived
 table is cached. Cite De Deyne, Navarro, Perfors, Brysbaert & Storms (2019),
 Behavior Research Methods.
+
+**By clue kind, with SWOW** (same positions, board-seed split; ceiling is the
+measured teacher self-consistency):
+
+    kind         n    baseline   model    lift    ceiling   left
+    random    1861      0.320    0.667   +0.347    0.840    0.173
+    own       3390      0.727    0.863   +0.136    0.987    0.124
+    opponent  1605      0.715    0.842   +0.128    0.947    0.105
+    neutral    894      0.737    0.843   +0.106    0.933    0.090
+    assassin   537      0.713    0.832   +0.119    0.952    0.120
+
+The junk-clue regime was the whole story, exactly as the earlier diagnosis
+said: 0.320 -> 0.667 where the 49-point gap lived, with every other category
+gaining a uniform +11 to +14. Weighted remaining headroom is ~12.7 points.
+
+Worth noting for the defense: the association data helps most precisely where
+embeddings have least to say. A clue with no strong semantic anchor still has
+strong human associations, and that is what a listener follows.
