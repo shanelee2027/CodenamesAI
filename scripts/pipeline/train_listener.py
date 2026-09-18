@@ -38,12 +38,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from codenames.board import Board
 from codenames.clue_stats import ClueStats
-from codenames.listener_features import FEATURE_NAMES, N_FEATURES, WordStats, extract
+from codenames.listener_features import FEATURE_NAMES, N_FEATURES, SwowTables, WordStats, extract
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 CACHE = PROJECT_ROOT / "cache"
 DB = CACHE / "llm_store.db"
 WORD_STATS = CACHE / "word_stats.npz"
+SWOW_TABLES = CACHE / "swow.npz"
 DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
 
 
@@ -91,6 +92,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
         print("building per-word column statistics (one-off, reads the full tensor)...", flush=True)
         wstats = WordStats.build(sims)
         wstats.save(WORD_STATS)
+    swow = SwowTables.load(SWOW_TABLES) if SWOW_TABLES.exists() else None
+    print(f"SWOW association tables: {'loaded' if swow else 'ABSENT (features will be NaN)'}")
     boards = board_lookup(max_seed, collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -111,7 +114,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
             continue
         # Features are computed ONCE, on the full board, in the teacher's own
         # ranked order -- so the target at step j is simply row j.
-        feats = extract(clue, rank, number, sims, stats, wstats, clue_index)
+        feats = extract(clue, rank, number, sims, stats, wstats, clue_index, swow)
         if feats is None:
             dropped["features"] += 1
             continue

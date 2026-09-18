@@ -84,9 +84,51 @@ FEATURE_NAMES: list[str] = [
     # listener does at k>=3, and the regime where pairwise clue-word
     # similarity collapses (0.36 top-1 at k=4).
     "cohesion", "cohesion_rank", "cohesion_minus_own",
+    # tier 2: measured HUMAN association (SWOW). Embeddings measure similarity
+    # -- words used in similar contexts. Association measures relatedness --
+    # words that come to mind together. "nikon" and "Olympus" are not similar,
+    # they are associated, and that is the kind of link a listener follows.
+    # Two hops because the raw graph is sparse (0.57 of a 25-word board direct,
+    # 15.6 at two hops); see scripts/data/build_swow_tables.py.
+    "swow1", "swow2", "swow2_rank", "swow2_share", "swow_has",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
+
+
+@dataclass(frozen=True)
+class SwowTables:
+    """Human-association strengths, clue row -> board-word columns.
+
+    Absent rows (a clue SWOW never cued -- 41% of our pool) and absent entries
+    both come back as NaN rather than 0. Zero would claim "these words are
+    unrelated"; NaN says "no evidence", and LightGBM learns a split direction
+    for it. Conflating the two is the main way a sparse source poisons a dense
+    feature set.
+    """
+
+    one: object
+    two: object
+    board_pos: dict[str, int]
+
+    @classmethod
+    def load(cls, path: Path) -> "SwowTables":
+        import scipy.sparse as sp
+
+        d = np.load(path, allow_pickle=False)
+        one = sp.csr_matrix((d["one_data"], d["one_indices"], d["one_indptr"]), shape=tuple(d["one_shape"]))
+        two = sp.csr_matrix((d["two_data"], d["two_indices"], d["two_indptr"]), shape=tuple(d["two_shape"]))
+        bw = [str(w) for w in d["board_words"]]
+        return cls(one=one, two=two, board_pos={w: i for i, w in enumerate(bw)})
+
+    def row(self, which, clue_i: int, cols: np.ndarray) -> np.ndarray:
+        m = self.one if which == 1 else self.two
+        lo, hi = m.indptr[clue_i], m.indptr[clue_i + 1]
+        if lo == hi:
+            return np.full(len(cols), np.nan)
+        idx, val = m.indices[lo:hi], m.data[lo:hi]
+        lookup = dict(zip(idx.tolist(), val.tolist()))
+        return np.array([lookup.get(int(c), np.nan) for c in cols], dtype=np.float64)
 
 
 @dataclass(frozen=True)
@@ -196,6 +238,7 @@ def extract(
     clue_stats,
     word_stats: WordStats,
     clue_index: dict[str, int],
+    swow: "SwowTables | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -260,6 +303,22 @@ def extract(
     cols.append(coh)
     cols.append(_ranks(np.nan_to_num(coh, nan=-np.inf)))
     cols.append(coh - z[:, 1])
+
+    if swow is None:
+        for _ in range(5):
+            cols.append(np.full(n, np.nan))
+    else:
+        bcols = np.array([swow.board_pos.get(w.lower(), -1) for w in candidates])
+        s1 = swow.row(1, ci, bcols)
+        s2 = swow.row(2, ci, bcols)
+        cols.append(s1)
+        cols.append(s2)
+        cols.append(_ranks(np.nan_to_num(s2, nan=-np.inf)))
+        # Share of the board's total association mass -- a word reachable from
+        # the clue matters less when every word is.
+        tot = np.nansum(s2)
+        cols.append(s2 / tot if tot > 0 else np.full(n, np.nan))
+        cols.append(np.where(np.isnan(s2), 0.0, 1.0))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

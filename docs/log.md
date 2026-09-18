@@ -4342,3 +4342,50 @@ strong semantic anchor but the teacher is still 84% determined. Then the
 Wikipedia2Vec ENTITY vectors already on disk, then ConceptNet graph edges.
 Coverage of our 11,145-word clue pool has to be checked before any of them,
 since a source that covers a tenth of the pool cannot move a pooled metric.
+
+## 2026-09-17 — human association data closes half the gap: +23.7 points
+
+Shane's call, over my recommendation to drop the distillation. He was right.
+
+**The source.** SWOW-EN18 (De Deyne et al. 2019): 1.39M cue->response pairs
+over 12,217 cues from ~90k participants -- what word people actually say when
+cued with another word. That is the listener's task measured on humans, and it
+is a different *kind* of evidence from an embedding. Embeddings measure
+similarity (words used in similar contexts); association measures relatedness
+(words that come to mind together). `nikon` and `Olympus` are not similar,
+they are associated. Three embedding spaces cannot encode that, which is why
+every feature block derived from them was redundant or null.
+
+Checked the cheaper USF norms first and they are too thin: 32.4% clue-pool
+coverage, 0.13 board words per 25-word board at one hop. SWOW: 59.2% coverage,
+100% of board words reachable, 0.57 at one hop and **15.6 of 25 at two hops**.
+Two hops is what makes it usable -- the density lives in intermediate words
+that are on no board. Paths combine by sum of products, so several weak routes
+accumulate rather than all but one being discarded (one sparse matmul,
+scripts/data/build_swow_tables.py, 2.87M two-hop entries, 13.7 MB).
+
+**Result, same 8,609 positions and same board-seed split:**
+
+    baseline (numberbatch z)     pooled 0.4276   step-1 0.6332
+    before SWOW                  pooled 0.4416   step-1 0.6392   (+0.014 / +0.006)
+    with SWOW                    pooled 0.6642   step-1 0.7930   (+0.237 / +0.160)
+
+`swow2_rank` is the top feature by gain, 4x the next. Against the measured
+self-consistency ceiling (~0.94), the model has gone from 0.64 to 0.79 -- about
+half the available headroom, from one feature block.
+
+**Missing is NaN, never 0.** 41% of the clue pool never appears as a SWOW cue.
+Zero would assert "these words are unrelated", which is a strong and wrong
+claim; NaN says "no evidence" and LightGBM learns a split direction for it.
+Conflating the two is the standard way a sparse source poisons a dense feature
+set.
+
+**What this says about the earlier null results.** Tier 1 and cohesion were
+not failures of method -- they were all functions of the same three embedding
+spaces, so they could only recombine information already present. The lesson
+is that feature engineering within one information source has a low ceiling,
+and the diagnosis that matters is which *kind* of evidence is missing.
+
+Data is CC BY-NC-ND 3.0, lives under gitignored data/, and only the derived
+table is cached. Cite De Deyne, Navarro, Perfors, Brysbaert & Storms (2019),
+Behavior Research Methods.
