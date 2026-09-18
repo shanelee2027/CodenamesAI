@@ -4460,3 +4460,43 @@ implausibly good number -- but only after it had been reported and committed.
 A feature covering 18% of pairs cannot be worth +19 points, and one block
 should not take a model from +1.4 to +23.7. That reflex needs to fire before
 the write-up, not after.
+
+## 2026-09-17 — which accuracy number is representative: neither of the two I was quoting
+
+Shane pushed back that step-1 accuracy under-represents play, since clues with
+k>1 make the guesser read deeper. He is right, and checking the weights showed
+our pooled figure is wrong in the other direction.
+
+    step   baseline   model   our weight   game weight
+      1      0.6332  0.6614      40.6%        65.1%
+      2      0.3371  0.3777      29.7%        27.0%
+      3      0.2434  0.2639      19.3%         6.6%
+      4      0.2240  0.2605      10.3%         1.2%
+
+Game weights come from recorded turns: 58.5% read one word, 31.4% two, 8.2%
+three, 1.9% four, so across 1000 turns there are 1000 step-1 events, 415
+step-2, 101 step-3, 19 step-4.
+
+Our pooled metric weights steps by the COLLECTED data's clue-number mix, and
+`collect_listener_data.py` samples k uniformly from 1-4. That puts 29.6% of the
+weight on steps 3-4 where play reads them 7.8% of the time -- so pooled is
+pessimistic, and step-1 is optimistic.
+
+    pooled (our k mix)   baseline 0.4276   model 0.4589
+    step-1 only          baseline 0.6332   model 0.6614
+    GAME-weighted        baseline 0.5517   model 0.5824   <- report this one
+
+**Accuracy collapses with depth: 0.66, 0.38, 0.26, 0.26.** Predicting the
+teacher's second choice is nearly twice as hard as its first. Every feature is
+a variant of "how close is this word to the clue", which explains a top pick
+and not a runner-up.
+
+The lift is stable across all three framings (+0.031, +0.028, +0.031), so the
+choice of metric moves the headline by 12 points but not the verdict on
+whether a feature block helps.
+
+**And all three are still proxies.** In a real turn the guesser stops at the
+first non-own word, so step 2 only happens if step 1 was right: errors truncate
+rather than average. A model at 0.66 then 0.38 does not deliver their mean, it
+delivers a turn that usually ends after one word. Only playing games measures
+that, which is the argument for the ladder replay that has still never been run.
