@@ -4500,3 +4500,32 @@ first non-own word, so step 2 only happens if step 1 was right: errors truncate
 rather than average. A model at 0.66 then 0.38 does not deliver their mean, it
 delivers a turn that usually ends after one word. Only playing games measures
 that, which is the argument for the ladder replay that has still never been run.
+
+## 2026-09-18 — tripled the data again: pooled accuracy identical to 4 decimals
+
+Bought 16,951 more gpt-oss rankings (4.4 h, $1.73, 4.1% rejected), taking the
+store to 25,714 and the training set to 19,032 positions / 47,389 choice
+events -- 2.95x the previous run, with SWOW and entity features in place.
+
+    positions   choice events   pooled   step-1
+        6,450          15,976   0.4589   0.6614
+       19,032          47,389   0.4589   0.6554
+
+**Pooled accuracy is identical to four decimal places, and step-1 is slightly
+worse.** Feature-to-data ratio is now 595 positions per feature, which is
+comfortable, and it changed nothing.
+
+The hypothesis being tested was that partial-coverage sources need more
+examples to exploit -- SWOW covers 59% of clues, entity 29%, so a feature
+present a third of the time gets a third of the effective sample. That was
+wrong; tripling the sample did not help them.
+
+**Three data scales, three feature blocks, same plateau.** This is a feature
+ceiling and no longer an open question. The remaining budget should not go on
+collection.
+
+Where that leaves the distilled listener: 0.4589 pooled, 0.6554 step-1, ~0.58
+game-weighted, against a measured teacher self-consistency ceiling of ~0.94.
+It recovers roughly a third of the way from chance to what the teacher can
+reproduce of itself, and no amount of the evidence available to it closes the
+rest.
