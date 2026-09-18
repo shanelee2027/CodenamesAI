@@ -12,6 +12,11 @@ Source: Brysbaert, Warriner & Kuperman (2014), 39,954 lemmas rated by 4,000+
 participants. The same file carries SUBTLEX frequency and percent-known, which
 are the other two classic word-level priors, so all three come free.
 
+A fourth prior comes from WordNet rather than the norms: **polysemy**, the
+number of senses a board word has. A highly polysemous word is reachable from
+many unrelated clues, which is exactly the property that makes a listener
+mis-guess, and no similarity or association feature expresses it.
+
 Output `cache/word_norms.npz`: one row per board word, NaN where the word is
 not in the norms.
 
@@ -63,14 +68,19 @@ def main() -> None:
                 continue
     print(f"{len(norms):,} lemmas in the norms")
 
-    out = np.full((len(board_words), 4), np.nan, dtype=np.float32)
+    from nltk.corpus import wordnet as wn
+
+    out = np.full((len(board_words), 5), np.nan, dtype=np.float32)
     for i, w in enumerate(board_words):
+        n_senses = float(len(wn.synsets(w)))
         v = norms.get(w)
         if v is not None:
             # log1p on frequency: SUBTLEX counts span five orders of magnitude,
             # and a tree splitting on the raw count would spend every split in
             # the top decile.
-            out[i] = (v[0], v[1], v[2], float(np.log1p(v[3])))
+            out[i] = (v[0], v[1], v[2], float(np.log1p(v[3])), n_senses)
+        else:
+            out[i, 4] = n_senses
     cov = np.isfinite(out[:, 0]).mean()
     print(f"board coverage: {int(cov*len(board_words))}/{len(board_words)} ({cov:.1%})")
 

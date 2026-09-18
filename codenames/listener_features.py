@@ -128,13 +128,20 @@ FEATURE_NAMES: list[str] = [
     # the only other such features -- second and third by contribution per
     # feature. A listener told "animal" and looking at LION and SPIRIT has a
     # reason to prefer the one they can picture.
-    "conc", "conc_sd", "pct_known", "log_freq",
+    "conc", "conc_sd", "pct_known", "log_freq", "n_senses",
     # tier 2: WordNet taxonomic similarity. Neither distributional nor
     # associative -- a hand-built is-a hierarchy knows LION and WHALE are both
     # mammals without any corpus or free-association evidence. lcs_depth
     # separates "both are dogs" from "both are entities", which the Wu-Palmer
     # ratio alone does not.
     "wn_wup", "wn_wup_rank",
+    # tier 2: surface form and definitions. Nothing above reads a word's
+    # spelling, yet real clues work on it (MICRO for MICROSCOPE and MICROWAVE).
+    # And WordNet glosses say something the taxonomy does not: FROST and ICE
+    # can sit far apart in the is-a tree while each one's definition names the
+    # other. See scripts/data/build_lexical_sims.py.
+    "orth_contains", "orth_prefix", "orth_suffix", "orth_trigram",
+    "gloss_c_in_w", "gloss_w_in_c", "gloss_jaccard",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
@@ -251,7 +258,7 @@ class WordNorms:
     """Human ratings per board word: concreteness, its sd, percent known, and
     log frequency. NaN for the 8.5% of board words the norms do not list."""
 
-    norms: np.ndarray                # (n_board_words, 4)
+    norms: np.ndarray                # (n_board_words, 5)
     board_pos: dict[str, int]
 
     @classmethod
@@ -404,6 +411,7 @@ def extract(
     extra: "ExtraSims | None" = None,
     norms: "WordNorms | None" = None,
     wordnet: "ExtraSims | None" = None,
+    lexical: "ExtraSims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -523,7 +531,7 @@ def extract(
             cols.append(v - np.nanmax(v) if np.isfinite(v).any() else np.full(n, np.nan))
 
     if norms is None:
-        for _ in range(4):
+        for _ in range(5):
             cols.append(np.full(n, np.nan))
     else:
         nv = norms.rows(candidates)
@@ -531,6 +539,7 @@ def extract(
         cols.append(nv[:, 1])
         cols.append(nv[:, 2])
         cols.append(nv[:, 3])
+        cols.append(nv[:, 4])
 
     if wordnet is None:
         for _ in range(2):
@@ -540,6 +549,15 @@ def extract(
         wup = wordnet.row("wup", ci, wcols)
         cols.append(wup)
         cols.append(_ranks(wup))
+
+    if lexical is None:
+        for _ in range(7):
+            cols.append(np.full(n, np.nan))
+    else:
+        lcols = np.array([lexical.board_pos.get(w.lower(), -1) for w in candidates])
+        for key in ("orth_contains", "orth_prefix", "orth_suffix", "orth_trigram",
+                    "gloss_c_in_w", "gloss_w_in_c", "gloss_jaccard"):
+            cols.append(lexical.row(key, ci, lcols))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

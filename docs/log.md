@@ -5020,3 +5020,38 @@ exist in them. Eight workers at exactly 00:00:00 CPU was the tell, and
 instantaneous %CPU was not -- cumulative CPU time is the diagnostic. The
 baseline is now a pool job like any other, and the hazard is documented in
 `loo`'s docstring. The earlier hyperparameter sweep avoided this by accident.
+
+## Early stopping was watching the wrong metric
+
+Found while measuring the lexical blocks, and it matters more than they do.
+
+The model is **trained** on group softmax (log loss), **reported** on McFadden
+R2, and was **early-stopped** on tie-aware group accuracy. Three different
+quantities. Accuracy is a step function that plateaus and jitters, so the
+stopping point wandered badly: arms differing by three features stopped
+anywhere between 138 and 652 trees.
+
+The noise that introduced was large enough to invent a result. Measuring three
+new blocks under the old procedure gave each one a clear individual gain and
+the combination of all three a clear *loss* (-0.0067, CI entirely below zero) --
+an apparently interesting interaction that was nothing but a premature stop at
+138 trees.
+
+    block            before (acc stop)        after (log-loss stop)
+    36 baseline      0.3512  200 trees        0.3531  393 trees
+    37 +polysemy     0.3538  377              0.3538  377
+    41 +orth         0.3537  652              0.3544  393
+    40 +gloss        0.3540  327              0.3542  370
+    44 all           0.3486  138              0.3538  390
+
+Stopping now uses `mcfadden_on`, which is the reported metric and -- since the
+null is a constant for a fixed validation set -- exactly equivalent to stopping
+on log loss, i.e. on the training objective. Tree counts settle into a 370-393
+band. The baseline alone gains +0.0019 for free.
+
+**What this invalidates.** Every block measurement in this session was made
+under accuracy-based stopping. The large gains are far outside this noise and
+stand: reverse SWOW +0.0294, LM PMI +0.0188. The small ones are not, and are
+re-measured in the next entry: extra embedding spaces (+0.0078), concreteness
+norms (+0.0067), WordNet (+0.0068), and the 55->36 prune, whose leave-one-out
+values were all under 0.005 and therefore comparable to the stopping noise.

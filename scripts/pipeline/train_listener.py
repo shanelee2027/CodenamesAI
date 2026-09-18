@@ -54,6 +54,7 @@ LM_PMI = CACHE / "lm_pmi.npz"
 EXTRA_SIMS = CACHE / "extra_sims.npz"
 WORD_NORMS = CACHE / "word_norms.npz"
 WORDNET_SIMS = CACHE / "wordnet_sims.npz"
+LEXICAL_SIMS = CACHE / "lexical_sims.npz"
 DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
 
 # Named feature blocks, so an ablation is a flag rather than an edit. The point
@@ -71,8 +72,10 @@ FEATURE_BLOCKS: dict[str, list[str]] = {
     "entity": ["ent_rank", "ent_has"],
     "pmi": ["pmi_gaptop"],
     "extraspaces": ["g840_z", "g840_rank", "g840_gaptop", "ft_z", "ft_gaptop"],
-    "norms": ["conc", "conc_sd", "pct_known", "log_freq"],
+    "norms": ["conc", "conc_sd", "pct_known", "log_freq", "n_senses"],
     "wordnet": ["wn_wup", "wn_wup_rank"],
+    "lexical": ["orth_contains", "orth_prefix", "orth_suffix", "orth_trigram",
+                "gloss_c_in_w", "gloss_w_in_c", "gloss_jaccard"],
 }
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
 
@@ -129,11 +132,13 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
     extra = ExtraSims.load(EXTRA_SIMS) if EXTRA_SIMS.exists() else None
     norms = WordNorms.load(WORD_NORMS) if WORD_NORMS.exists() else None
     wordnet = ExtraSims.load(WORDNET_SIMS) if WORDNET_SIMS.exists() else None
+    lexical = ExtraSims.load(LEXICAL_SIMS) if LEXICAL_SIMS.exists() else None
     print(f"SWOW: {'loaded' if swow else 'ABSENT'}   entity sims: "
           f"{'loaded' if entity else 'ABSENT'}   LM PMI: {'loaded' if pmi else 'ABSENT'}"
           f"   extra spaces: {'loaded' if extra else 'ABSENT'}"
           f"   norms: {'loaded' if norms else 'ABSENT'}"
-          f"   wordnet: {'loaded' if wordnet else 'ABSENT'}")
+          f"   wordnet: {'loaded' if wordnet else 'ABSENT'}"
+          f"   lexical: {'loaded' if lexical else 'ABSENT'}")
     boards = board_lookup(max_seed, collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -163,7 +168,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
         where = {orig: new for new, orig in enumerate(perm)}
         targets = [where[j] for j in range(len(rank))]  # teacher's j-th pick -> its row
         feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi, extra,
-                        norms, wordnet)
+                        norms, wordnet, lexical)
         if feats is None:
             dropped["features"] += 1
             continue
@@ -232,15 +237,41 @@ def baseline_accuracy(X: np.ndarray, groups: list[int], y: np.ndarray) -> float:
     return top1_accuracy(X[:, FEATURE_NAMES.index("z_numberbatch")], groups, y)
 
 
+def mcfadden_on(preds, groups, y, mask=None) -> float:
+    """McFadden pseudo-R2: 1 - LL(model)/LL(uniform), per event.
+
+    This is the stopping metric as well as the reported one, and those being
+    the same thing is load-bearing. Early stopping used to watch tie-aware
+    ACCURACY while the model was trained on group softmax and reported on R2 --
+    three different quantities. Accuracy is a step function that plateaus and
+    jitters, so the stopping point wandered: measured, otherwise-identical arms
+    stopped anywhere between 138 and 652 trees, and the resulting noise was
+    large enough to make three feature blocks that each help individually
+    appear to hurt in combination. The null is computed per event as log(n)
+    rather than assumed constant, because group sizes differ.
+    """
+    bounds = np.concatenate([[0], np.cumsum(groups)])
+    ll = np.empty(len(groups))
+    null = np.empty(len(groups))
+    for i, (a, b) in enumerate(zip(bounds[:-1], bounds[1:])):
+        s_ = preds[a:b] - preds[a:b].max()
+        e = np.exp(s_)
+        p = e / e.sum()
+        ll[i] = -np.log(max(float(p[int(np.argmax(y[a:b]))]), 1e-12))
+        null[i] = np.log(b - a)
+    if mask is not None:
+        ll, null = ll[mask], null[mask]
+    return 1.0 - ll.mean() / null.mean()
+
+
 def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
           names: list[str] | None = None):
     """LightGBM >= 4 takes a custom objective through `params["objective"]`.
 
-    Early stopping on held-out group accuracy is not optional here: with 21
-    features and a few thousand choice events this model will drive TRAINING
-    accuracy to 0.99 while validation sits at the baseline (measured -- see
-    docs/log.md). The stopping metric is the tie-aware accuracy below, because
-    the naive one rewards a degenerate constant model.
+    Early stopping is not optional here: this model will drive TRAINING accuracy
+    to 0.99 while validation sits at the baseline (measured -- see docs/log.md).
+    The stopping metric is McFadden R2, i.e. the training objective itself --
+    see `mcfadden_on` for why watching accuracy instead was actively harmful.
     """
     import lightgbm as lgb
 
@@ -273,7 +304,7 @@ def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
     }
 
     def feval(preds, _dset):
-        return "grp_acc", accuracy_on(preds, gva, yva), True
+        return "r2", mcfadden_on(preds, gva, yva), True
 
     booster = lgb.train(params, dtr, num_boost_round=rounds, valid_sets=[dva], feval=feval,
                         callbacks=[lgb.early_stopping(100, verbose=False)])
