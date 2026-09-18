@@ -76,3 +76,38 @@ class TestTieAwareAccuracy:
     def test_two_way_tie_at_the_top_scores_half(self):
         groups = [4]
         assert self._acc([5.0, 5.0, 0.0, -1.0], groups, [1, 0, 0, 0]) == pytest.approx(0.5)
+
+
+class TestRanksCannotLeakPosition:
+    """A rank feature must never encode a word's position in the candidate
+    list. It did, and it fabricated a +23.7 point result (docs/log.md).
+
+    The mechanism: `np.argsort` on equal values returns index order, so a
+    column that is entirely NaN (a clue no association or entity source
+    covers) or entirely tied came back as 0, 1/(n-1), 2/(n-1), ... -- exactly
+    the candidate's position. Features were extracted in the teacher's ranked
+    order with the target at index 0, so that column WAS the answer.
+    """
+
+    def test_all_nan_column_stays_nan(self):
+        from codenames.listener_features import _ranks
+        r = _ranks(np.full(6, np.nan))
+        assert np.all(np.isnan(r)), r
+
+    def test_all_tied_column_is_constant(self):
+        from codenames.listener_features import _ranks
+        r = _ranks(np.full(5, 0.5))
+        assert np.allclose(r, r[0]), r
+
+    def test_partial_nan_ranks_only_the_present_values(self):
+        from codenames.listener_features import _ranks
+        r = _ranks(np.array([np.nan, 3.0, np.nan, 1.0]))
+        assert np.isnan(r[0]) and np.isnan(r[2])
+        assert r[1] < r[3]
+
+    def test_ties_get_the_same_rank_regardless_of_order(self):
+        from codenames.listener_features import _ranks
+        a = _ranks(np.array([2.0, 5.0, 2.0, 5.0]))
+        b = _ranks(np.array([5.0, 2.0, 5.0, 2.0]))
+        assert a[0] == a[2] and a[1] == a[3]
+        assert sorted(a.tolist()) == sorted(b.tolist())

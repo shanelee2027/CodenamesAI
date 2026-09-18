@@ -4407,3 +4407,56 @@ gaining a uniform +11 to +14. Weighted remaining headroom is ~12.7 points.
 Worth noting for the defense: the association data helps most precisely where
 embeddings have least to say. A clue with no strong semantic anchor still has
 strong human associations, and that is what a listener follows.
+
+## 2026-09-17 — CORRECTION: the SWOW and entity results above were a leak
+
+**The two entries above (commits 942d6ec, 308bf00) report numbers that are
+wrong.** They are left in place because this log records what was believed and
+when, but nothing in them should be cited.
+
+**The bug.** `_ranks(np.nan_to_num(x, nan=-inf))` on a column that is entirely
+NaN returns `[0, 1/(n-1), 2/(n-1), ...]` -- the candidate's position in the
+list -- because `argsort` on equal values returns index order. Features were
+extracted with candidates in the TEACHER'S RANKED ORDER and the target at
+index 0 of every group, so that column *was* the answer. It fired on the 41%
+of clues SWOW does not cover and the 71% entity does not, which is most of the
+data.
+
+**What the numbers actually are**, with candidates shuffled and `_ranks` made
+NaN- and tie-safe:
+
+    baseline (numberbatch z alone)          pooled 0.4276   step-1 0.6332
+    embedding-derived features only (~24)   pooled 0.4414   (+0.014)
+    all 32, with SWOW and entity            pooled 0.4589   (+0.031)
+
+So SWOW plus entity contribute about **+1.7 points**, not the +23.7 claimed.
+Leak-free ablation:
+
+    all 32                 0.4589      pruned 20 (with entity)  0.4545
+    no entity (29)         0.4555      pruned 17 (no entity)    0.4506
+    SWOW + entity ALONE    0.2944   <- far WORSE than numberbatch alone
+
+That last row is the clearest refutation: under the leak "SWOW only" scored
+0.607. These sources are a weak supplement, not a replacement.
+
+**Root cause, and it is the second time.** The target sat at a fixed index, so
+any positional artifact became the answer. The earlier tie-breaking bug in the
+accuracy metric had the same cause -- a constant model scored 100%. Patching
+`_ranks` fixes this instance; SHUFFLING the candidate order before extracting
+features kills the class, and that is what is now done. `targets` tracks where
+each of the teacher's picks landed.
+
+**What survives from the entries above**, because none of it used features:
+teacher self-consistency (84-99%), the sigma fit and ladder, the prompt
+primacy bias, and every coverage measurement (SWOW 59.2% of clues, 15.6 of 25
+board words at two hops; USF too thin at 32.4%; entity 29.2% and 18% of pairs).
+
+**What does not survive**: that association data closes half the distillation
+gap, the by-kind table (junk clues 0.320 -> 0.667), and the Sonnet replication
+at +0.138. All three need re-measuring leak-free.
+
+**Lesson worth keeping.** Both bugs were caught by distrusting an
+implausibly good number -- but only after it had been reported and committed.
+A feature covering 18% of pairs cannot be worth +19 points, and one block
+should not take a model from +1.4 to +23.7. That reflex needs to fire before
+the write-up, not after.

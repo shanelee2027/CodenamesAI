@@ -91,6 +91,11 @@ FEATURE_NAMES: list[str] = [
     # Two hops because the raw graph is sparse (0.57 of a 25-word board direct,
     # 15.6 at two hops); see scripts/data/build_swow_tables.py.
     "swow1", "swow2", "swow2_rank", "swow2_share", "swow_has",
+    # tier 2: Wikipedia2Vec ENTITY vectors, which the tensor build discards.
+    # A word vector for "nikon" encodes how the token is used; the ENTITY
+    # vector for the company sits near Olympus and Canon because the articles
+    # do. Aimed at the encyclopedic residue (schmidt -> Scorpion).
+    "ent_sim", "ent_rank", "ent_has",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
@@ -129,6 +134,32 @@ class SwowTables:
         idx, val = m.indices[lo:hi], m.data[lo:hi]
         lookup = dict(zip(idx.tolist(), val.tolist()))
         return np.array([lookup.get(int(c), np.nan) for c in cols], dtype=np.float64)
+
+
+@dataclass(frozen=True)
+class EntitySims:
+    """Cosine similarity between same-named Wikipedia entities, NaN where
+    either side has no entity vector (29% clue coverage, 62% board)."""
+
+    sims: np.ndarray                 # (n_clue_pool, n_board_words)
+    row_of: dict[int, int]           # tensor clue index -> matrix row
+    board_pos: dict[str, int]
+
+    @classmethod
+    def load(cls, path: Path) -> "EntitySims":
+        d = np.load(path, allow_pickle=False)
+        rows = {int(c): i for i, c in enumerate(d["clue_rows"])}
+        bw = [str(w) for w in d["board_words"]]
+        return cls(sims=d["sims"], row_of=rows, board_pos={w: i for i, w in enumerate(bw)})
+
+    def row(self, clue_i: int, cols: np.ndarray) -> np.ndarray:
+        r = self.row_of.get(clue_i)
+        if r is None:
+            return np.full(len(cols), np.nan)
+        out = np.full(len(cols), np.nan)
+        ok = cols >= 0
+        out[ok] = self.sims[r, cols[ok]]
+        return out
 
 
 @dataclass(frozen=True)
@@ -188,14 +219,36 @@ def p_is_max(z: np.ndarray, sigma: float) -> np.ndarray:
 
 
 def _ranks(values: np.ndarray) -> np.ndarray:
-    """Descending rank, normalised to [0, 1]; 0 is the board's best word."""
-    n = len(values)
-    if n == 1:
-        return np.zeros(1)
-    order = np.argsort(-values)
-    r = np.empty(n)
-    r[order] = np.arange(n)
-    return r / (n - 1)
+    """Descending rank in [0, 1], NaN-safe and tie-safe.
+
+    Both properties are load-bearing, and getting them wrong leaked the
+    answer once already (docs/log.md). A column that is entirely NaN -- a clue
+    no association or entity source covers -- must come back all-NaN, NOT
+    ranked; and ties must get their average rank rather than being broken by
+    array position. `argsort` on equal values returns index order, so either
+    slip turns the feature into "where does this word sit in the list", which
+    is information the model must never see.
+    """
+    finite = np.isfinite(values)
+    out = np.full(len(values), np.nan)
+    if not finite.any():
+        return out
+    v = values[finite]
+    order = np.argsort(-v, kind="stable")
+    r = np.empty(len(v), dtype=np.float64)
+    r[order] = np.arange(len(v), dtype=np.float64)
+    # Average rank within each tied group, so equal values are indistinguishable.
+    sv = v[order]
+    i = 0
+    while i < len(sv):
+        j = i
+        while j + 1 < len(sv) and sv[j + 1] == sv[i]:
+            j += 1
+        if j > i:
+            r[order[i : j + 1]] = (i + j) / 2.0
+        i = j + 1
+    out[finite] = r / max(1, len(v) - 1)
+    return out
 
 
 def _cohesion(
@@ -239,6 +292,7 @@ def extract(
     word_stats: WordStats,
     clue_index: dict[str, int],
     swow: "SwowTables | None" = None,
+    entity: "EntitySims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -301,7 +355,7 @@ def extract(
     # routes on its own).
     coh = _cohesion(candidates, idxs, z[:, 1], sims, clue_stats, clue_index)
     cols.append(coh)
-    cols.append(_ranks(np.nan_to_num(coh, nan=-np.inf)))
+    cols.append(_ranks(coh))
     cols.append(coh - z[:, 1])
 
     if swow is None:
@@ -313,12 +367,22 @@ def extract(
         s2 = swow.row(2, ci, bcols)
         cols.append(s1)
         cols.append(s2)
-        cols.append(_ranks(np.nan_to_num(s2, nan=-np.inf)))
+        cols.append(_ranks(s2))
         # Share of the board's total association mass -- a word reachable from
         # the clue matters less when every word is.
         tot = np.nansum(s2)
         cols.append(s2 / tot if tot > 0 else np.full(n, np.nan))
         cols.append(np.where(np.isnan(s2), 0.0, 1.0))
+
+    if entity is None:
+        for _ in range(3):
+            cols.append(np.full(n, np.nan))
+    else:
+        ecols = np.array([entity.board_pos.get(w.lower(), -1) for w in candidates])
+        e = entity.row(ci, ecols)
+        cols.append(e)
+        cols.append(_ranks(e))
+        cols.append(np.where(np.isnan(e), 0.0, 1.0))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

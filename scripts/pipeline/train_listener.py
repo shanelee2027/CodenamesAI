@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import sqlite3
 import sys
 import time
@@ -38,13 +39,16 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from codenames.board import Board
 from codenames.clue_stats import ClueStats
-from codenames.listener_features import FEATURE_NAMES, N_FEATURES, SwowTables, WordStats, extract
+from codenames.listener_features import (
+    FEATURE_NAMES, N_FEATURES, EntitySims, SwowTables, WordStats, extract,
+)
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 CACHE = PROJECT_ROOT / "cache"
 DB = CACHE / "llm_store.db"
 WORD_STATS = CACHE / "word_stats.npz"
 SWOW_TABLES = CACHE / "swow.npz"
+ENTITY_SIMS = CACHE / "entity_sims.npz"
 DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
 
 
@@ -93,7 +97,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
         wstats = WordStats.build(sims)
         wstats.save(WORD_STATS)
     swow = SwowTables.load(SWOW_TABLES) if SWOW_TABLES.exists() else None
-    print(f"SWOW association tables: {'loaded' if swow else 'ABSENT (features will be NaN)'}")
+    entity = EntitySims.load(ENTITY_SIMS) if ENTITY_SIMS.exists() else None
+    print(f"SWOW: {'loaded' if swow else 'ABSENT'}   entity sims: {'loaded' if entity else 'ABSENT'}")
     boards = board_lookup(max_seed, collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -112,36 +117,47 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
         if seed is None:
             dropped["no_seed"] += 1
             continue
-        # Features are computed ONCE, on the full board, in the teacher's own
-        # ranked order -- so the target at step j is simply row j.
-        feats = extract(clue, rank, number, sims, stats, wstats, clue_index, swow)
+        # Candidates are SHUFFLED before features are computed, and the
+        # teacher's picks are tracked to their new rows. Feeding them in the
+        # teacher's own order put the target at index 0 of every group, which
+        # turned any positional artifact into the answer -- a NaN-filled rank
+        # column leaked it once already (docs/log.md). With a shuffle, position
+        # carries no information and the whole class of bug is dead.
+        perm = random.Random(f"{seed}|{clue}|{number}").sample(range(len(rank)), len(rank))
+        shuffled = [rank[i] for i in perm]
+        where = {orig: new for new, orig in enumerate(perm)}
+        targets = [where[j] for j in range(len(rank))]  # teacher's j-th pick -> its row
+        feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity)
         if feats is None:
             dropped["features"] += 1
             continue
-        out.append({"seed": seed, "clue": clue, "k": int(number), "x": feats, "n": len(rank)})
+        out.append({"seed": seed, "clue": clue, "k": int(number), "x": feats,
+                    "n": len(rank), "targets": targets})
     return out, dropped
 
 
 def build_groups(positions: list[dict]) -> tuple[np.ndarray, np.ndarray, list[int], np.ndarray]:
     """Expand positions into Plackett-Luce choice events.
 
-    Step j of a k-clue is a group over the words not yet picked, with the
-    teacher's j-th pick as the target. Because features were computed once on
-    the full board, a word's row is identical in every group it appears in --
-    which is what makes the fitted scores usable at inference, where the model
-    is evaluated once and sorted.
+    Step j is a group over the words not yet picked, with the teacher's j-th
+    pick as the target. Rows are in shuffled order and `targets` says where
+    each pick landed, so the label is never at a fixed index -- see
+    load_positions on why that matters.
     """
     X, y, groups, seeds = [], [], [], []
     for p in positions:
         n, k = p["n"], p["k"]
+        taken: list[int] = []
         for j in range(min(k, n - 1)):
-            rows = p["x"][j:]  # words still unpicked; target is the first
-            X.append(rows)
+            keep = [r for r in range(n) if r not in taken]
+            rows = p["x"][keep]
             lab = np.zeros(len(rows))
-            lab[0] = 1.0
+            lab[keep.index(p["targets"][j])] = 1.0
+            X.append(rows)
             y.append(lab)
             groups.append(len(rows))
             seeds.append(p["seed"])
+            taken.append(p["targets"][j])
     return np.vstack(X), np.concatenate(y), groups, np.array(seeds)
 
 
