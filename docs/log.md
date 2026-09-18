@@ -4816,3 +4816,52 @@ the direction that matters is the listener's.
 Worth stating plainly for the defence: this was free. The data has been on disk
 since the SWOW download and half of it was being discarded because the build
 script was written from the spymaster's point of view.
+
+## LM pointwise mutual information: +0.019 nats, and complementary to SWOW
+
+SWOW's weakness is coverage: 12,217 cues, so 41% of the clue pool has no row
+and the feature is NaN. The hypothesis was that a language model measures the
+same syntagmatic axis -- which words come to mind together -- from a corpus
+rather than from people, and covers the whole vocabulary.
+
+**Cross-encoders were tried first and rejected.** `cross-encoder/stsb-roberta-large`
+scores bare word pairs in a 0.009-0.075 band and puts schmidt/table above
+schmidt/scorpion. STS is trained for paraphrase similarity between sentences,
+which is the wrong objective and out of distribution on single words; sentence
+templating widened the range but not the discrimination. Deleted rather than
+kept as a null arm, because it never got as far as a measurement.
+
+**PMI, not the raw conditional.** The conditional alone is dominated by
+tokenisation: "platypus" is " plat" + "ypus" and the second token is nearly
+certain given the first, so a length-normalised score ranked it above "camera"
+as an associate of "nikon", and king/stapler above king/queen. Summing instead
+of averaging keeps that bias, but the unconditional term carries exactly the
+same bias and it cancels:
+
+    PMI = log P(w | "The word <clue> reminds me of the word")
+        - log P(w | "The word reminds me of the word")
+
+On a probe set every related pair then outranks every unrelated one, and it
+recovers schmidt -> scorpion (2.19 vs 0.79 for schmidt -> table), the
+encyclopedic link the entity vectors were added for and largely failed to give.
+
+gpt2-large on the RTX 5080, 11,145 clues x 400 board words in 22.8 min, 100%
+coverage. Four features: `pmi`, `pmi_rank`, `pmi_gaptop`, `pmi_share`.
+
+    37 no-PMI          trees=282   R2 0.3365   step-1 R2 0.5628
+    41 +PMI            trees=298   R2 0.3439   step-1 R2 0.5687
+    31 PMI, no SWOW    trees=190   R2 0.3177   step-1 R2 0.5379
+
+    pooled gain: +0.0188 nats  95% CI [+0.0147, +0.0230]
+    step-1 gain: +0.0155 nats  95% CI [+0.0099, +0.0209]
+
+**PMI does not replace SWOW, it adds to it.** Dropping both SWOW blocks and
+keeping PMI scores 0.3177, well below the 0.3365 that SWOW alone reaches, so
+the corpus version is the weaker of the two despite its full coverage -- human
+association is measuring something a language model does not reproduce. Both
+are worth keeping.
+
+Running total for the session: R2 0.3249 -> 0.3439 on 32 -> 41 features,
+step-1 0.5517 -> 0.5687, entirely from evidence sources rather than from more
+views of the three embedding spaces. gpt2-large is the smallest sensible model
+here and an obvious upgrade path if this line is pushed further.

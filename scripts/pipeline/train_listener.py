@@ -49,6 +49,7 @@ DB = CACHE / "llm_store.db"
 WORD_STATS = CACHE / "word_stats.npz"
 SWOW_TABLES = CACHE / "swow.npz"
 ENTITY_SIMS = CACHE / "entity_sims.npz"
+LM_PMI = CACHE / "lm_pmi.npz"
 DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
 
 # Named feature blocks, so an ablation is a flag rather than an edit. The point
@@ -68,6 +69,7 @@ FEATURE_BLOCKS: dict[str, list[str]] = {
     "swow": ["swow1", "swow2", "swow2_rank", "swow2_share", "swow_has"],
     "swowrev": ["swow_rev1", "swow_rev2", "swow_rev2_rank", "swow_rev2_share", "swow_asym"],
     "entity": ["ent_sim", "ent_rank", "ent_has"],
+    "pmi": ["pmi", "pmi_rank", "pmi_gaptop", "pmi_share"],
 }
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
 
@@ -118,7 +120,11 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
         wstats.save(WORD_STATS)
     swow = SwowTables.load(SWOW_TABLES) if SWOW_TABLES.exists() else None
     entity = EntitySims.load(ENTITY_SIMS) if ENTITY_SIMS.exists() else None
-    print(f"SWOW: {'loaded' if swow else 'ABSENT'}   entity sims: {'loaded' if entity else 'ABSENT'}")
+    # lm_pmi.npz has the same layout as entity_sims.npz, so it loads through
+    # the same class rather than a near-duplicate one.
+    pmi = EntitySims.load(LM_PMI) if LM_PMI.exists() else None
+    print(f"SWOW: {'loaded' if swow else 'ABSENT'}   entity sims: "
+          f"{'loaded' if entity else 'ABSENT'}   LM PMI: {'loaded' if pmi else 'ABSENT'}")
     boards = board_lookup(max_seed, collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -147,7 +153,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
         shuffled = [rank[i] for i in perm]
         where = {orig: new for new, orig in enumerate(perm)}
         targets = [where[j] for j in range(len(rank))]  # teacher's j-th pick -> its row
-        feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity)
+        feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi)
         if feats is None:
             dropped["features"] += 1
             continue

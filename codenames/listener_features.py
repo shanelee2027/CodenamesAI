@@ -106,6 +106,11 @@ FEATURE_NAMES: list[str] = [
     # vector for the company sits near Olympus and Canon because the articles
     # do. Aimed at the encyclopedic residue (schmidt -> Scorpion).
     "ent_sim", "ent_rank", "ent_has",
+    # tier 2: language-model PMI. Same syntagmatic axis SWOW measures, but read
+    # off a corpus instead of off people, so it covers the whole clue pool
+    # rather than SWOW's 59%. See scripts/data/build_lm_pmi.py for why PMI and
+    # not the raw conditional (tokenisation bias cancels in the difference).
+    "pmi", "pmi_rank", "pmi_gaptop", "pmi_share",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
@@ -315,6 +320,7 @@ def extract(
     clue_index: dict[str, int],
     swow: "SwowTables | None" = None,
     entity: "EntitySims | None" = None,
+    pmi: "EntitySims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -419,6 +425,21 @@ def extract(
         cols.append(e)
         cols.append(_ranks(e))
         cols.append(np.where(np.isnan(e), 0.0, 1.0))
+
+    if pmi is None:
+        for _ in range(4):
+            cols.append(np.full(n, np.nan))
+    else:
+        pcols = np.array([pmi.board_pos.get(w.lower(), -1) for w in candidates])
+        v = pmi.row(ci, pcols)
+        cols.append(v)
+        cols.append(_ranks(v))
+        # PMI is a log ratio, so a difference is a ratio of ratios -- the right
+        # scale on which to ask "how far behind the leader is this word".
+        cols.append(v - np.nanmax(v) if np.isfinite(v).any() else np.full(n, np.nan))
+        ex = np.exp(v - np.nanmax(v)) if np.isfinite(v).any() else np.full(n, np.nan)
+        tot = np.nansum(ex)
+        cols.append(ex / tot if tot > 0 else np.full(n, np.nan))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)
