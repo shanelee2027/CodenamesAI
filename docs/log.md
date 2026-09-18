@@ -5055,3 +5055,55 @@ stand: reverse SWOW +0.0294, LM PMI +0.0188. The small ones are not, and are
 re-measured in the next entry: extra embedding spaces (+0.0078), concreteness
 norms (+0.0067), WordNet (+0.0068), and the 55->36 prune, whose leave-one-out
 values were all under 0.005 and therefore comparable to the stopping noise.
+
+## Re-measuring every block under log-loss stopping
+
+Leave-one-block-out against the full 44-feature set, so every number is
+directly comparable and produced under the corrected stopping rule. Positive =
+what dropping that block costs, in nats.
+
+    block dropped    n      R2  step-1   cost of dropping
+    nb              11  0.3437  0.5690   +0.0256 [+0.0203,+0.0310] REAL
+    swowrev          4  0.3474  0.5727   +0.0162 [+0.0118,+0.0210] REAL
+    swow             3  0.3483  0.5727   +0.0141 [+0.0095,+0.0184] REAL
+    norms            5  0.3498  0.5750   +0.0103 [+0.0069,+0.0141] REAL
+    pmi              1  0.3501  0.5752   +0.0095 [+0.0055,+0.0136] REAL
+    extraspaces      5  0.3506  0.5776   +0.0082 [+0.0045,+0.0119] REAL
+    spaces           4  0.3518  0.5764   +0.0052 [+0.0018,+0.0087] REAL
+    wordnet          2  0.3530  0.5774   +0.0020 [-0.0013,+0.0051] null
+    lexical          7  0.3538  0.5778   +0.0001 [-0.0029,+0.0031] null
+    entity           2  0.3546  0.5802   -0.0021 [-0.0051,+0.0010] null
+
+Seven of ten blocks are real. Notably `pmi` is one feature (`pmi_gaptop`) doing
++0.0095, the best value-per-feature in the set. The three that had to be
+re-measured survive: extraspaces, norms and spaces all still clear zero.
+
+**The joint check reversed the obvious conclusion, which is the point of
+having one.** wordnet, lexical and entity are each individually null, and the
+tempting move is to drop all eleven features. Measured over three seeds:
+
+    44 full     R2 0.3545  (0.3538, 0.3544, 0.3553)   step-1 0.5793
+    33 pruned   R2 0.3516  (0.3513, 0.3517, 0.3517)   step-1 0.5759
+
+    cost of dropping all three: +0.0075 nats  95% CI [+0.0047, +0.0102]
+
+Dropping them **costs** 0.0029 R2. Each is individually redundant because the
+other two cover it, and removing all three removes information nothing else
+carries. Leave-one-out is systematically blind to this and would have thrown
+away a real +0.0075; the lesson is that a block is only droppable once the
+*combination* has been measured, never on its own LOO value.
+
+(The verdict label in the checking script was written with the sign backwards
+and printed "dropping HELPS". The R2 columns are unambiguous and were what
+caught it. Noting it because a mislabelled verdict is exactly the kind of thing
+that survives into a writeup.)
+
+All 44 features stay. Best val R2 this session: **0.3545** (3-seed mean), from
+0.3249 at the start, with step-1 0.5517 -> 0.5793.
+
+**What was and was not affected by the stopping bug.** `prune_listener_features.py`
+and `sweep_listener_params.py` both already early-stopped on McFadden R2, so the
+55->36 prune and the hyperparameter sweep were never affected -- an earlier note
+in this log saying the prune needed re-measuring was wrong. Only the ad-hoc
+block-ablation scripts went through `train_listener.train`, and those are the
+ones re-run here.
