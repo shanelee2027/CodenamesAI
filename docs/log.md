@@ -4906,3 +4906,54 @@ wiki2vec, and it is only their *union* that adds anything.
 Session running total: R2 0.3249 -> 0.3469 (32 -> 47 features), step-1
 0.5517 -> 0.5722. Of the +0.022, roughly +0.012 came from the two association
 directions, +0.007 from LM PMI, +0.003 from the new embedding spaces.
+
+## Concreteness norms and WordNet taxonomy: both help, and partly overlap
+
+Two blocks, measured separately so either could come back null.
+
+**Concreteness (Brysbaert, Warriner & Kuperman 2014).** Motivated directly by
+the SHAP attribution: `word_mean_sim` and `word_sd_sim` rank second and third
+by contribution per feature, and both describe the word with no clue involved.
+That says the model wants word-level priors, and concreteness is the
+best-attested one -- a listener told "animal" and looking at LION and SPIRIT has
+a reason to prefer the one they can picture. The same file carries SUBTLEX
+frequency and percent-known, so all three priors came free. Five features:
+`conc`, `conc_rank`, `conc_sd`, `pct_known`, `log_freq`. Board coverage 91.5%.
+
+**WordNet.** Neither distributional nor associative: a hand-built is-a hierarchy
+knows LION and WHALE are both mammals with no corpus evidence and no human
+free-association. Sense ambiguity is handled by taking the max over sense pairs
+rather than disambiguating -- which is not a compromise here but the right
+model, since a listener who sees a link acts on it whether or not it was the
+sense the spymaster meant, and that is exactly how Codenames goes wrong.
+`lcs_depth` is emitted alongside the Wu-Palmer ratio because "both are dogs"
+(depth 13) and "both are entities" (depth 1) are very different evidence and
+the ratio alone does not separate them. Three features. Coverage was much better
+than feared: board 98.8%, clues 94.1%, 62.2% of pairs with a nonzero score.
+
+    47 neither     trees=382   R2 0.3469   step-1 R2 0.5722
+    52 +norms      trees=170   R2 0.3496   step-1 R2 0.5716
+    50 +wordnet    trees=344   R2 0.3496   step-1 R2 0.5751
+    55 both        trees=158   R2 0.3507   step-1 R2 0.5734
+
+    +norms   +0.0067 nats  95% CI [+0.0032, +0.0103]
+    +wordnet +0.0068 nats  95% CI [+0.0035, +0.0099]
+    +both    +0.0097 nats  95% CI [+0.0058, +0.0133]
+
+Equal in size, and sub-additive: together they buy 0.0097 of a possible 0.0135,
+so roughly 30% of what each carries the other also carries.
+
+**The two help in different places.** WordNet improves step-1 (0.5722 ->
+0.5751) while concreteness slightly does not (0.5716), yet concreteness improves
+the pooled figure just as much. So the norms are earning their keep at steps 2+,
+which is what you would expect: once the clue's own signal is spent on the
+obvious word, what is left to separate the remaining candidates is properties of
+the words themselves.
+
+Note the tree counts collapse from 382 to 158 once both blocks are in. The
+model reaches its plateau far sooner with these features available, which is
+another sign they carry information the rest of the set was working hard to
+approximate.
+
+Session running total: R2 0.3249 -> 0.3507 (32 -> 55 features), step-1
+0.5517 -> 0.5734.

@@ -120,6 +120,18 @@ FEATURE_NAMES: list[str] = [
     # measured as its own block so the answer is unambiguous.
     "g840_z", "g840_rank", "g840_gaptop",
     "ft_z", "ft_rank", "ft_gaptop",
+    # tier 2: human word norms (Brysbaert et al. 2014). Word-level priors with
+    # no clue involvement, added because SHAP put word_mean_sim/word_sd_sim --
+    # the only other such features -- second and third by contribution per
+    # feature. A listener told "animal" and looking at LION and SPIRIT has a
+    # reason to prefer the one they can picture.
+    "conc", "conc_rank", "conc_sd", "pct_known", "log_freq",
+    # tier 2: WordNet taxonomic similarity. Neither distributional nor
+    # associative -- a hand-built is-a hierarchy knows LION and WHALE are both
+    # mammals without any corpus or free-association evidence. lcs_depth
+    # separates "both are dogs" from "both are entities", which the Wu-Palmer
+    # ratio alone does not.
+    "wn_wup", "wn_wup_rank", "wn_lcs_depth",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
@@ -228,6 +240,29 @@ class ExtraSims:
         out = np.full(len(cols), np.nan)
         ok = cols >= 0
         out[ok] = m[r, cols[ok]]
+        return out
+
+
+@dataclass(frozen=True)
+class WordNorms:
+    """Human ratings per board word: concreteness, its sd, percent known, and
+    log frequency. NaN for the 8.5% of board words the norms do not list."""
+
+    norms: np.ndarray                # (n_board_words, 4)
+    board_pos: dict[str, int]
+
+    @classmethod
+    def load(cls, path: Path) -> "WordNorms":
+        d = np.load(path, allow_pickle=False)
+        bw = [str(w) for w in d["board_words"]]
+        return cls(norms=d["norms"], board_pos={w: i for i, w in enumerate(bw)})
+
+    def rows(self, candidates: list[str]) -> np.ndarray:
+        idx = [self.board_pos.get(w.lower(), -1) for w in candidates]
+        out = np.full((len(candidates), self.norms.shape[1]), np.nan)
+        for i, j in enumerate(idx):
+            if j >= 0:
+                out[i] = self.norms[j]
         return out
 
 
@@ -364,6 +399,8 @@ def extract(
     entity: "EntitySims | None" = None,
     pmi: "EntitySims | None" = None,
     extra: "ExtraSims | None" = None,
+    norms: "WordNorms | None" = None,
+    wordnet: "ExtraSims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -494,6 +531,27 @@ def extract(
             cols.append(v)
             cols.append(_ranks(v))
             cols.append(v - np.nanmax(v) if np.isfinite(v).any() else np.full(n, np.nan))
+
+    if norms is None:
+        for _ in range(5):
+            cols.append(np.full(n, np.nan))
+    else:
+        nv = norms.rows(candidates)
+        cols.append(nv[:, 0])
+        cols.append(_ranks(nv[:, 0]))
+        cols.append(nv[:, 1])
+        cols.append(nv[:, 2])
+        cols.append(nv[:, 3])
+
+    if wordnet is None:
+        for _ in range(3):
+            cols.append(np.full(n, np.nan))
+    else:
+        wcols = np.array([wordnet.board_pos.get(w.lower(), -1) for w in candidates])
+        wup = wordnet.row("wup", ci, wcols)
+        cols.append(wup)
+        cols.append(_ranks(wup))
+        cols.append(wordnet.row("lcs_depth", ci, wcols))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)
