@@ -5335,3 +5335,44 @@ reference from 48 cells upward. 96 costs 7 ms per 500 clues.
 Not yet wired into a spymaster: that needs the two-stage shortlist (extract()
 is 752 us/clue, so scoring all 11,145 is 8.4 s/turn against 0.17 s for a
 shortlist of 100) and belongs in its own module.
+
+## First real games: the learned listener against Sonnet
+
+`learned_listener` (docs/clue-selection-learned.tex + codenames/pl_reward.py,
+searched two-stage in codenames/spymasters/learned_listener.py) against the
+`expected_words` baseline, 20 boards played twice with the sides swapped,
+Claude Sonnet 5 as the guesser for both. 40 games, 204 s.
+
+    spymaster           win%    as A    as B  assassin%  clues  mean k  own/clue    own%
+    expected_words     10.0%   10.0%   10.0%       2.5%    192    1.29      1.15   90.9%
+    learned_listener   90.0%   90.0%   90.0%       0.0%    207    1.97      1.56   84.6%
+
+36-4. Identical as A and as B, so the side advantage is not doing the work.
+
+The mechanism is visible in the columns: the learned listener gives more
+ambitious clues (mean k 1.97 against 1.29) and converts more words per clue
+(1.56 against 1.15) while being slightly *less* precise per guess (84.6%
+against 90.9%). It is not guessing better, it is trusting the guesser further
+and being right often enough that the trade pays. It also never hit the
+assassin, against 2.5% for the baseline.
+
+**Checked for a positional leak before believing it.** The spymaster passes
+candidates as own-words-first, while training used a per-position shuffle --
+exactly the asymmetry that produced the `_ranks` leak earlier in this project.
+Feeding shuffled candidate orders and comparing scores under the inverse
+permutation gives a maximum deviation of 0.0: the features are exactly
+order-invariant, so own-first ordering hands the model nothing.
+
+**Two caveats, both real.**
+
+The baseline here runs at sigma=2.5, which the sigma ladder measured as the
+worst of five values tested; sigma=1.5 won 70-30 against centroid. So part of
+this margin is beating a badly configured opponent rather than beating the
+approach, and a sigma=1.5 rematch is running.
+
+`number` is passed to the feature extractor as K_max = min(n_own, 4) before the
+clue's own best k is known, so the scores used to evaluate every k were
+computed under one value of that feature. `k` is constant within a board and
+therefore cannot change the softmax over words -- it only gates tree
+interactions -- so this cannot leak which word is ours, but it does mean the
+per-k rewards share one scoring pass rather than each getting its own.
