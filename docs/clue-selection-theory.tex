@@ -186,151 +186,113 @@ cells.
 \section{Results}
 \label{sec:results}
 
-The model above has one free parameter. To choose it, $\sigma$ was swept over
-three orders of magnitude and each value was made to play the same 100
-positions, drawn from held-out board words and spanning openings through
-endgames. Each turn was scored as the game scores it: the guesser's ranking is
-walked, own words are counted until the first word of $B$, and the reward is
-$+1$ per own word with $-0.2$, $-1$ and $-10$ for a neutral, opponent and
-assassin word respectively. The guesser was Claude Sonnet, prompted to rank the unrevealed board words by
-how related each is to the clue word.
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{
-  S[table-format=2.2]
-  S[table-format=1.2] S[table-format=1.2] S[table-format=-1.2]
-  S[table-format=1.3] S[table-format=1.3]
-  S[table-format=2.0] S[table-format=2.0] S[table-format=2.0] S[table-format=2.0]}
-\toprule
-{$\sigma$} & {announced} & {revealed} & {gap} & {reward} & {s.e.}
-  & {asn} & {opp} & {neu} & {clean} \\
-\midrule
- 0.25 & 3.96 & 1.55 & -2.41 & 0.448 & 0.228 & 5 & 53 & 36 &  6 \\
- 0.5  & 3.91 & 1.60 & -2.31 & 0.698 & 0.202 & 3 & 53 & 36 &  8 \\
- 1.0  & 3.45 & 1.74 & -1.71 & 0.852 & 0.241 & 4 & 43 & 29 & 24 \\
- 1.5  & 2.79 & 1.72 & -1.07 & 0.698 & 0.299 & 7 & 28 & 21 & 44 \\
- 2.0  & 2.33 & 1.69 & -0.64 & 1.172 & 0.205 & 3 & 19 & 14 & 64 \\
-\midrule
- 2.5  & 1.72 & 1.41 & -0.31 & 1.314 & 0.069 & 0 &  7 & 13 & 80 \\
-\midrule
- 3.0  & 1.40 & 1.22 & -0.18 & 1.174 & 0.054 & 0 &  3 &  8 & 89 \\
- 4.0  & 1.21 & 1.10 & -0.11 & 1.060 & 0.038 & 0 &  3 &  5 & 92 \\
- 6.0  & 1.16 & 1.05 & -0.11 & 1.008 & 0.035 & 0 &  3 &  6 & 91 \\
-10.0  & 1.13 & 0.99 & -0.14 & 0.918 & 0.048 & 0 &  6 &  6 & 88 \\
-\bottomrule
-\end{tabular}
-\caption*{\footnotesize Per turn, over 100 positions. \emph{announced} is
-$k$; \emph{revealed} is the number of words of $A$ the guesser actually took;
-the last four columns count how each turn ended.}
-\end{table}
-
-\begin{figure}[H]
-\centering
-\begin{tikzpicture}
-\begin{axis}[
-  width=\linewidth, height=6cm,
-  xmode=log, log basis x=10,
-  xtick={0.25,0.5,1,2,4,10},
-  xticklabels={0.25,0.5,1,2,4,10},
-  xlabel={$\sigma$}, ylabel={reward per turn},
-  xmin=0.21, xmax=12,
-  ymin=-0.15, ymax=1.85,
-  ytick={0,0.5,1.0,1.5},
-  grid=major, grid style={gray!25, thin},
-  axis lines=left,
-  tick label style={font=\footnotesize},
-  label style={font=\small},
-  every axis plot/.append style={thick},
-]
-% sigma  reward  95% half-width (1.96 * s.e.)
-\addplot+[
-  mark=*, mark size=1.6pt, black, mark options={fill=black, draw=black},
-  error bars/.cd, y dir=both, y explicit,
-  error bar style={gray!60, thin}, error mark options={gray!60},
-] table[x=sigma, y=reward, y error=ci] {
-sigma reward ci
-0.25  0.448  0.447
-0.5   0.698  0.396
-1.0   0.852  0.472
-1.5   0.698  0.586
-2.0   1.172  0.402
-2.5   1.314  0.135
-3.0   1.174  0.106
-4.0   1.060  0.074
-6.0   1.008  0.069
-10.0  0.918  0.094
-};
-\draw[gray!50, dashed] (axis cs:2.5,-0.15) -- (axis cs:2.5,1.6);
-\node[anchor=south, font=\footnotesize] at (axis cs:2.5,1.6) {$\sigma = 2.5$};
-\end{axis}
-\end{tikzpicture}
-\caption*{\footnotesize Realized reward per turn. Bars are 95\% confidence
-intervals; the wide bars at small $\sigma$ are assassin turns, each costing
-$-10$.}
-\end{figure}
-
-This sweep selects $\sigma = 2.5$, and on its own terms that is the right
-answer: reward per turn peaks there, and the interval is narrow because turns
-at that setting almost never end on the assassin.
-
-\section{The proxy disagrees with the game}
-\label{sec:games}
-
-Reward per turn is a proxy. The quantity we actually care about is whether the
-model wins, so each setting was then made to play full two-team games against a
-fixed opponent --- the centroid baseline --- over 100 games per setting, each
-board played twice with the sides swapped so that the first-move advantage
-cancels. The guesser was Claude Sonnet on both sides.
+The model has one free parameter. To choose it, $\sigma$ was swept and each
+setting was made to play full two-team games against a fixed opponent, the
+centroid baseline, over 100 games per setting. Every board is played twice with
+the sides swapped, because team $A$ holds nine words and moves first while team
+$B$ holds eight, so a one-sided run would confound the parameter with that
+advantage. The guesser on both sides was Claude Sonnet, prompted to rank the
+unrevealed board words by how related each is to the clue word. Turns are scored
+as the game scores them: $+1$ per word of $A$ revealed, and $-0.2$, $-1$ and
+$-10$ for a neutral, opponent and assassin word.
 
 \begin{table}[H]
 \centering
 \small
 \begin{tabular}{
   S[table-format=1.2] S[table-format=2.0]
-  S[table-format=1.2] S[table-format=1.2] S[table-format=1.2]}
+  S[table-format=1.2] S[table-format=1.2] S[table-format=1.2] S[table-format=1.2]
+  S[table-format=2.0]}
 \toprule
-{$\sigma$} & {win \%} & {announced $k$} & {own words/turn} & {reward/turn} \\
+{$\sigma$} & {win \%} & {announced $k$} & {own/turn} & {advantage/turn}
+  & {reward/turn} & {assassin \%} \\
 \midrule
- 1.0  & 69 & 2.67 & 1.48 & 0.85 \\
- 1.25 & 70 & 2.27 & 1.43 & 1.01 \\
- 1.5  & 70 & 1.93 & 1.33 & 1.01 \\
- 2.0  & 57 & 1.42 & 1.17 & 1.05 \\
- 2.5  & 51 & 1.16 & 1.07 & 0.98 \\
+ 1.0  & 69 & 2.67 & 1.48 & 1.24 & 0.85 & 14 \\
+ 1.25 & 70 & 2.27 & 1.43 & 1.23 & 1.01 &  8 \\
+ 1.5  & 70 & 1.93 & 1.33 & 1.17 & 1.01 &  6 \\
+ 2.0  & 57 & 1.42 & 1.17 & 1.10 & 1.05 &  2 \\
+ 2.5  & 51 & 1.16 & 1.07 & 1.04 & 0.98 &  3 \\
 \bottomrule
 \end{tabular}
-\caption*{\footnotesize 100 games per setting against the centroid baseline.}
+\caption*{\footnotesize Per turn, over 100 games per setting.
+\emph{announced} is $k$; \emph{own/turn} is how many words of $A$ the guesser
+actually took; \emph{advantage} subtracts the opponent words it gave away;
+\emph{assassin} is the share of games lost outright.}
 \end{table}
 
-The ordering is nearly reversed. The setting the proxy chose, $\sigma = 2.5$,
-wins 51\% of its games --- indistinguishable from the baseline it is supposed
-to beat --- while $\sigma$ between $1.0$ and $1.5$ wins about $70\%$.
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\linewidth, height=5.4cm,
+  xlabel={$\sigma$}, ylabel={win rate vs centroid},
+  xmin=0.85, xmax=2.65, ymin=0.35, ymax=0.88,
+  xtick={1.0,1.25,1.5,2.0,2.5},
+  ytick={0.4,0.5,0.6,0.7,0.8},
+  grid=major, grid style={gray!25, thin},
+  axis lines=left,
+  tick label style={font=\footnotesize}, label style={font=\small},
+  every axis plot/.append style={thick},
+]
+\addplot+[
+  mark=*, mark size=1.8pt, black, mark options={fill=black, draw=black},
+  error bars/.cd, y dir=both, y explicit,
+  error bar style={gray!60, thin}, error mark options={gray!60},
+] table[x=sigma, y=win, y error minus=lo, y error plus=hi] {
+sigma win   lo    hi
+1.0    0.69 0.096 0.082
+1.25  0.70 0.096 0.081
+1.5   0.70 0.096 0.081
+2.0   0.57 0.098 0.093
+2.5   0.51 0.097 0.096
+};
+\draw[gray!55, dashed] (axis cs:0.85,0.5) -- (axis cs:2.65,0.5);
+\node[anchor=west, font=\footnotesize, gray!70] at (axis cs:2.1,0.465) {even};
+\end{axis}
+\end{tikzpicture}
+\caption*{\footnotesize Win rate against the centroid baseline, 100 games per
+setting. Bars are 95\% Wilson intervals. The plateau from $1.0$ to $1.5$ is flat
+within noise; $2.0$ and $2.5$ are clearly below it, and $2.5$ is
+indistinguishable from an even match.}
+\end{figure}
 
-The reason is visible in the last two columns, and it is not that the proxy was
-measured badly. Reward per turn is genuinely flat: every setting from $1.25$
-upward sits between $0.98$ and $1.05$, because the additional words a bold
-setting wins are very nearly cancelled by the opponent words and assassins it
-also concedes. A metric that does not vary cannot select anything, and the peak
-at $2.5$ in Section~\ref{sec:results} is within the noise of that flatness.
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\linewidth, height=5.4cm,
+  xlabel={$\sigma$}, ylabel={per turn},
+  xmin=0.85, xmax=2.65, ymin=0.75, ymax=1.6,
+  xtick={1.0,1.25,1.5,2.0,2.5},
+  grid=major, grid style={gray!25, thin},
+  axis lines=left,
+  legend style={at={(0.98,0.98)}, anchor=north east, font=\footnotesize,
+                draw=none, fill=none},
+  tick label style={font=\footnotesize}, label style={font=\small},
+  every axis plot/.append style={thick},
+]
+\addplot[mark=*, mark size=1.6pt, black] coordinates
+  {(1.0,1.48) (1.25,1.43) (1.5,1.33) (2.0,1.17) (2.5,1.07)};
+\addlegendentry{own words}
+\addplot[mark=square*, mark size=1.5pt, gray!70] coordinates
+  {(1.0,1.24) (1.25,1.23) (1.5,1.17) (2.0,1.10) (2.5,1.04)};
+\addlegendentry{card advantage}
+\addplot[mark=triangle*, mark size=2pt, black, dashed] coordinates
+  {(1.0,0.85) (1.25,1.01) (1.5,1.01) (2.0,1.05) (2.5,0.98)};
+\addlegendentry{reward}
+\end{axis}
+\end{tikzpicture}
+\caption*{\footnotesize The three per-turn measures. Words taken falls
+monotonically with $\sigma$; reward does not vary.}
+\end{figure}
 
-What does vary is words per turn, which falls monotonically from $1.48$ to
-$1.07$ as $\sigma$ grows. Codenames is a race: both teams are emptying their
-own half of the board, and a team taking $1.48$ words per turn finishes in
-roughly two-thirds the turns of one taking $1.07$. Per-turn reward prices a
-turn in isolation and is blind to how many turns the game will last, so it
-cannot see the cost of playing slowly. Only $\sigma = 1.0$ is punished on both
-measures, where a $14\%$ assassin rate at $-10$ drags reward per turn down to
-$0.85$ without buying a better win rate than $1.25$ or $1.5$.
+Win rate is flat from $\sigma = 1.0$ to $1.5$ and falls away above it. Words
+taken per turn falls monotonically across the whole range, while reward per
+turn does not vary: every setting from $1.25$ upward lies between $0.98$ and
+$1.05$, so it does not distinguish them.
 
-We therefore take $\sigma = 1.5$: the top of the win-rate plateau, and the
-cautious end of it, since $1.0$ and $1.25$ win no more often while ending
-turns on the assassin more than twice as frequently.
-
-The general lesson is worth stating separately from this model. A per-turn
-proxy was used because it is cheap --- one ranking per position rather than a
-full game --- and it selected a parameter that plays the eventual objective
-close to chance. The proxy was not wrong about what it measured; it was
-measuring a quantity the game does not maximize.
+We take $\sigma = 1.5$ from here on --- the top of the win-rate plateau, at its
+cautious end, since $1.0$ and $1.25$ win no more often while ending turns on
+the assassin more than twice as frequently.
 
 \end{document}
