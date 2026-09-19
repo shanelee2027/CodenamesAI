@@ -5376,3 +5376,35 @@ computed under one value of that feature. `k` is constant within a board and
 therefore cannot change the softmax over words -- it only gates tree
 interactions -- so this cannot leak which word is ours, but it does mean the
 per-k rewards share one scoring pass rather than each getting its own.
+
+## The sigma=1.5 rematch, extended: 72% over 100 games
+
+Extending the learned_listener vs expected_words[sigma=1.5] arm from 20 boards
+to 50 settles what 40 games could not. Win rate 72%, 95% Wilson [0.63, 0.80] --
+the interval now excludes 0.5, where at 40 games it was 65% and p = 0.07 on the
+paired sign test.
+
+The head-to-head summary against all three opponents, Sonnet guessing:
+
+    opponent                games   win%   95% CI
+    centroid                   40    82%   [0.68, 0.91]
+    expected_words sigma=2.5   40    90%   [0.77, 0.96]
+    expected_words sigma=1.5  100    72%   [0.63, 0.80]
+
+**The mechanism is clean at equal ambition.** Against sigma=1.5 the two models
+give almost identically bold clues -- mean k 1.97 against 1.93 -- so the win is
+not aggression:
+
+    model                    mean k   own%   opp%   assassin%
+    expected_words sigma=1.5   1.93    79%    10%        6.0%
+    learned_listener           1.97    87%     5%        1.0%
+
+Same number of words attempted per clue, eight points more of them correct,
+half the opponent words, and a sixth of the assassin losses.
+
+`notebooks/arena_results.ipynb` renders all of this from cache/llm_store.db
+with no API calls: the sigma ladder with Wilson intervals, mean k and assassin
+rate across the ladder, the three head-to-heads, and guess composition by role.
+It deduplicates by (label, seed) -- the sigma=1.5 arm was extended in place, so
+its first 20 seeds appear twice in the table and would otherwise be
+double-counted.
