@@ -21,6 +21,13 @@
 \usepackage{microtype}
 \usepackage[T1]{fontenc}
 \usepackage{libertinus}          % swap for \usepackage{lmodern} to fall back
+\usepackage{xcolor}
+% Codenames card colours, for the worked game at the end.
+\definecolor{cnblue}{HTML}{3A6EA5}
+\definecolor{cnred}{HTML}{B4504D}
+\definecolor{cntan}{HTML}{D9CBA3}
+\definecolor{cnblack}{HTML}{2B2B2B}
+\definecolor{cngold}{HTML}{C99A2E}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
 
@@ -294,5 +301,176 @@ $1.05$, so it does not distinguish them.
 We take $\sigma = 1.5$ from here on --- the top of the win-rate plateau, at its
 cautious end, since $1.0$ and $1.25$ win no more often while ending turns on
 the assassin more than twice as frequently.
+
+\section{A worked game}
+\label{sec:worked}
+
+One game at $\sigma = 1.5$, chosen at random from those the model won by
+revealing all nine of its own words. Blue cards are the model's, red the
+opponent's, tan neutral, black the assassin; spent cards are faded. Gold
+outlines mark the words the model meant by its clue --- these are not recorded
+in the game log, but the model's choice is deterministic given the board, so
+they are recovered by rescoring the clue against the unrevealed own words.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=2.7cm, y=0.92cm]
+  \node[draw=black!25, line width=0.3pt, fill=cnblack, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,0) {\textcolor{white}{\scriptsize\textsf{Bar}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,0) {\textcolor{white}{\scriptsize\textsf{Giant}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,0) {\textcolor{black}{\scriptsize\textsf{Tag}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,0) {\textcolor{black}{\scriptsize\textsf{Water}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,0) {\textcolor{white}{\scriptsize\textsf{Circle}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-1) {\textcolor{white}{\scriptsize\textsf{Note}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-1) {\textcolor{white}{\scriptsize\textsf{Lab}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-1) {\textcolor{white}{\scriptsize\textsf{Stick}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-1) {\textcolor{white}{\scriptsize\textsf{Tail}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-1) {\textcolor{white}{\scriptsize\textsf{Bugle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-2) {\textcolor{black}{\scriptsize\textsf{Net}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-2) {\textcolor{white}{\scriptsize\textsf{Scientist}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-2) {\textcolor{white}{\scriptsize\textsf{Paste}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-2) {\textcolor{white}{\scriptsize\textsf{Server}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-2) {\textcolor{black}{\scriptsize\textsf{Antarctica}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-3) {\textcolor{black}{\scriptsize\textsf{Pirate}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-3) {\textcolor{white}{\scriptsize\textsf{Missile}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-3) {\textcolor{white}{\scriptsize\textsf{Rome}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-3) {\textcolor{white}{\scriptsize\textsf{Lap}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-3) {\textcolor{black}{\scriptsize\textsf{Sink}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-4) {\textcolor{white}{\scriptsize\textsf{Pound}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-4) {\textcolor{white}{\scriptsize\textsf{War}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-4) {\textcolor{black}{\scriptsize\textsf{Model}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-4) {\textcolor{white}{\scriptsize\textsf{Lion}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-4) {\textcolor{white}{\scriptsize\textsf{Crash}}};
+\end{tikzpicture}
+\caption*{\footnotesize \textbf{Turn 1} --- clue \textsc{findings} 3. Guesser took: \textbf{Lab}, \textbf{Scientist}, \textbf{Note}.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=2.7cm, y=0.92cm]
+  \node[draw=black!25, line width=0.3pt, fill=cnblack, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,0) {\textcolor{white}{\scriptsize\textsf{Bar}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,0) {\textcolor{white}{\scriptsize\textsf{Giant}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,0) {\textcolor{black}{\scriptsize\textsf{Tag}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,0) {\textcolor{black}{\scriptsize\textsf{Water}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,0) {\textcolor{white}{\scriptsize\textsf{Circle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-1) {\textcolor{black!35}{\scriptsize\textsf{Note}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-1) {\textcolor{black!35}{\scriptsize\textsf{Lab}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-1) {\textcolor{white}{\scriptsize\textsf{Stick}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-1) {\textcolor{white}{\scriptsize\textsf{Tail}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-1) {\textcolor{white}{\scriptsize\textsf{Bugle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-2) {\textcolor{black}{\scriptsize\textsf{Net}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-2) {\textcolor{black!35}{\scriptsize\textsf{Scientist}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-2) {\textcolor{white}{\scriptsize\textsf{Paste}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-2) {\textcolor{white}{\scriptsize\textsf{Server}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-2) {\textcolor{black}{\scriptsize\textsf{Antarctica}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-3) {\textcolor{black}{\scriptsize\textsf{Pirate}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-3) {\textcolor{white}{\scriptsize\textsf{Missile}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-3) {\textcolor{white}{\scriptsize\textsf{Rome}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-3) {\textcolor{white}{\scriptsize\textsf{Lap}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-3) {\textcolor{black}{\scriptsize\textsf{Sink}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-4) {\textcolor{white}{\scriptsize\textsf{Pound}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-4) {\textcolor{black!35}{\scriptsize\textsf{War}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-4) {\textcolor{black}{\scriptsize\textsf{Model}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-4) {\textcolor{white}{\scriptsize\textsf{Lion}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-4) {\textcolor{white}{\scriptsize\textsf{Crash}}};
+\end{tikzpicture}
+\caption*{\footnotesize \textbf{Turn 2} --- clue \textsc{driver} 2. Guesser took: Stick \textit{(opponent)}.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=2.7cm, y=0.92cm]
+  \node[draw=black!25, line width=0.3pt, fill=cnblack, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,0) {\textcolor{white}{\scriptsize\textsf{Bar}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,0) {\textcolor{white}{\scriptsize\textsf{Giant}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,0) {\textcolor{black}{\scriptsize\textsf{Tag}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,0) {\textcolor{black}{\scriptsize\textsf{Water}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,0) {\textcolor{white}{\scriptsize\textsf{Circle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-1) {\textcolor{black!35}{\scriptsize\textsf{Note}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-1) {\textcolor{black!35}{\scriptsize\textsf{Lab}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-1) {\textcolor{black!35}{\scriptsize\textsf{Stick}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-1) {\textcolor{white}{\scriptsize\textsf{Tail}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-1) {\textcolor{white}{\scriptsize\textsf{Bugle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-2) {\textcolor{black}{\scriptsize\textsf{Net}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-2) {\textcolor{black!35}{\scriptsize\textsf{Scientist}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-2) {\textcolor{white}{\scriptsize\textsf{Paste}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-2) {\textcolor{white}{\scriptsize\textsf{Server}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-2) {\textcolor{black}{\scriptsize\textsf{Antarctica}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-3) {\textcolor{black}{\scriptsize\textsf{Pirate}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-3) {\textcolor{black!35}{\scriptsize\textsf{Missile}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-3) {\textcolor{white}{\scriptsize\textsf{Rome}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-3) {\textcolor{white}{\scriptsize\textsf{Lap}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-3) {\textcolor{black}{\scriptsize\textsf{Sink}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-4) {\textcolor{white}{\scriptsize\textsf{Pound}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-4) {\textcolor{black!35}{\scriptsize\textsf{War}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-4) {\textcolor{black}{\scriptsize\textsf{Model}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-4) {\textcolor{white}{\scriptsize\textsf{Lion}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-4) {\textcolor{white}{\scriptsize\textsf{Crash}}};
+\end{tikzpicture}
+\caption*{\footnotesize \textbf{Turn 3} --- clue \textsc{mph} 3. Guesser took: \textbf{Crash}, \textbf{Lap}, \textbf{Pound}.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=2.7cm, y=0.92cm]
+  \node[draw=black!25, line width=0.3pt, fill=cnblack, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,0) {\textcolor{white}{\scriptsize\textsf{Bar}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,0) {\textcolor{white}{\scriptsize\textsf{Giant}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,0) {\textcolor{black}{\scriptsize\textsf{Tag}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,0) {\textcolor{black!35}{\scriptsize\textsf{Water}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,0) {\textcolor{black!35}{\scriptsize\textsf{Circle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-1) {\textcolor{black!35}{\scriptsize\textsf{Note}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-1) {\textcolor{black!35}{\scriptsize\textsf{Lab}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-1) {\textcolor{black!35}{\scriptsize\textsf{Stick}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-1) {\textcolor{white}{\scriptsize\textsf{Tail}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-1) {\textcolor{white}{\scriptsize\textsf{Bugle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-2) {\textcolor{black}{\scriptsize\textsf{Net}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-2) {\textcolor{black!35}{\scriptsize\textsf{Scientist}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-2) {\textcolor{white}{\scriptsize\textsf{Paste}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-2) {\textcolor{white}{\scriptsize\textsf{Server}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-2) {\textcolor{black}{\scriptsize\textsf{Antarctica}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-3) {\textcolor{black}{\scriptsize\textsf{Pirate}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-3) {\textcolor{black!35}{\scriptsize\textsf{Missile}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-3) {\textcolor{white}{\scriptsize\textsf{Rome}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-3) {\textcolor{black!35}{\scriptsize\textsf{Lap}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-3) {\textcolor{black}{\scriptsize\textsf{Sink}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-4) {\textcolor{black!35}{\scriptsize\textsf{Pound}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-4) {\textcolor{black!35}{\scriptsize\textsf{War}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-4) {\textcolor{black}{\scriptsize\textsf{Model}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-4) {\textcolor{white}{\scriptsize\textsf{Lion}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-4) {\textcolor{black!35}{\scriptsize\textsf{Crash}}};
+\end{tikzpicture}
+\caption*{\footnotesize \textbf{Turn 4} --- clue \textsc{cpu} 1. Guesser took: \textbf{Server}.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[x=2.7cm, y=0.92cm]
+  \node[draw=black!25, line width=0.3pt, fill=cnblack, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,0) {\textcolor{white}{\scriptsize\textsf{Bar}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,0) {\textcolor{black!35}{\scriptsize\textsf{Giant}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,0) {\textcolor{black}{\scriptsize\textsf{Tag}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,0) {\textcolor{black!35}{\scriptsize\textsf{Water}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,0) {\textcolor{black!35}{\scriptsize\textsf{Circle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-1) {\textcolor{black!35}{\scriptsize\textsf{Note}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-1) {\textcolor{black!35}{\scriptsize\textsf{Lab}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-1) {\textcolor{black!35}{\scriptsize\textsf{Stick}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-1) {\textcolor{white}{\scriptsize\textsf{Tail}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-1) {\textcolor{white}{\scriptsize\textsf{Bugle}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-2) {\textcolor{black}{\scriptsize\textsf{Net}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-2) {\textcolor{black!35}{\scriptsize\textsf{Scientist}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-2) {\textcolor{white}{\scriptsize\textsf{Paste}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-2) {\textcolor{black!35}{\scriptsize\textsf{Server}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-2) {\textcolor{black}{\scriptsize\textsf{Antarctica}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-3) {\textcolor{black}{\scriptsize\textsf{Pirate}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-3) {\textcolor{black!35}{\scriptsize\textsf{Missile}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-3) {\textcolor{white}{\scriptsize\textsf{Rome}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-3) {\textcolor{black!35}{\scriptsize\textsf{Lap}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-3) {\textcolor{black}{\scriptsize\textsf{Sink}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (0,-4) {\textcolor{black!35}{\scriptsize\textsf{Pound}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnred!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (1,-4) {\textcolor{black!35}{\scriptsize\textsf{War}}};
+  \node[draw=black!25, line width=0.3pt, fill=cntan, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (2,-4) {\textcolor{black}{\scriptsize\textsf{Model}}};
+  \node[draw=cngold, line width=1.6pt, fill=cnblue, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (3,-4) {\textcolor{white}{\scriptsize\textsf{Lion}}};
+  \node[draw=black!25, line width=0.3pt, fill=cnblue!22, minimum width=2.55cm, minimum height=0.8cm, inner sep=1pt, rounded corners=1.5pt] at (4,-4) {\textcolor{black!35}{\scriptsize\textsf{Crash}}};
+\end{tikzpicture}
+\caption*{\footnotesize \textbf{Turn 5} --- clue \textsc{tiger} 2. Guesser took: \textbf{Lion}, \textbf{Tail}.}
+\end{figure}
+
 
 \end{document}
