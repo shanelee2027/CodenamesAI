@@ -5143,3 +5143,51 @@ conclusion and it is wrong.
 
 Val top-1 with weighting: 0.4759 pooled, 0.6727 step-1, against 0.4589/0.6599
 at the start of the session.
+
+## Seed ensembling, and a second hyperparameter sweep that changed nothing
+
+**Ensembling: +0.0066 nats, real.** Five models differing only in seed,
+combined by averaging raw scores.
+
+    single-model mean  R2 0.3540  (spread 0.3535-0.3543)
+    2-model            R2 0.3556   step-1 0.5845
+    3-model            R2 0.3559   step-1 0.5847
+    5-model            R2 0.3566   step-1 0.5850
+
+    5-model vs mean single: +0.0066 nats  95% CI [+0.0065, +0.0066]
+
+The interval is unusually tight because it is paired against the seed average
+rather than against one draw. Most of the gain is the second model (1->2 is
++0.0016 R2, 2->3 is +0.0003, 3->5 is +0.0007), so 2-3 members is the sensible
+operating point if this is ever wired in. Geometric (average raw scores) and
+mixture (average probabilities) averaging are a wash: 0.3566 vs 0.3567 pooled,
+reversed at step 1. I expected the mixture to win on log loss, being the
+principled predictive distribution; it does not, meaningfully.
+
+**Second sweep: no change adopted.** The first sweep ran at 32 features and put
+all ten of its top configs at lambda_l2=10.0, the largest value tried, so the
+optimum was unresolved at the grid edge. Re-run at 44 features with step
+weighting and l2 extended to 300:
+
+    leaves  min_leaf     l2  trees   calib R2
+        31       250   10.0   1166     0.3587   <- sweep winner
+        31       100   30.0    975     0.3577
+       127       100   10.0   ~400     0.3562   <- current, rank 34 of 48
+
+The edge worry resolves: the winner sits at l2=10 with the top ten spread over
+10-100, so the optimum was inside the original range all along. The apparent
+change was num_leaves 127 -> 31.
+
+But the val gain was +0.0008, which is exactly the seed spread measured above,
+and the sweep picked on one seed. Re-measured over three seeds, paired:
+
+    current 127/100/10  trees [380, 404, 386]   R2 0.3538   step-1 0.5830
+    swept    31/250/10  trees [1311,1107, 991]  R2 0.3545   step-1 0.5814
+
+    +0.0018 nats  95% CI [-0.0001, +0.0037]  indistinguishable
+
+Indistinguishable pooled, *worse* at step 1, and roughly 3x the trees to
+predict. Kept 127/100/10. This is the third time this session that a
+single-seed difference would have driven a change that does not survive
+replication -- after the phantom block interaction and the mislabelled joint
+prune. Any config decision from here needs multiple seeds.

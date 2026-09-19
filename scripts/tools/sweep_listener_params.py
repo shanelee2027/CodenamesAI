@@ -50,10 +50,15 @@ sys.argv = [sys.argv[0]]
 import scripts.pipeline.train_listener as T  # noqa: E402
 from codenames.listener_features import FEATURE_NAMES  # noqa: E402
 
+# Second pass. The first sweep ran at 32 features and put every one of its top
+# ten configs at lambda_l2=10.0, the largest value it tried -- i.e. the optimum
+# was at or beyond the grid edge and unresolved. This extends l2 upward and
+# re-centres the other two on where the first pass landed, now at 44 features
+# and with step weighting on.
 GRID = {
-    "num_leaves": [7, 15, 31, 63, 127],
-    "min_data_in_leaf": [20, 40, 100, 250],
-    "lambda_l2": [0.1, 1.0, 10.0],
+    "num_leaves": [31, 63, 127, 255],
+    "min_data_in_leaf": [50, 100, 250],
+    "lambda_l2": [10.0, 30.0, 100.0, 300.0],
 }
 
 _D: dict = {}  # filled in the parent, inherited by forked workers
@@ -78,7 +83,7 @@ def run_one(cfg: dict) -> dict:
 
     Xf, yf, gf, Xc, yc, gc = _D["fit"] + _D["cal"]
     params = {
-        "objective": T.group_softmax_objective(gf),
+        "objective": T.group_softmax_objective(gf, _D["wf"]),
         "learning_rate": 0.05,
         "feature_fraction": 0.8,
         "bagging_fraction": 0.8,
@@ -124,6 +129,7 @@ def main() -> None:
     _D["fit"] = list(T.build_groups([p for p in tr_pos if p["seed"] not in cal])[:3])
     _D["cal"] = list(T.build_groups([p for p in tr_pos if p["seed"] in cal])[:3])
     _D["val"] = list(T.build_groups(va_pos)[:3])
+    _D["wf"] = T.step_weights([p for p in tr_pos if p["seed"] not in cal])
     _D["threads"] = max(1, (os.cpu_count() or 8) // args.workers)
     print(f"events: {len(_D['fit'][2])} fit / {len(_D['cal'][2])} calib / {len(_D['val'][2])} val")
 
@@ -147,9 +153,9 @@ def main() -> None:
         print(f"  {r['num_leaves']:7d} {r['min_data_in_leaf']:9d} {r['lambda_l2']:6.1f} "
               f"{r['trees']:6d} {r['r2']:8.4f} {r['logloss']:9.4f}")
 
-    base = next(r for r in results if r["num_leaves"] == 31
-                and r["min_data_in_leaf"] == 40 and r["lambda_l2"] == 1.0)
-    print(f"\ncurrent hand-set config: leaves=31 min_leaf=40 l2=1.0 -> R2 {base['r2']:.4f} "
+    CURRENT = {"num_leaves": 127, "min_data_in_leaf": 100, "lambda_l2": 10.0}
+    base = next(r for r in results if all(r[k] == v for k, v in CURRENT.items()))
+    print(f"\ncurrent config {CURRENT} -> R2 {base['r2']:.4f} "
           f"(rank {results.index(base)+1} of {len(results)})")
 
     # Only the winner is scored on val, which nothing has touched.
@@ -157,9 +163,8 @@ def main() -> None:
     best = {k: results[0][k] for k in GRID}
     Xf, yf, gf, Xc, yc, gc = _D["fit"] + _D["cal"]
     Xv, yv, gv = _D["val"]
-    for label, cfg in (("hand-set", {"num_leaves": 31, "min_data_in_leaf": 40, "lambda_l2": 1.0}),
-                       ("swept", best)):
-        params = {"objective": T.group_softmax_objective(gf), "learning_rate": 0.05,
+    for label, cfg in (("current", CURRENT), ("swept", best)):
+        params = {"objective": T.group_softmax_objective(gf, _D["wf"]), "learning_rate": 0.05,
                   "feature_fraction": 0.8, "bagging_fraction": 0.8, "bagging_freq": 1,
                   "verbosity": -1, "seed": 0, "feature_pre_filter": False, **cfg}
         dtr = lgb.Dataset(Xf, label=yf, feature_name=list(FEATURE_NAMES), free_raw_data=False)
