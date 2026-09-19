@@ -271,6 +271,66 @@ intervals; the wide bars at small $\sigma$ are assassin turns, each costing
 $-10$.}
 \end{figure}
 
-We take $\sigma = 2.5$ for our benchmark.
+This sweep selects $\sigma = 2.5$, and on its own terms that is the right
+answer: reward per turn peaks there, and the interval is narrow because turns
+at that setting almost never end on the assassin.
+
+\section{The proxy disagrees with the game}
+\label{sec:games}
+
+Reward per turn is a proxy. The quantity we actually care about is whether the
+model wins, so each setting was then made to play full two-team games against a
+fixed opponent --- the centroid baseline --- over 100 games per setting, each
+board played twice with the sides swapped so that the first-move advantage
+cancels. The guesser was Claude Sonnet on both sides.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{
+  S[table-format=1.2] S[table-format=2.0]
+  S[table-format=1.2] S[table-format=1.2] S[table-format=1.2]}
+\toprule
+{$\sigma$} & {win \%} & {announced $k$} & {own words/turn} & {reward/turn} \\
+\midrule
+ 1.0  & 69 & 2.67 & 1.48 & 0.85 \\
+ 1.25 & 70 & 2.27 & 1.43 & 1.01 \\
+ 1.5  & 70 & 1.93 & 1.33 & 1.01 \\
+ 2.0  & 57 & 1.42 & 1.17 & 1.05 \\
+ 2.5  & 51 & 1.16 & 1.07 & 0.98 \\
+\bottomrule
+\end{tabular}
+\caption*{\footnotesize 100 games per setting against the centroid baseline.}
+\end{table}
+
+The ordering is nearly reversed. The setting the proxy chose, $\sigma = 2.5$,
+wins 51\% of its games --- indistinguishable from the baseline it is supposed
+to beat --- while $\sigma$ between $1.0$ and $1.5$ wins about $70\%$.
+
+The reason is visible in the last two columns, and it is not that the proxy was
+measured badly. Reward per turn is genuinely flat: every setting from $1.25$
+upward sits between $0.98$ and $1.05$, because the additional words a bold
+setting wins are very nearly cancelled by the opponent words and assassins it
+also concedes. A metric that does not vary cannot select anything, and the peak
+at $2.5$ in Section~\ref{sec:results} is within the noise of that flatness.
+
+What does vary is words per turn, which falls monotonically from $1.48$ to
+$1.07$ as $\sigma$ grows. Codenames is a race: both teams are emptying their
+own half of the board, and a team taking $1.48$ words per turn finishes in
+roughly two-thirds the turns of one taking $1.07$. Per-turn reward prices a
+turn in isolation and is blind to how many turns the game will last, so it
+cannot see the cost of playing slowly. Only $\sigma = 1.0$ is punished on both
+measures, where a $14\%$ assassin rate at $-10$ drags reward per turn down to
+$0.85$ without buying a better win rate than $1.25$ or $1.5$.
+
+We therefore take $\sigma = 1.5$: the top of the win-rate plateau, and the
+cautious end of it, since $1.0$ and $1.25$ win no more often while ending
+turns on the assassin more than twice as frequently.
+
+The general lesson is worth stating separately from this model. A per-turn
+proxy was used because it is cheap --- one ranking per position rather than a
+full game --- and it selected a parameter that plays the eventual objective
+close to chance. The proxy was not wrong about what it measured; it was
+measuring a quantity the game does not maximize.
 
 \end{document}

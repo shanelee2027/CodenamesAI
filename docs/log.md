@@ -5444,3 +5444,30 @@ own per turn (the most productive of any model), 1.55 advantage, and 1.50
 reward -- half again the best sigma setting on reward, where every sigma value
 sits within 0.07 of every other. It is not trading productivity for safety; it
 has more of both at once.
+
+### The theory paper's results section, corrected
+
+`docs/clue-selection-theory.tex` chose sigma = 2.5 from a per-turn reward
+sweep over 100 positions, and that section is now followed by one reporting the
+full-game result, which nearly reverses the ordering: 69/70/70/57/51 percent
+for sigma = 1.0/1.25/1.5/2.0/2.5 against centroid over 100 games each.
+
+The original sweep is kept rather than rewritten. It was not measured badly and
+the paper is more useful with the disagreement visible than with the losing
+answer quietly deleted. What the new section adds is why the two disagree:
+per-turn reward is flat (0.98-1.05 for every sigma from 1.25 up) because a bold
+setting's extra words are cancelled by the opponent words and assassins it
+concedes, so it cannot discriminate, and the peak at 2.5 was inside that
+flatness. Words per turn is what varies, 1.48 down to 1.07, and Codenames is a
+race -- a per-turn proxy prices a turn in isolation and is blind to how many
+turns the game will last.
+
+The paper now takes sigma = 1.5: the cautious end of the win-rate plateau,
+since 1.0 and 1.25 win no more often while hitting the assassin more than twice
+as often.
+
+**Not changed: `configs/spymasters.json` still sets sigma = 2.5 for the
+`expected_words` entry.** Changing it would silently redefine what "the
+baseline" means for every result already recorded against it, which
+CLAUDE.md's iteration rules forbid doing quietly. It needs its own
+`docs/versions/` entry, and that is a separate decision.
