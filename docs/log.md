@@ -5244,3 +5244,43 @@ was doing, so the case for 5x the training and inference disappears.
 would beat seed jitter is simply not supported here.
 
 Session total: R2 0.3249 -> 0.3595, step-1 0.5517 -> 0.5866.
+
+## The clean holdout: what twenty-five selections on val actually cost
+
+1,910 positions were collected from a board-seed range beyond everything used
+for training or selection (`collect_listener_data.py --start 40000`), after
+every modelling decision was frozen. The planner reported 0 of 1,910 already
+cached, confirming the boards were untouched. $0.19, 31.5 min, 41 errors.
+Trained on the old train and val together (those decisions are already made),
+scored once.
+
+    model                    test R2    step-1
+    uniform                   0.0000    0.0000
+    Gaussian p_is_max 2.4     0.2260    0.4423
+    distilled GBT             0.3458    0.5583   (seeds .3456 .3460 .3459)
+
+    Gaussian -> GBT: +0.3039 nats  95% CI [+0.2808, +0.3272]
+
+**The val number was optimistic, by about what you would guess.** Pooled
+0.3595 -> 0.3458 (-0.0137), step-1 0.5866 -> 0.5583 (-0.0283). That gap is
+larger than most individual feature blocks bought, which is the honest cost of
+selecting ~25 times on one validation set. Any future claim about this model
+should quote 0.346, not 0.360.
+
+**But the comparison that matters got better, not worse.** The Gaussian
+incumbent drops further on these boards than the GBT does -- 0.2541 -> 0.2260
+against 0.3595 -> 0.3458 -- so the test set is simply harder, and most of the
+GBT's shortfall is difficulty rather than overfitting. Measured against the
+baseline on the same events:
+
+                     val      test
+    GBT - Gaussian   0.105    0.120
+    GBT / Gaussian   1.41x    1.53x
+
+On boards nothing was ever selected on, the distilled listener captures 53%
+more of the available information than the model `expected_words` currently
+assumes. That is the defensible headline, and it is stronger than the
+within-val version of the same claim.
+
+Caveat on precision: 4,671 test choice events against 15,766 in val, so the
+intervals are wider. The +0.30 nat gap over the Gaussian is far outside them.

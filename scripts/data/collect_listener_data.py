@@ -147,6 +147,14 @@ def make_position(i: int, sims, stats, pool: np.ndarray, space_i: int, mix: dict
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--n", type=int, default=10000, help="positions to plan (already-cached ones cost nothing)")
+    ap.add_argument("--start", type=int, default=0,
+                    help="offset into the board-seed sequence: positions come from "
+                         "SEED_BASE + start + i. A start beyond everything collected "
+                         "so far yields boards this project has never trained, "
+                         "validated or selected on, which is what an uncontaminated "
+                         "test set requires -- re-splitting existing data cannot give "
+                         "one, because the feature set and hyperparameters were chosen "
+                         "against it.")
     ap.add_argument("--model", default="openai/gpt-oss-120b")
     ap.add_argument("--provider", default="deepinfra")
     ap.add_argument("--effort", default="low")
@@ -176,7 +184,7 @@ def main() -> None:
     print(f"planning {args.n} positions...", flush=True)
     positions, kinds = [], Counter()
     for i in range(args.n):
-        p = make_position(i, sims, stats, pool, space_i, DEFAULT_MIX, vocab)
+        p = make_position(args.start + i, sims, stats, pool, space_i, DEFAULT_MIX, vocab)
         if p is not None:
             positions.append(p)
             kinds[p["kind"]] += 1
