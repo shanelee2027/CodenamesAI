@@ -5107,3 +5107,39 @@ and `sweep_listener_params.py` both already early-stopped on McFadden R2, so the
 in this log saying the prune needed re-measuring was wrong. Only the ad-hoc
 block-ablation scripts went through `train_listener.train`, and those are the
 ones re-run here.
+
+## Down-weighting later choice events: +0.010 nats at step 1, free
+
+The PL expansion turns one teacher ranking into k choice events and weighted
+them all equally. Two independent arguments say it should not: steps 3 and 4
+score R2 0.11 and 0.07 because the teacher's ranking tail is near-arbitrary
+once it has taken the words it wants, and they are 30% of the training signal;
+and mean k in real games is 1.42, so those steps barely occur in play.
+
+Four schemes, weights applied inside the objective (explicitly, rather than via
+LightGBM's `weight=`, so the scaling cannot depend on whether a given version
+forwards dataset weights into a custom objective's output):
+
+    scheme                trees   pooled   step-1   step-2
+    uniform (current)       390   0.3538   0.5795   0.2563
+    step-1 only             155   0.3275   0.5790   0.2212
+    1/(1+step)              351   0.3525   0.5842   0.2530
+    0.5^step                354   0.3502   0.5833   0.2513
+    0.75^step               380   0.3539   0.5834   0.2561
+
+    0.75^step  step-1 +0.0102 [+0.0061,+0.0143]   pooled +0.0003 [-0.0026,+0.0032]
+    1/(1+step) step-1 +0.0123 [+0.0078,+0.0170]   pooled -0.0034 [-0.0066,+0.0000]
+
+Adopted `0.75**step`: a real step-1 gain with pooled statistically unchanged.
+
+**The `step-1 only` arm is the informative one, and it refutes the strong form
+of the hypothesis.** If later steps were pure noise, training on step 1 alone
+should be best for step 1. It is not -- it is indistinguishable at step 1
+(-0.0014, CI spanning zero) while destroying pooled (-0.0668). So the noisy
+tail is still useful training signal and merely must not dominate. Truncation
+is the wrong move; down-weighting is the right one. Worth stating plainly for
+the defence, because "later steps are noise, so drop them" is the intuitive
+conclusion and it is wrong.
+
+Val top-1 with weighting: 0.4759 pooled, 0.6727 step-1, against 0.4589/0.6599
+at the start of the session.

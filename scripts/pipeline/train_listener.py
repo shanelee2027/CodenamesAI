@@ -202,7 +202,28 @@ def build_groups(positions: list[dict]) -> tuple[np.ndarray, np.ndarray, list[in
     return np.vstack(X), np.concatenate(y), groups, np.array(seeds)
 
 
-def group_softmax_objective(groups: list[int]):
+STEP_DECAY = 0.75
+
+# Per-event weight `STEP_DECAY ** step`. The PL expansion turns one teacher
+# ranking into k choice events and weighted them equally, but steps 3 and 4
+# score R2 0.11 and 0.07 -- the teacher's ranking tail is close to arbitrary
+# once it has taken the words it wants -- while being 30% of the signal. Mean k
+# in real games is 1.42, so they barely occur in play either.
+#
+# Measured over four schemes: 0.75**step gains +0.0102 nats at step 1 with
+# pooled statistically unchanged. Training on step 1 ALONE is much worse
+# (-0.0668 pooled) and does not even improve step 1, so the later steps are
+# useful signal that simply must not dominate -- truncation is the wrong move,
+# down-weighting is the right one.
+
+
+def step_weights(positions: list[dict], decay: float = STEP_DECAY) -> np.ndarray:
+    """One weight per choice event, decaying with depth into the turn."""
+    return np.array([decay ** j for p in positions
+                     for j in range(min(p["k"], p["n"] - 1))], dtype=np.float64)
+
+
+def group_softmax_objective(groups: list[int], event_weights=None):
     """Conditional-logit loss: within each group, softmax cross-entropy.
 
     grad = p - y and hess = p(1-p), the standard multiclass softmax
@@ -216,6 +237,10 @@ def group_softmax_objective(groups: list[int]):
     """
     sizes = np.asarray(groups, dtype=np.int64)
     starts = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+    # Applied here rather than through LightGBM's `weight=`, so the scaling is
+    # explicit and does not depend on whether a given version forwards dataset
+    # weights into a custom objective's output.
+    row_w = None if event_weights is None else np.repeat(event_weights, sizes)
 
     def obj(preds: np.ndarray, dset):
         y = dset.get_label()
@@ -223,7 +248,10 @@ def group_softmax_objective(groups: list[int]):
         e = np.exp(preds - np.repeat(gmax, sizes))
         gsum = np.add.reduceat(e, starts)
         p = e / np.repeat(gsum, sizes)
-        return p - y, np.maximum(p * (1.0 - p), 1e-6)
+        grad, hess = p - y, np.maximum(p * (1.0 - p), 1e-6)
+        if row_w is not None:
+            grad, hess = grad * row_w, hess * row_w
+        return grad, hess
 
     return obj
 
@@ -265,7 +293,7 @@ def mcfadden_on(preds, groups, y, mask=None) -> float:
 
 
 def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
-          names: list[str] | None = None):
+          names: list[str] | None = None, event_weights=None):
     """LightGBM >= 4 takes a custom objective through `params["objective"]`.
 
     Early stopping is not optional here: this model will drive TRAINING accuracy
@@ -279,7 +307,7 @@ def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
     dtr = lgb.Dataset(Xtr, label=ytr, feature_name=names, free_raw_data=False)
     dva = lgb.Dataset(Xva, label=yva, feature_name=names, reference=dtr, free_raw_data=False)
     params = {
-        "objective": group_softmax_objective(gtr),
+        "objective": group_softmax_objective(gtr, event_weights),
         "learning_rate": 0.05,
         # From scripts/tools/sweep_listener_params.py over 60 configs, ranked by
         # McFadden R2 on the calibration boards. The sweep's real finding is that
@@ -419,12 +447,14 @@ def main() -> None:
             Xs, ys, gs, _ = build_groups(sub)
             if args.blocks != "all":
                 Xs = Xs[:, cols]
-            _, acc = train(Xs, ys, gs, Xva, yva, gva, args.rounds, args.seed, names)
+            _, acc = train(Xs, ys, gs, Xva, yva, gva, args.rounds, args.seed, names,
+                           step_weights(sub))
             print(f"  {frac:4.0%}  {len(sub):5d} positions, {len(gs):5d} events -> val top-1 {acc:.4f}"
                   f"   (baseline {base:.4f})")
         return
 
-    booster, acc = train(Xtr, ytr, gtr, Xva, yva, gva, args.rounds, args.seed, names)
+    booster, acc = train(Xtr, ytr, gtr, Xva, yva, gva, args.rounds, args.seed, names,
+                         step_weights(tr_pos))
     preds = booster.predict(Xva, raw_score=True)
     m_all, m_s1 = accuracy_on(preds, gva, yva), accuracy_on(preds, gva, yva, step1)
     print(f"model    : all steps {m_all:.4f} ({m_all-base_all:+.4f})   "
