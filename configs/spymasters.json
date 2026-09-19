@@ -53,6 +53,20 @@
    "roles": [
     "baseline"
    ]
+  },
+  {
+   "_comment": "Clue search against the distilled listener (cache/listener_gbt.txt) scored by codenames/pl_reward.py, derived in docs/clue-selection-learned.tex. Two-stage: expected_words shortlists the clue pool with its Gaussian model (extract() is ~750us/clue, so scoring all 11,145 would be ~8.4s per turn), then the listener rescores the top `shortlist`. `sigma` tunes ONLY that shortlisting pass and has no effect on the final ranking -- it is set to 1.5 rather than the baseline's 2.5 because the sigma ladder found 1.5 the better value and the first stage's job is recall, not order. The listener is fitted to gpt-oss-120b, so evaluating against Sonnet is a transfer test, not a self-evaluation.",
+   "name": "learned_listener",
+   "type": "learned_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

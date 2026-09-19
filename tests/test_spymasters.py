@@ -75,7 +75,8 @@ class TestRegistry:
         from codenames.spymasters.registry import DEFAULT_SPYMASTER_CONFIG, load_spymasters
 
         entries = load_spymasters(DEFAULT_SPYMASTER_CONFIG)
-        assert set(entries) == {"random", "centroid", "linear_scorer", "oracle", "expected_words"}
+        assert set(entries) == {"random", "centroid", "linear_scorer", "oracle",
+                                "expected_words", "learned_listener"}
 
     def test_entries_build_the_expected_classes(self):
         from codenames.spymasters.registry import load_spymasters

@@ -46,6 +46,7 @@ from pathlib import Path
 from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
+from codenames.spymasters.learned_listener import LearnedListenerSpymaster
 from codenames.spymasters.linear_scorer import LinearScorerSpymaster
 from codenames.spymasters.oracle import OracleSpymaster
 from codenames.spymasters.random_clue import RandomSpymaster
@@ -58,6 +59,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "linear_scorer": LinearScorerSpymaster,
     "oracle": OracleSpymaster,
     "expected_words": ExpectedWordsSpymaster,
+    "learned_listener": LearnedListenerSpymaster,
 }
 
 
