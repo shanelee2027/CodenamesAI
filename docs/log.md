@@ -5284,3 +5284,54 @@ within-val version of the same claim.
 
 Caveat on precision: 4,671 test choice events against 15,766 in val, so the
 intervals are wider. The +0.30 nat gap over the Gaussian is far outside them.
+
+## Expected reward under the learned listener
+
+`docs/clue-selection-learned.tex` (and its PDF) derives the expected reward of
+a clue when the guesser model is the distilled scoring function rather than
+Gaussian noise on similarities; `codenames/pl_reward.py` implements it.
+
+The question that motivated it: the listener gives a distribution over the
+guesser's *next* pick, but a turn is a sequence -- each first pick opens a
+subtree of second picks with renormalised probabilities, and so on, at
+O(n**K) paths. Enumerating that is not affordable inside a clue search.
+
+**It does not have to be enumerated.** The distilled model is a Plackett-Luce
+model: `train_listener.py` computes the feature matrix once per position and
+later steps merely drop rows, so scores do not depend on which words remain --
+removal changes only the normalising sum. Under that, giving each word an
+independent Exp(exp(score)) clock reproduces the whole selection tree exactly,
+by memorylessness. The turn then becomes minima of independent exponentials:
+
+    T = min over non-team clocks,  W = argmin,  N = #{own words before T}
+
+and the guesser reveals min(k, N) of ours, hitting W exactly when N < k. This
+is deliberately the same shape as spymasters/expected_words.py's derivation, so
+the two guesser models are swappable behind one `(gain, penalty)` interface.
+
+**It is cheaper than the Gaussian version, not dearer.** For independent
+exponentials the minimum and its argument are independent, so which non-team
+word ends the turn does not depend on when -- the expected miss cost is one
+constant per clue instead of a hazard ratio at every quadrature point, and |B|
+leaves the integral. And u = exp(-Lambda t) maps the integral to [0,1] exactly,
+so there is no interval to pick and no tail to wave away, unlike the Gaussian
+model's [t_0, t_M] with its GRID_PAD sigmas.
+
+**The exactness claim is tested, not asserted.** `tests/test_pl_reward.py`
+brute-forces the selection tree by recursion on small boards and demands
+agreement, across six (own, bad, k) shapes and every k in one pass, plus a
+200k-trial simulation of the race itself. All pass. Also asserted: shift
+invariance of the scores, monotonicity and the min(k, N) cap, and no overflow
+at +/-300 logits.
+
+**Quadrature is the only approximation, and it is first order**, because
+p_i(u) carries u**(lambda_i/Lambda) whose derivative is unbounded at u = 0.
+Error against brute force roughly halves per doubling: 4.7e-4 (gain) and
+2.8e-3 (penalty) at the default 96 cells. That sounds marginal but the search
+consumes the *ordering* of clues, and on 500 competing clues over a 9-own /
+16-other board the argmax, the top ten and the chosen k all match an 8192-cell
+reference from 48 cells upward. 96 costs 7 ms per 500 clues.
+
+Not yet wired into a spymaster: that needs the two-stage shortlist (extract()
+is 752 us/clue, so scoring all 11,145 is 8.4 s/turn against 0.17 s for a
+shortlist of 100) and belongs in its own module.
