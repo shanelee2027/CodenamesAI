@@ -5191,3 +5191,56 @@ predict. Kept 127/100/10. This is the third time this session that a
 single-seed difference would have driven a change that does not survive
 replication -- after the phantom block interaction and the mislabelled joint
 prune. Any config decision from here needs multiple seeds.
+
+## Learning rate, PMI templates, and two rejected ideas
+
+Four things tried. Two landed, two did not, and the one that landed biggest was
+the one I had never looked at.
+
+**Learning rate: +0.0027 R2, and it had been fixed at 0.05 since the first fit.**
+Three seeds per arm:
+
+    lr=0.1     R2 0.3505   step-1 0.5791
+    lr=0.05    R2 0.3538   step-1 0.5830   <- previous
+    lr=0.02    R2 0.3559   step-1 0.5844
+    lr=0.01    R2 0.3565   step-1 0.5849   <- adopted, ~2300 trees
+    lr=0.005   R2 0.3570   step-1 0.5853      ~4800 trees
+    lr=0.003   R2 0.3569   step-1 0.5850      ~7300 trees
+
+Monotone to 0.005, then flat. 0.005 beats 0.01 by +0.0005, inside the seed
+noise band, for 2.1x the trees -- inference cost the spymaster pays on every
+clue, so 0.01 is the operating point. Worth recording plainly: this is a bigger
+gain than four of the evidence sources that cost hours of work and gigabytes of
+download, and it is the one major hyperparameter never swept.
+
+The round cap was raised 3000 -> 8000 at the same time. At lr=0.01 the model
+wants ~2300 trees; a cap that binds looks exactly like convergence.
+
+**PMI template averaging: +0.0030 R2.** One prompt is one arbitrary way of
+asking. On a 14-pair probe no single template separates related from unrelated
+pairs cleanly -- each gets some hard pair backwards, but a different one -- so
+averaging cancels the prompt-specific part. Three templates, chosen by probe
+margin (`Things related to {}:`, `The word {} reminds me of the word`,
+`Word association. {} ->`); `{} and` and `{} makes me think of` were measured
+and dropped.
+
+    single-template  R2 0.3565 (0.3565, 0.3565, 0.3565)  step-1 0.5849
+    3-template avg   R2 0.3595 (0.3596, 0.3594, 0.3595)  step-1 0.5866
+
+    +0.0075 nats  95% CI [+0.0052, +0.0099]
+
+Tested at lr=0.01 rather than earlier, because measuring a feature change at a
+stale learning rate measures the wrong model. Note how tight the seed spread
+is at this learning rate -- 0.0002, against 0.0008 at lr=0.05.
+
+**Ensembling: rejected, and it was mostly an artifact.** At lr=0.05 a 5-seed
+ensemble bought +0.0026 R2. At lr=0.01 it buys +0.0006. A lower learning rate
+is itself a variance-reduction mechanism and absorbs most of what ensembling
+was doing, so the case for 5x the training and inference disappears.
+
+**Diverse ensembling: rejected.** Members varying in `num_leaves` and
+`feature_fraction` rather than seed were indistinguishable from seed-only
+(+0.0003 nats, CI [-0.0004, +0.0011]). The hypothesis that decorrelated members
+would beat seed jitter is simply not supported here.
+
+Session total: R2 0.3249 -> 0.3595, step-1 0.5517 -> 0.5866.

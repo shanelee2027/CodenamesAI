@@ -58,8 +58,24 @@ from codenames.clue_stats import ClueStats
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 OUT = PROJECT_ROOT / "cache" / "lm_pmi.npz"
-CUE = "The word {} reminds me of the word"
-NULL = "The word reminds me of the word"
+
+# Several prompts, averaged. One template is one arbitrary way of asking, and
+# on a 14-pair probe no single template cleanly separates related from
+# unrelated pairs -- each gets some hard pair backwards, but a different one.
+# Averaging the PMI across templates cancels the prompt-specific part and keeps
+# what they agree on. These three had the widest mean gap between related and
+# unrelated probe pairs; "{} and" and "{} makes me think of" were measured and
+# dropped (gaps 1.67 and 0.70 against 3.1-3.8 for these).
+#
+# Each template carries its own null, which is the same sentence with the cue
+# word removed. The null need not be graceful English -- it only has to put the
+# target word in the same syntactic slot, so that the frequency and
+# tokenisation bias in the conditional cancels exactly.
+TEMPLATES = [
+    ("Things related to {}:", "Things related to:"),
+    ("The word {} reminds me of the word", "The word reminds me of the word"),
+    ("Word association. {} ->", "Word association. ->"),
+]
 
 
 def main() -> None:
@@ -110,15 +126,18 @@ def main() -> None:
         lp = F.log_softmax(logits, dim=-1).gather(2, wpad[:, :, None]).squeeze(2)
         return (lp * mask).sum(dim=1).cpu().numpy()
 
-    uncond = score(NULL)
-    out = np.empty((len(pool_words), nb), dtype=np.float32)
+    out = np.zeros((len(pool_words), nb), dtype=np.float32)
     t0 = time.time()
-    for i, clue in enumerate(pool_words):
-        out[i] = score(CUE.format(clue)) - uncond
-        if (i + 1) % 500 == 0:
-            rate = (i + 1) / (time.time() - t0)
-            print(f"  {i+1:,}/{len(pool_words):,}  {rate:.1f} clues/s  "
-                  f"eta {(len(pool_words)-i-1)/rate/60:.1f} min", flush=True)
+    for ti, (cue, null) in enumerate(TEMPLATES, 1):
+        uncond = score(null)
+        for i, clue in enumerate(pool_words):
+            out[i] += (score(cue.format(clue)) - uncond) / len(TEMPLATES)
+            if (i + 1) % 2000 == 0:
+                done = (ti - 1) * len(pool_words) + i + 1
+                total = len(TEMPLATES) * len(pool_words)
+                rate = done / (time.time() - t0)
+                print(f"  template {ti}/{len(TEMPLATES)}  {i+1:,}/{len(pool_words):,}  "
+                      f"eta {(total-done)/rate/60:.1f} min", flush=True)
 
     print(f"done in {(time.time()-t0)/60:.1f} min   PMI range "
           f"[{out.min():.2f}, {out.max():.2f}]  mean {out.mean():.2f}")

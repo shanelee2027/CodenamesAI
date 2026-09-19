@@ -308,7 +308,13 @@ def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
     dva = lgb.Dataset(Xva, label=yva, feature_name=names, reference=dtr, free_raw_data=False)
     params = {
         "objective": group_softmax_objective(gtr, event_weights),
-        "learning_rate": 0.05,
+        # Swept late and mattered more than most feature blocks: 0.1/0.05/0.02/
+        # 0.01/0.005/0.003 give R2 0.3505/0.3538/0.3559/0.3565/0.3570/0.3569
+        # over three seeds. The curve flattens by 0.005, and 0.005 beats 0.01 by
+        # +0.0005 -- inside the seed noise band -- while needing 2.1x the trees
+        # (~4800 vs ~2300), which is inference cost the spymaster pays on every
+        # clue. 0.01 takes +0.0027 of the available +0.0032 at half the price.
+        "learning_rate": 0.01,
         # From scripts/tools/sweep_listener_params.py over 60 configs, ranked by
         # McFadden R2 on the calibration boards. The sweep's real finding is that
         # capacity barely matters here: the whole grid spans R2 0.3295-0.3329 and
@@ -383,7 +389,10 @@ def main() -> None:
     ap.add_argument("--collected", type=int, default=10000,
                     help="generated-board seeds to try (scripts/data/collect_listener_data.py)")
     ap.add_argument("--val-frac", type=float, default=0.25, help="fraction of BOARD SEEDS held out")
-    ap.add_argument("--rounds", type=int, default=3000, help="upper bound; early stopping decides")
+    ap.add_argument("--rounds", type=int, default=8000,
+                    help="upper bound; early stopping decides. Raised with the "
+                         "learning rate drop -- lr=0.01 wants ~2300 trees, and a "
+                         "cap that binds would silently look like convergence.")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--learning-curve", action="store_true")
     ap.add_argument("--blocks", default="all",
