@@ -5408,3 +5408,39 @@ rate across the ladder, the three head-to-heads, and guess composition by role.
 It deduplicates by (label, seed) -- the sigma=1.5 arm was extended in place, so
 its first 20 seeds appear twice in the table and would otherwise be
 double-counted.
+
+### Per-turn efficiency metrics
+
+Three metrics added to the results notebook, all per turn (a turn is one clue):
+own cards achieved, card advantage (own minus opponent), and reward under the
+game's own scoring (+1 own, -0.2 neutral, -1 opponent, -10 assassin).
+
+    model              own/turn  advantage/turn  reward/turn
+    centroid               1.20            1.08         0.80
+    sigma=1.0              1.48            1.24         0.85
+    sigma=1.25             1.43            1.23         1.01
+    sigma=1.5              1.33            1.17         1.01
+    sigma=2.0              1.17            1.10         1.05
+    sigma=2.5              1.07            1.04         0.98
+    learned listener       1.65            1.55         1.50
+
+These separate two things win rate conflates.
+
+**Across the sigma ladder the three metrics disagree, and that is the finding.**
+Own cards per turn falls monotonically with sigma (1.48 -> 1.07) because higher
+sigma means smaller k. But reward per turn is flat at 0.98-1.05 for every sigma
+from 1.25 up: the extra words a bold setting wins are almost exactly cancelled
+by the opponent words and assassins it also hands over. sigma=1.0 is the one
+clear loser on reward (0.85) despite the second-highest productivity, because
+its 14% assassin rate is charged at -10.
+
+So the ladder's win-rate differences (69/70/70/57/51) are NOT explained by
+per-turn reward, which barely moves. They come from tempo: a turn taking 1.48
+words finishes the board in fewer turns than one taking 1.07, and the race is
+what decides the game.
+
+**The learned listener is the only model that separates on all three.** 1.65
+own per turn (the most productive of any model), 1.55 advantage, and 1.50
+reward -- half again the best sigma setting on reward, where every sigma value
+sits within 0.07 of every other. It is not trading productivity for safety; it
+has more of both at once.
