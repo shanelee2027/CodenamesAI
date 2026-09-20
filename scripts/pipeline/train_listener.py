@@ -114,7 +114,25 @@ def resolve_seed(candidates: list[str], boards: list[tuple[int, frozenset[str]]]
     return hits[0] if len(hits) == 1 else None
 
 
-def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
+def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
+                   refresh_features: bool = False):
+    """Positions for training.
+
+    `refresh_features` decides what a step-2+ row means. Off (the default and
+    what every result so far used), features are computed once on the full
+    candidate list and later steps reuse those rows -- so a step-2 row still
+    says `n_candidates` = 25 when 24 remain, and every board-relative feature
+    (`gaptop_*`, `peak_z`, `lead_margin`, `p_max_sigma2`, `cohesion`, the rank
+    columns) describes a board that no longer exists. On, features are
+    re-extracted for the words actually remaining at each step.
+
+    Frozen is what Plackett-Luce assumes and what codenames/pl_reward.py needs
+    to be exact. Measured, the assumption does not hold for this model:
+    removing the top word changes its favourite among the rest 20% of the time
+    and shifts logits by 0.52 on average. So the two options are a real choice
+    -- consistency with the closed-form reward, or features that describe the
+    actual board -- and this exists so it can be measured rather than assumed.
+    """
     sims = SimilarityTensor.load(DEFAULT_CACHE_DIR)
     stats = ClueStats.load(DEFAULT_CACHE_DIR)
     clue_index = {w.lower(): i for i, w in enumerate(stats.clue_words)}
@@ -172,8 +190,27 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0):
         if feats is None:
             dropped["features"] += 1
             continue
-        out.append({"seed": seed, "clue": clue, "k": int(number), "x": feats,
-                    "n": len(rank), "targets": targets})
+        rec = {"seed": seed, "clue": clue, "k": int(number), "x": feats,
+               "n": len(rank), "targets": targets}
+        if refresh_features:
+            # One extraction per step on the words still standing. Cheap --
+            # it is the observed path, not a tree over possible ones.
+            steps, taken, ok = [], [], True
+            for j in range(min(int(number), len(rank) - 1)):
+                keep = [r for r in range(len(rank)) if r not in taken]
+                sub = [shuffled[r] for r in keep]
+                f = extract(clue, sub, number, sims, stats, wstats, clue_index, swow, entity,
+                            pmi, extra, norms, wordnet, lexical)
+                if f is None:
+                    ok = False
+                    break
+                steps.append((f, keep.index(targets[j])))
+                taken.append(targets[j])
+            if not ok:
+                dropped["features"] += 1
+                continue
+            rec["steps"] = steps
+        out.append(rec)
     return out, dropped
 
 
@@ -187,6 +224,12 @@ def build_groups(positions: list[dict]) -> tuple[np.ndarray, np.ndarray, list[in
     """
     X, y, groups, seeds = [], [], [], []
     for p in positions:
+        if "steps" in p:                      # features re-extracted per step
+            for rows, tgt in p["steps"]:
+                lab = np.zeros(len(rows))
+                lab[tgt] = 1.0
+                X.append(rows); y.append(lab); groups.append(len(rows)); seeds.append(p["seed"])
+            continue
         n, k = p["n"], p["k"]
         taken: list[int] = []
         for j in range(min(k, n - 1)):
@@ -395,6 +438,9 @@ def main() -> None:
                          "cap that binds would silently look like convergence.")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--learning-curve", action="store_true")
+    ap.add_argument("--refresh-features", action="store_true",
+                    help="re-extract features at every step instead of reusing the "
+                         "full-board rows; see load_positions")
     ap.add_argument("--blocks", default="all",
                     help="comma-separated feature blocks to keep: "
                          + ",".join(FEATURE_BLOCKS) + " (default: all)")
@@ -402,7 +448,8 @@ def main() -> None:
     args = ap.parse_args()
 
     t0 = time.time()
-    positions, dropped = load_positions(args.db, args.model, args.max_seed, args.collected)
+    positions, dropped = load_positions(args.db, args.model, args.max_seed, args.collected,
+                                        refresh_features=args.refresh_features)
     print(f"teacher: {args.model}")
     print(f"usable positions: {len(positions)}   dropped: {dropped}")
     if not positions:

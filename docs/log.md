@@ -5471,3 +5471,67 @@ as often.
 baseline" means for every result already recorded against it, which
 CLAUDE.md's iteration rules forbid doing quietly. It needs its own
 `docs/versions/` entry, and that is a separate decision.
+
+## Does the Plackett-Luce assumption actually hold for this model?
+
+Shane's question: we compute logits once over the unrevealed board and drop
+revealed rows from the softmax, but the GBT is a black box whose output can
+move sharply when inputs change -- so a renormalised softmax is not the model's
+true conditional. Correct, and now measured.
+
+Seventeen of the 44 features change when a word is removed: all three
+`gaptop_*`, `n_candidates`, `peak_z`, `lead_margin`, `p_max_sigma2`, both
+`cohesion` features, `pmi_gaptop`, `swow_rev2_share`, `swow_asym`, and the four
+rank columns. Removing the top-scoring word and comparing the renormalised
+frozen logits against a genuine re-extraction, over 1,400 positions:
+
+     words left     n  same top-1  Spearman       KL   max dp  logit shift
+     4-6          175      84.6%    0.8868   0.0162   0.0577        0.492
+     7-9          189      82.0%    0.9208   0.0157   0.0487        0.511
+    10-13         271      85.6%    0.9477   0.0158   0.0425        0.513
+    14-18         308      78.6%    0.9581   0.0161   0.0368        0.523
+    19-24         387      78.0%    0.9672   0.0158   0.0337        0.512
+
+So IIA fails: one removal flips the model's favourite word about a fifth of the
+time, which a true Plackett-Luce model can never do, and logits move 0.51 on
+average. The ordering is more disturbed on small boards (Spearman 0.967 ->
+0.887) while KL stays flat.
+
+**This does not mean the spymaster is stale.** It re-extracts features every
+turn -- `_score_all_clues` builds candidates from the currently unrevealed
+words -- so between turns its scores always describe the board in front of it.
+The frozen assumption applies only to the k-step lookahead that prices a clue's
+expected reward, and at k=1 it does not apply at all, since a single step needs
+no lookahead. Late turns are almost entirely k=1 (mean k 1.19 by turn 5, 1.07
+by turn 6), so the approximation bites least exactly where the board is
+smallest, and most on turn-1 clues at k~3.
+
+**The artifact is a different story, and this is where the observed
+deterioration comes from.** It ships one scoring of the full 25-word board and
+renormalises for the whole game, across turns as well as within them. Measuring
+that directly -- full-board scores restricted to a shrunken board, against
+scores computed for that board:
+
+     words left     n  same top-1  Spearman       KL
+     4-6          166      71.7%    0.7676   0.0520
+     7-9          169      74.6%    0.8623   0.0414
+    10-13         219      81.3%    0.9106   0.0367
+    14-17         212      83.5%    0.9417   0.0217
+    18-20         134      91.8%    0.9575   0.0148
+
+Monotone, unlike the single-removal table: nearly exact at the opening, wrong
+about the best word 28% of the time by the endgame. So the webpage's late clues
+really are worse than the model's, and an earlier conclusion here -- that
+refreshing would not help late -- was right about the deployed model and wrong
+about the artifact.
+
+**Some late-game decline is genuine and affects every spymaster.** Across
+recorded games the best similarity available anywhere in the clue pool falls
+12.47 -> 10.51 by turn 6, because the easily-clued words go first and the
+remainder is harder to point at; and k is capped by own words remaining, which
+is down to 1.4. Per-guess accuracy actually *rises* over a game (83.7% -> 100%
+for learned_listener). What falls is productivity, not correctness.
+
+`train_listener.py --refresh-features` re-extracts at every step rather than
+slicing one full-board matrix, so the training-side version of this question
+can be measured; that run is in progress.
