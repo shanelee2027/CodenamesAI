@@ -46,6 +46,9 @@ def main() -> None:
     ap.add_argument("--side", default="A", choices=["A", "B"])
     ap.add_argument("--label-like", default="expected_words[sigma=1.5]-vs-centroid%")
     ap.add_argument("--space", default="numberbatch")
+    ap.add_argument("--model", default="expected_words", choices=["expected_words", "learned_listener"],
+                    help="how to recover the words a clue was meant for: z-score order for the "
+                         "Gaussian model, listener score order for the distilled one")
     args = ap.parse_args()
 
     con = sqlite3.connect(args.db)
@@ -73,8 +76,20 @@ def main() -> None:
             return "opponent" if args.side == "A" else "own"
         return "assassin" if r == Role.ASSASSIN else "neutral"
 
+    listener = None
+    if args.model == "learned_listener":
+        from codenames.spymasters.learned_listener import LearnedListenerSpymaster
+        listener = LearnedListenerSpymaster()
+
     def intended(clue: str, k: int, revealed: set[str]) -> list[str]:
         """The k unrevealed own words the model scored highest for this clue."""
+        mine_all = [w for w in words if w not in revealed]
+        if listener is not None:
+            sc = listener._listener_scores(clue, mine_all, k, sims)
+            if sc is not None:
+                mine_ = [(w, float(v)) for w, v in zip(mine_all, sc) if role_name(w) == "own"]
+                mine_.sort(key=lambda t: -t[1])
+                return [w for w, _ in mine_[:k]]
         ci = clue_index.get(clue.lower())
         mine = [w for w in words if role_name(w) == "own" and w not in revealed]
         if ci is None or not mine:
