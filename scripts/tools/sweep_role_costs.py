@@ -18,14 +18,22 @@ Why the incumbent rather than a round robin: 11 settings round-robin is 55
 pairings for the same number of games per pairing, and the question is "does
 anything beat what we ship", not the full ordering.
 
+**Size --max-workers by RAM, not by cores.** Each worker holds its own
+similarity tensor and BOTH spymasters: measured at **1.2 GB**. The arena's
+docstring says to oversubscribe past os.cpu_count() because LLM turns are
+network-bound, and that is true of the cheap baselines -- but this model is
+not cheap to hold, and 48 workers asks for 58 GB. On a 30 GB box that is the
+OOM killer, which takes the editor down with it. Budget
+(free RAM - 10 GB headroom) / 1.2 GB, and `nice` it so interactive work wins.
+
 Usage:
-    # ~1 h, ~$5 on gpt-oss
-    python scripts/tools/sweep_role_costs.py --n-boards 150 \\
+    # ~2-3 h, ~$5 on gpt-oss; 10 workers = 12 GB, leaving 6 cores free
+    nice -n 10 python scripts/tools/sweep_role_costs.py --n-boards 150 \\
         --guesser-pool-config configs/guesser_pool_oss120b.json \\
-        --record-games cache/llm_store.db --max-workers 48
+        --record-games cache/llm_store.db --max-workers 10
 
     python scripts/tools/sweep_role_costs.py --axis opponent --n-boards 20 \\
-        --guesser noisy_numberbatch --max-workers 14        # free smoke test
+        --guesser noisy_numberbatch --max-workers 10        # free smoke test
 """
 
 from __future__ import annotations
