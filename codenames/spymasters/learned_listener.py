@@ -36,7 +36,7 @@ import numpy as np
 from codenames.board import Board, OpponentBoardView, Role
 from codenames.clue_search import is_legal_clue
 from codenames.clue_stats import ClueStats
-from codenames.game import ROLE_REWARD
+from codenames.game import role_costs
 from codenames.listener_features import (
     EntitySims,
     ExtraSims,
@@ -110,6 +110,9 @@ class LearnedListenerSpymaster(Spymaster):
         sigma: float = 1.5,
         max_rarity: float = 10.0,
         k1_max_similarity: bool = False,
+        neutral_cost: float | None = None,
+        opponent_cost: float | None = None,
+        assassin_cost: float | None = None,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         model_path: Path | None = None,
@@ -124,9 +127,15 @@ class LearnedListenerSpymaster(Spymaster):
         self.shortlist = shortlist
         self.max_rarity = max_rarity
         self.k1_max_similarity = k1_max_similarity
+        self.costs = role_costs(neutral_cost, opponent_cost, assassin_cost)
         self.clue_stats = clue_stats if clue_stats is not None else ClueStats.load(cache_dir=cache_dir)
+        # The costs go to the shortlisting stage too. They have to: the second
+        # stage can only rerank what the first hands it, so leaving stage one on
+        # the default costs would let a risk-averse setting be judged on a
+        # shortlist built by a risk-seeking one.
         self._first_stage = ExpectedWordsSpymaster(
-            sigma=sigma, max_rarity=max_rarity, cache_dir=cache_dir, clue_stats=self.clue_stats
+            sigma=sigma, max_rarity=max_rarity, cache_dir=cache_dir, clue_stats=self.clue_stats,
+            neutral_cost=neutral_cost, opponent_cost=opponent_cost, assassin_cost=assassin_cost,
         )
         self.bundle = bundle if bundle is not None else ListenerBundle.load(
             cache_dir, model_path or (cache_dir / "listener_gbt.txt")
@@ -174,7 +183,7 @@ class LearnedListenerSpymaster(Spymaster):
         assassin = board.words_by_role(Role.ASSASSIN, unrevealed_only=True)
         non_own = neutral + opponent + assassin
         roles = [Role.NEUTRAL] * len(neutral) + [Role.OPPONENT] * len(opponent) + [Role.ASSASSIN] * len(assassin)
-        costs = np.array([abs(ROLE_REWARD[r]) for r in roles], dtype=np.float64)
+        costs = np.array([self.costs[r] for r in roles], dtype=np.float64)
 
         # Stage one: the Gaussian model over the whole pool, for the shortlist.
         g_best_n, g_scores, g_margin = self._first_stage._score_all_clues(board, sims)

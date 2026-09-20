@@ -57,6 +57,32 @@ ROLE_REWARD: dict[Role, float] = {
     Role.ASSASSIN: -10.0,
 }
 
+
+def role_costs(
+    neutral: float | None = None,
+    opponent: float | None = None,
+    assassin: float | None = None,
+) -> dict[Role, float]:
+    """What a spymaster *believes* a wrong guess costs, in own-words.
+
+    Deliberately separate from `ROLE_REWARD` above, which is the yardstick:
+    the number `play_turn` accumulates and every recorded result is measured
+    in. Before this, spymasters read `ROLE_REWARD` directly, which made the
+    two the same constant -- so sweeping a spymaster's risk appetite would
+    have moved the measuring stick along with the thing being measured, and
+    no two runs would have compared. A spymaster's costs are its opinion; the
+    game's rewards are the scoreboard.
+
+    `None` means "whatever the scoreboard says", so the default is exactly the
+    old behaviour and no existing result changes. Positive magnitudes, since
+    every caller took `abs()` of the reward anyway.
+    """
+    given = {Role.NEUTRAL: neutral, Role.OPPONENT: opponent, Role.ASSASSIN: assassin}
+    return {
+        role: abs(ROLE_REWARD[role]) if value is None else float(value)
+        for role, value in given.items()
+    }
+
 # Real games don't have a fixed turn cap, but a guesser pool member (e.g. a
 # ConfidenceThresholdGuesser that declines every clue) could in principle
 # never finish a board. This bounds worst case to at most one word revealed

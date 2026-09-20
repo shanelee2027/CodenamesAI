@@ -12,7 +12,7 @@ fallback chain: every candidate `(clue, k)` pair gets a finite score, so
 
 **Notation.** For a clue, `a_1 >= a_2 >= ...` are the descending z-scores
 against unrevealed own words, and `b_w` the z-score against each
-unrevealed non-own word `w`, costing `c_w = abs(ROLE_REWARD[role(w)])` --
+unrevealed non-own word `w`, costing `c_w = self.costs[role(w)]` --
 imported rather than hardcoded so a future reward retune doesn't silently
 desync this file.
 
@@ -106,7 +106,7 @@ import torch
 from codenames.board import Board, OpponentBoardView, Role, is_legal_clue
 from codenames.clue_search import top_legal_clue
 from codenames.clue_stats import ClueStats
-from codenames.game import ROLE_REWARD
+from codenames.game import role_costs
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 from .base import MAX_CLUE_NUMBER, Spymaster, TurnContext
@@ -128,7 +128,7 @@ def gain_and_penalty(
     """`(gain, penalty)`, each `(n_cand, K_max)`, from `a` (`(n_cand,
     n_own)`, **all** descending own z-scores per candidate -- not just the
     top K_max, see below), `b` (`(n_cand, n_non_own)`, non-own z-scores) and
-    `costs` (`(n_non_own,)`, `abs(ROLE_REWARD[role(w)])`). Column `m` of the
+    `costs` (`(n_non_own,)`, `self.costs[role(w)]`). Column `m` of the
     result is `k = m + 1`.
 
     Both terms are exact expectations under the guesser model (the module
@@ -221,6 +221,9 @@ class ExpectedWordsSpymaster(Spymaster):
         space: str = "numberbatch",
         sigma: float = 1.8,
         max_rarity: float = 10.0,
+        neutral_cost: float | None = None,
+        opponent_cost: float | None = None,
+        assassin_cost: float | None = None,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         clue_stats: ClueStats | None = None,
@@ -236,6 +239,9 @@ class ExpectedWordsSpymaster(Spymaster):
         self.space = space
         self.sigma = sigma
         self.max_rarity = max_rarity
+        # None -> the game's own reward magnitudes, so the default is byte-for-byte
+        # the previous behaviour; see codenames/game.py::role_costs.
+        self.costs = role_costs(neutral_cost, opponent_cost, assassin_cost)
         self.clue_stats = clue_stats if clue_stats is not None else ClueStats.load(cache_dir=cache_dir)
 
     def to_device(self, device) -> None:
@@ -271,7 +277,7 @@ class ExpectedWordsSpymaster(Spymaster):
         assassin = board.words_by_role(Role.ASSASSIN, unrevealed_only=True)
         non_own = neutral + opponent + assassin
         non_own_roles = [Role.NEUTRAL] * len(neutral) + [Role.OPPONENT] * len(opponent) + [Role.ASSASSIN] * len(assassin)
-        costs = np.array([abs(ROLE_REWARD[r]) for r in non_own_roles], dtype=np.float32)  # (n_non_own,)
+        costs = np.array([self.costs[r] for r in non_own_roles], dtype=np.float32)  # (n_non_own,)
 
         rarity_ok = self.clue_stats.rarity_percentile <= self.max_rarity
         candidate_idx = np.flatnonzero(rarity_ok)
