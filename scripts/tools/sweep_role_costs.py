@@ -116,16 +116,94 @@ def per_board(db: Path, run: str) -> tuple[dict[str, int], dict[str, int], tuple
     swept: dict[str, int] = defaultdict(int)
     split = 0
     for gs in boards.values():
+        # Only boards played both ways count, anywhere. A board can be
+        # half-present because the guesser refused to rank on one assignment,
+        # and counting its surviving half toward win rate while it is absent
+        # from the sign test makes the two columns disagree about which games
+        # the row is describing -- with the first-move advantage landing
+        # entirely on whichever side happened to survive.
+        if len(gs) != 2:
+            continue
         for w, killer in gs:
             wins[w] += 1
             if killer is not None:
                 assassin[killer] += 1
-        if len(gs) == 2:
-            if gs[0][0] == gs[1][0]:
-                swept[gs[0][0]] += 1
-            else:
-                split += 1
-    return dict(wins), dict(assassin), (dict(swept), split, len(boards))
+        if gs[0][0] == gs[1][0]:
+            swept[gs[0][0]] += 1
+        else:
+            split += 1
+    paired = sum(1 for gs in boards.values() if len(gs) == 2)
+    return dict(wins), dict(assassin), (dict(swept), split, paired)
+
+
+def resume_state(db: Path, run: str, n_boards: int) -> str:
+    """"complete" | "partial" | "absent" for one setting's run label.
+
+    Complete means both side assignments of every board are on disk. Anything
+    short of that is partial and gets cleared rather than topped up: the games
+    are recorded by label with no natural key, so there is no way to ask which
+    seeds are missing without also trusting that the present ones came from
+    this exact spymaster pair.
+    """
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        n = con.execute("select count(*) from game_records where label like ?", (run + "|%",)).fetchone()[0]
+    finally:
+        con.close()
+    if n == 0:
+        return "absent"
+    return "complete" if n >= 2 * n_boards else "partial"
+
+
+def clear_run(db: Path, run: str) -> int:
+    """Delete a partial setting's rows so the redo does not double-count.
+
+    `GameRecordStore.add_game` keys on (spymaster_id, suite_id, seed) and this
+    caller passes neither, so rows APPEND. Re-running without this leaves four
+    rows per seed, `per_board` pairs none of them, and the sign test reports
+    NaN instead of failing -- a silent wrong answer, which is worse than a
+    crash.
+    """
+    con = sqlite3.connect(db)
+    try:
+        n = con.execute("delete from game_records where label like ?", (run + "|%",)).rowcount
+        con.commit()
+    finally:
+        con.close()
+    return n
+
+
+def summarise(name: str, overrides: dict, db: Path, run: str) -> dict:
+    """Rebuild a completed setting's row from the store alone, for --resume.
+
+    Everything in the table except timing comes from the recorded games, so a
+    skipped setting reports exactly what a freshly played one would.
+    """
+    wins, assassin, (swept, split, n_boards) = per_board(db, run)
+    n_games = sum(wins.values())
+    decisive = swept.get("base", 0) + swept.get(name, 0)
+    lo, hi = wilson(wins.get(name, 0), n_games) if n_games else (0.0, 0.0)
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        turns = [json.loads(t) for (t,) in con.execute(
+            "select turns from game_records where label like ?", (run + "|%",))]
+    finally:
+        con.close()
+    clues = [t for g in turns for t in g if t.get("team")]
+    own = sum(sum(1 for w, r in t["guesses"] if r == "own") for t in clues)
+    return {
+        "setting": name, "overrides": overrides, "games": n_games,
+        "win_rate": wins.get(name, 0) / n_games if n_games else 0.0,
+        "assassin_base": assassin.get("base", 0),
+        "assassin_challenger": assassin.get(name, 0),
+        "own_per_clue": own / len(clues) if clues else 0.0,
+        "mean_k": sum(t["number"] for t in clues) / len(clues) if clues else 0.0,
+        "seconds": 0.0, "resumed": True,
+        "swept_base": swept.get("base", 0), "swept_challenger": swept.get(name, 0),
+        "split": split, "decisive": decisive, "boards": n_boards,
+        "p_sign": binom_two_sided(swept.get(name, 0), decisive) if decisive else float("nan"),
+        "ci": [lo, hi],
+    }
 
 
 def main() -> None:
@@ -141,6 +219,11 @@ def main() -> None:
     ap.add_argument("--record-games", type=Path, default=None,
                     help="required for the paired sign test -- it needs per-board results")
     ap.add_argument("--label", default="role_cost_sweep")
+    ap.add_argument("--resume", action="store_true",
+                    help="skip settings already complete in --record-games, and clear any "
+                         "partial rows for the one being redone. Without this a re-run "
+                         "APPENDS (add_game keys on label alone, which never dedupes), "
+                         "leaving 4 rows per seed so nothing pairs and the sign test goes NaN.")
     ap.add_argument("--out", type=Path, default=None, help="write the summary table as JSON")
     args = ap.parse_args()
 
@@ -160,6 +243,16 @@ def main() -> None:
     for i, overrides in enumerate(settings, 1):
         name = tag(overrides)
         run = f"{args.label}_{name}"
+        if args.resume and args.record_games and args.record_games.exists():
+            state = resume_state(args.record_games, run, len(seeds))
+            if state == "complete":
+                print(f"[{i}/{len(settings)}] {name:<16} already complete -- skipping", flush=True)
+                rows.append(summarise(name, overrides, args.record_games, run))
+                continue
+            if state == "partial":
+                n = clear_run(args.record_games, run)
+                print(f"[{i}/{len(settings)}] {name:<16} partial ({n} games) -- clearing and redoing",
+                      flush=True)
         t0 = time.time()
         result = run_two_team_matchup(
             base_spec, spymaster_spec(MODEL, **overrides), ("base", name),
@@ -177,6 +270,7 @@ def main() -> None:
             "own_per_clue": chal_st.correct_sum / chal_st.clues if chal_st.clues else 0.0,
             "mean_k": chal_st.clue_number_sum / chal_st.clues if chal_st.clues else 0.0,
             "seconds": time.time() - t0,
+            "discarded": len(result.discarded_boards),
         }
         if args.record_games:
             wins, assassin, (swept, split, n_boards) = per_board(args.record_games, run)

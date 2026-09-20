@@ -267,6 +267,11 @@ class MatchupResult:
     n_boards: int
     timeouts: int
     sides: dict[str, SideStats]
+    discarded_boards: tuple[int, ...] = ()
+    """Seeds dropped because a guesser refused to rank on at least one of the
+    board's two side assignments. Both assignments go, never one: a half-played
+    board would still count toward win rate while silently vanishing from the
+    paired sign test, which is the comparison that actually has power."""
 
 
 def _update_side_stats(sides: dict[str, SideStats], result: TwoTeamGameResult, name_of: dict[str, str]) -> None:
@@ -317,7 +322,7 @@ def _matchup_worker_init(
     _WORKER_STATE["run_label"] = run_label
 
 
-def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult, bool]:
+def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult | None, bool, int, str | None]:
     seed, swapped = task
     state = _WORKER_STATE
     board = Board.generate(seed=seed)
@@ -328,13 +333,23 @@ def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult, bool]:
     name_a, name_b = (state["names"][1], state["names"][0]) if swapped else state["names"]
 
     by_role = board_by_role(board) if state["record_store"] is not None else None
-    result = play_two_team_game(board, (first, guesser), (second, guesser), state["sims"], max_turns=state["max_turns"])
+    try:
+        result = play_two_team_game(board, (first, guesser), (second, guesser), state["sims"], max_turns=state["max_turns"])
+    except RuntimeError as exc:
+        # An LLM guesser that will not produce a usable ranking raises rather
+        # than backfill board order (codenames/guessers/openai_compat.py), which
+        # is right -- a fabricated ranking would be cached and poison every later
+        # run. But it arrives here as an exception inside a pool worker, and
+        # letting it propagate ends the whole matchup: a single refusal on one
+        # board of one setting cost an 11-setting sweep 7 hours of work. Report
+        # it as a discard and let the caller drop the board.
+        return None, swapped, seed, str(exc)
     if state["record_store"] is not None:
         # The side assignment is in the label because a recorded game
         # stores only "A"/"B" per turn -- without it a dumped transcript
         # can't say which spymaster gave which clue.
         state["record_store"].add_game(by_role, result, label=f"{state['run_label']}|A={name_a},B={name_b}")
-    return result, swapped
+    return result, swapped, seed, None
 
 
 def run_two_team_matchup(
@@ -378,13 +393,28 @@ def run_two_team_matchup(
         initializer=_matchup_worker_init,
         initargs=(sims_cache_dir, spec_x, spec_y, names, guesser_pool_config, guesser_name, max_turns, game_record_db, run_label),
     ) as executor:
-        for result, swapped in executor.map(_matchup_task, tasks):
-            name_of = {"A": names[1], "B": names[0]} if swapped else {"A": names[0], "B": names[1]}
-            _update_side_stats(sides, result, name_of)
-            if result.outcome == "timeout":
-                timeouts += 1
+        played, failed = [], {}
+        for result, swapped, seed, err in executor.map(_matchup_task, tasks):
+            if result is None:
+                failed.setdefault(seed, err)
+            else:
+                played.append((result, swapped, seed))
             done += 1
             if progress and done % 10 == 0:
                 print(f"  {done}/{len(tasks)} games", flush=True)
 
-    return MatchupResult(n_games=len(tasks), n_boards=len(seeds), timeouts=timeouts, sides=sides)
+    if failed:
+        seed, err = next(iter(failed.items()))
+        print(f"  discarded {len(failed)} board(s) -- a guesser would not rank. "
+              f"first was seed {seed}: {err.splitlines()[0][:120]}", flush=True)
+    for result, swapped, seed in played:
+        if seed in failed:                    # drop this board's surviving half too
+            continue
+        name_of = {"A": names[1], "B": names[0]} if swapped else {"A": names[0], "B": names[1]}
+        _update_side_stats(sides, result, name_of)
+        if result.outcome == "timeout":
+            timeouts += 1
+
+    kept = [s_ for s_ in seeds if s_ not in failed]
+    return MatchupResult(n_games=2 * len(kept), n_boards=len(kept), timeouts=timeouts,
+                         sides=sides, discarded_boards=tuple(sorted(failed)))
