@@ -5535,3 +5535,34 @@ for learned_listener). What falls is productivity, not correctness.
 `train_listener.py --refresh-features` re-extracts at every step rather than
 slicing one full-board matrix, so the training-side version of this question
 can be measured; that run is in progress.
+
+## Local play server, and the k=1 rule in the artifact
+
+`scripts/tools/play_server.py` serves one page and calls
+`LearnedListenerSpymaster` directly, so there is no port and no fixed board
+pool: boards are generated at random from the full word list and each clue is
+the one the arena would see. Stdlib `http.server` rather than Flask -- three
+endpoints, and no web framework is in the dependencies. Measured 0.5-1.1 s per
+clue, 1.1 s to load the model.
+
+State lives in the client, not the server: the page sends back the seed and the
+revealed words, and `Board.generate(seed)` reconstructs the position exactly.
+Refreshing mid-game loses nothing and two browsers can play the same seed.
+`k1_max_similarity` is ON here (`--no-k1` disables it) and stays off in
+`configs/spymasters.json`, where flipping it would redefine the baseline under
+every recorded result.
+
+The artifact got the same rule. It cannot be computed in the browser the way
+Python computes it -- `_swap_k1` scans the whole 11,145-clue pool by raw
+numberbatch cosine, not the Gaussian shortlist -- but it does not have to:
+legality is fixed by the board, so the rule's answer is one clue word per board
+word and `export_board_inputs.py` now resolves it exactly and ships it as `k1`.
+Checked against Python on six forced-k=1 positions: all six identical
+(shark/boundary/consecutive/buildings/hat/dying). The base clue differs on two
+of the six because the browser's candidate pool is a subset, which is the
+port's existing approximation, not a new one.
+
+Shipping the k=1 table meant re-exporting, and the previous `--top` was not
+recorded. At the default 260/side the file came to 24.7 MB, over the 16 MB
+per-file artifact limit; `--top 145` gives ~250 clues per board and 13.2 MB,
+a wider pool than the 208/board that was previously shipped.

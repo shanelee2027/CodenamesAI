@@ -34,6 +34,7 @@ from pathlib import Path
 import numpy as np
 
 from codenames.board import Board, OpponentBoardView, Role
+from codenames.clue_search import is_legal_clue
 from codenames.clue_stats import ClueStats
 from codenames.game import ROLE_REWARD
 from codenames.listener_features import (
@@ -108,6 +109,7 @@ class LearnedListenerSpymaster(Spymaster):
         shortlist: int = SHORTLIST,
         sigma: float = 1.5,
         max_rarity: float = 10.0,
+        k1_max_similarity: bool = False,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         model_path: Path | None = None,
@@ -121,6 +123,7 @@ class LearnedListenerSpymaster(Spymaster):
         `ExpectedWordsSpymaster`'s convention."""
         self.shortlist = shortlist
         self.max_rarity = max_rarity
+        self.k1_max_similarity = k1_max_similarity
         self.clue_stats = clue_stats if clue_stats is not None else ClueStats.load(cache_dir=cache_dir)
         self._first_stage = ExpectedWordsSpymaster(
             sigma=sigma, max_rarity=max_rarity, cache_dir=cache_dir, clue_stats=self.clue_stats
@@ -205,10 +208,74 @@ class LearnedListenerSpymaster(Spymaster):
         idx = np.asarray(keep)
         scores[idx] = np.take_along_axis(net, best_m[:, None], axis=1)[:, 0]
         best_n[idx] = best_m + 1
+
+        if self.k1_max_similarity:
+            sub = self._swap_k1(sims, board, words=candidates, own_n=n_own,
+                                scores=scores, best_n=best_n, S=S, keep=keep)
+            if sub is not None:
+                scores, best_n = sub
         # Margin exists only for the arena's tie-break; reuse the first stage's,
         # which is on a stable scale and is not part of the ranking here.
         margin[idx] = g_margin[idx]
         return best_n, scores, margin
+
+    def _swap_k1(self, sims, board, words, own_n, scores, best_n, S, keep):
+        """When the best clue is a k=1 clue, keep the word it means but swap the
+        clue for the highest raw-similarity legal one.
+
+        The expected reward saturates at k=1 -- once one own word dominates,
+        almost any safe clue scores within noise of the best (measured: the top
+        two k=1 clues on one board tied to four decimal places), so the argmax
+        is settled by the third decimal rather than by which clue a teammate
+        would actually get. This picks by raw cosine instead, on the argument
+        that for a one-word clue the only thing that matters is how obvious the
+        link is.
+
+        **It is off by default and it is not free.** Raw similarity ignores the
+        rest of the board, so it can select a clue that also points at the
+        assassin -- BASEBALL for Bat carries 23x the assassin mass of CRICKET
+        on one measured board, because "on deck" is a baseball term. The
+        listener's tail is calibrated (words it gives under 1% are picked 341
+        times against 290 predicted), so that risk is real rather than an
+        artifact. Enabled deliberately, measured in the arena, not assumed.
+        """
+        # The best-scoring clue is often ILLEGAL -- it shares a stem with the
+        # word it points at, which is exactly what makes it score well. The
+        # clue actually played is the best LEGAL one, so the target has to be
+        # read from that; taking it from the raw argmax made this rule answer a
+        # question about a clue nobody would give.
+        finite = np.flatnonzero(np.isfinite(scores))
+        if finite.size == 0:
+            return None
+        best = None
+        for ci in finite[np.argsort(-scores[finite])]:
+            if is_legal_clue(sims.clue_words[int(ci)], board.words):
+                best = int(ci)
+                break
+        if best is None or best_n[best] != 1:
+            return None
+        row = S[keep.index(best)] if best in keep else None
+        if row is None:
+            return None
+        target = words[int(np.argmax(row[:own_n]))]      # the own word it means
+        ti = sims.board_index.get(target.lower())
+        if ti is None:
+            return None
+
+        space_i = sims._space_index(self.space) if hasattr(self, "space") else 1
+        cand = np.flatnonzero(self.clue_stats.rarity_percentile <= self.max_rarity)
+        cos = np.asarray(sims.tensor[cand, ti, space_i], dtype=np.float64)
+        for r in np.argsort(-cos):
+            ci = int(cand[r])
+            if not np.isfinite(cos[r]):
+                continue
+            if is_legal_clue(sims.clue_words[ci], board.words):
+                if ci != best:
+                    scores = scores.copy(); best_n = best_n.copy()
+                    scores[ci] = float(scores[best]) + 1.0   # outrank the incumbent
+                    best_n[ci] = 1
+                return scores, best_n
+        return None
 
     def score_batch(self, sims: SimilarityTensor, contexts: list[TurnContext]) -> list[tuple[np.ndarray, np.ndarray]]:
         return [self._score_all_clues(ctx.board, sims)[:2] for ctx in contexts]

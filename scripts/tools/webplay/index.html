@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spymaster Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#EFE9DD; --surface:#FBF8F2; --line:#D8CFBE;
+  --ink:#241F19; --muted:#6E6558;
+  --blue:#3A6EA5; --red:#B4504D; --tan:#C9B693; --black:#26282D;
+  --gold:#B4842A; --spent:0.30;
+  --shadow:0 1px 2px rgba(36,31,25,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15171B; --surface:#1E2127; --line:#30343C;
+    --ink:#ECE7DE; --muted:#9A948A;
+    --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
+    --gold:#D4A33C; --spent:0.22; --shadow:0 1px 2px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15171B; --surface:#1E2127; --line:#30343C;
+  --ink:#ECE7DE; --muted:#9A948A;
+  --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
+  --gold:#D4A33C; --spent:0.22; --shadow:0 1px 2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:14px 16px calc(18px + env(safe-area-inset-bottom));
+  max-width:560px;margin:0 auto;min-height:100vh}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+h1{font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:.14em;
+   text-transform:uppercase;margin:0;color:var(--muted)}
+.tally{display:flex;gap:8px;align-items:center;font-variant-numeric:tabular-nums;font-size:13px;font-weight:600}
+.pip{padding:2px 8px;border-radius:999px;color:#fff}
+.pip.a{background:var(--blue)} .pip.b{background:var(--red)}
+.clue{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;margin-bottom:12px;box-shadow:var(--shadow);min-height:80px;
+  display:flex;flex-direction:column;justify-content:center}
+.turnline{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.turnline b{color:var(--ink)}
+.word{font-family:Oswald,sans-serif;font-weight:600;font-size:clamp(24px,7vw,32px);
+  letter-spacing:.05em;text-transform:uppercase;line-height:1.05;display:flex;
+  align-items:baseline;gap:10px;flex-wrap:wrap}
+.num{color:var(--gold)}
+.bonus{font-family:Inter,sans-serif;font-weight:500;font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);align-self:center}
+.sub{font-size:12px;color:var(--muted);margin-top:5px}
+.board{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:12px}
+.card{aspect-ratio:1/.86;border:1px solid var(--line);border-radius:7px;
+  background:var(--surface);color:var(--ink);cursor:pointer;padding:3px 2px;
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-family:Oswald,sans-serif;font-weight:600;letter-spacing:.01em;
+  font-size:clamp(10px,3.15vw,16px);line-height:1.08;text-transform:uppercase;
+  overflow:hidden;word-break:break-word;hyphens:auto;
+  transition:transform .1s ease;box-shadow:var(--shadow)}
+.card:active{transform:scale(.96)}
+.card:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.card.r-a{background:var(--blue);color:#fff;border-color:transparent}
+.card.r-b{background:var(--red);color:#fff;border-color:transparent}
+.card.r-n{background:var(--tan);color:#241F19;border-color:transparent}
+.card.r-x{background:var(--black);color:#F3EFE7;border-color:transparent}
+.card.spent{opacity:var(--spent);cursor:default;box-shadow:none}
+.bar{display:flex;gap:8px}
+button.act{flex:1;font-family:Inter,sans-serif;font-weight:600;font-size:14px;
+  padding:13px 10px;border-radius:11px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+button.act:active{transform:scale(.985)}
+button.act.primary{background:var(--gold);border-color:transparent;color:#1A1509}
+button.act:disabled{opacity:.5;cursor:default}
+button.act:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.log{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.55;max-height:104px;overflow-y:auto}
+.log b{color:var(--ink)}
+.foot{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5}
+.foot code{font-size:10.5px;background:var(--surface);border:1px solid var(--line);
+  border-radius:4px;padding:1px 4px}
+.banner{border-radius:12px;padding:12px 14px;margin-bottom:12px;font-weight:600;font-size:14px;color:#fff}
+.banner.a{background:var(--blue)} .banner.b{background:var(--red)}
+.banner.err{background:var(--black);color:#F3EFE7}
+@media (max-width:400px){ body{padding-left:9px;padding-right:9px} .board{gap:3px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Spymaster Table <span id="bno" style="opacity:.65;letter-spacing:.06em"></span></h1>
+  <div class="tally"><span class="pip a" id="ta">9</span><span class="pip b" id="tb">8</span></div>
+</header>
+<div id="banner"></div>
+<div class="clue">
+  <div class="turnline" id="turnline">Dealing a board…</div>
+  <div class="word" id="clueword">—</div>
+  <div class="sub" id="cluesub"></div>
+</div>
+<div class="board" id="board"></div>
+<div class="bar">
+  <button class="act primary" id="endturn">End guessing</button>
+  <button class="act" id="newgame">New board</button>
+</div>
+<div class="log" id="log"></div>
+<div class="foot">
+  Both spymasters are the distilled listener, running in Python on this machine —
+  <code>LearnedListenerSpymaster</code>, the same object the arena plays. Boards are
+  generated at random from the full word list; the seed in the header reproduces one.
+  Every turn the server re-extracts all 44 features for the words still standing,
+  re-scores the shortlist, and picks the clue and number maximising expected reward
+  under a Plackett–Luce model of the guesser. k=1 max-similarity rule: <b>__K1__</b>.
+</div>
+
+<script>
+let B=null, revealed=[], turn='a', clue=null, left=0, over=null, busy=false;
+
+const $ = id => document.getElementById(id);
+const teamName = t => t==='a' ? 'Blue' : 'Red';
+const post = (path, body) => fetch(path, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+  .then(r => r.json());
+
+function render(){
+  const bd=$('board'); bd.innerHTML='';
+  B && B.words.forEach((w,i)=>{
+    const el=document.createElement('button');
+    const shown=revealed[i]||over;
+    el.className='card'+(shown?' r-'+B.roles[i]:'')+(revealed[i]?' spent':'');
+    el.textContent=w;
+    el.disabled=!!(revealed[i]||over||busy);
+    el.setAttribute('aria-label', w+(revealed[i]?' — revealed':''));
+    el.onclick=()=>guess(i);
+    bd.appendChild(el);
+  });
+  const cnt = r => B ? B.roles.filter((x,i)=>x===r&&!revealed[i]).length : 0;
+  $('ta').textContent=cnt('a');
+  $('tb').textContent=cnt('b');
+  $('bno').textContent=B?`· seed ${B.seed}`:'';
+  $('banner').innerHTML = over ? `<div class="banner ${over.team}">${over.msg}</div>` : '';
+  $('turnline').innerHTML = over ? 'Game over'
+    : busy ? `<b>${teamName(turn)}</b> spymaster is thinking…`
+    : `<b>${teamName(turn)}</b> to guess · ${left} guess${left===1?'':'es'} left`;
+  $('clueword').innerHTML = over||busy ? '—'
+    : `${clue?clue.clue:'…'} <span class="num">${clue?clue.number:''}</span>`
+      + (clue?` <span class="bonus">+1 bonus</span>`:'');
+  $('cluesub').textContent = over ? 'Tap “New board” to play again.'
+    : busy ? 'Re-scoring every clue for the board as it stands.'
+    : 'Tap the words you think it means.';
+  $('endturn').disabled=!!over||busy;
+  $('newgame').disabled=busy;
+}
+
+const say = m => { const l=$('log'); l.innerHTML=`<div>${m}</div>`+l.innerHTML; };
+
+function fail(msg){
+  busy=false; over={team:'err', msg};
+  render(); $('banner').innerHTML=`<div class="banner err">${msg}</div>`;
+}
+
+function newClue(){
+  busy=true; clue=null; render();
+  const words = B.words.filter((w,i)=>revealed[i]);
+  post('/api/clue', {seed:B.seed, revealed:words, turn})
+    .then(r=>{
+      busy=false;
+      if(r.error) return fail(r.error);
+      if(!r.clue) return endGame(turn, `${teamName(turn)} has no words left.`);
+      clue=r;
+      left=r.number+1;                   // Codenames allows one guess beyond the number
+      say(`<b>${teamName(turn)}</b> spymaster: <b>${r.clue.toUpperCase()} ${r.number}</b>`
+          + ` <span style="opacity:.6">(${r.ms} ms)</span>`);
+      render();
+    })
+    .catch(e=>fail('Lost the server — is play_server.py still running?'));
+}
+
+function endGame(team,msg){ over={team,msg}; busy=false; render(); }
+
+function checkWin(){
+  const ra=B.roles.filter((r,i)=>r==='a'&&!revealed[i]).length;
+  const rb=B.roles.filter((r,i)=>r==='b'&&!revealed[i]).length;
+  if(ra===0){ endGame('a','Blue wins — all their words are out.'); return true; }
+  if(rb===0){ endGame('b','Red wins — all their words are out.'); return true; }
+  return false;
+}
+const nextTurn = () => { turn = turn==='a'?'b':'a'; newClue(); };
+
+function guess(i){
+  if(over||busy||revealed[i]||!clue) return;
+  revealed[i]=true;
+  const r=B.roles[i];
+  if(r==='x'){
+    say(`${B.words[i]} — <b>assassin</b>`);
+    endGame(turn==='a'?'b':'a', `${teamName(turn)} hit the assassin. ${teamName(turn==='a'?'b':'a')} wins.`);
+    return;
+  }
+  say(`${B.words[i]} — ${r===turn?'<b>theirs</b>':(r==='n'?'bystander':'the other team')}`);
+  if(checkWin()) return;
+  if(r===turn){ left--; if(left<=0){ say('Out of guesses.'); nextTurn(); } else render(); }
+  else nextTurn();
+}
+
+function start(seed){
+  busy=true; render();
+  post('/api/board', seed==null?{}:{seed})
+    .then(b=>{
+      if(b.error) return fail(b.error);
+      B=b; revealed=new Array(b.words.length).fill(false);
+      turn='a'; over=null; clue=null; $('log').innerHTML='';
+      newClue();
+    })
+    .catch(e=>fail('Could not reach the server.'));
+}
+
+$('endturn').onclick=()=>{ if(!over&&!busy){ say('Stopped guessing.'); nextTurn(); } };
+$('newgame').onclick=()=>{ if(!busy) start(null); };
+
+// ?seed=12345 replays a specific board; otherwise the server deals a random one.
+const qs=new URLSearchParams(location.search);
+start(qs.has('seed') ? parseInt(qs.get('seed'),10) : null);
+</script>
+</body>
+</html>
