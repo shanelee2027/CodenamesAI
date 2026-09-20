@@ -5566,3 +5566,63 @@ Shipping the k=1 table meant re-exporting, and the previous `--top` was not
 recorded. At the default 260/side the file came to 24.7 MB, over the 16 MB
 per-file artifact limit; `--top 145` gives ~250 clues per board and 13.2 MB,
 a wider pool than the 208/board that was previously shipped.
+
+## 2026-09-20 — role costs: the incumbent wins, and the sweep only looked one way
+
+Eleven cost settings played the incumbent (neutral 0.2, opponent 1.0, assassin
+10.0) head to head, 100 boards each both ways, gpt-oss-120b guesser, 1,826
+games in 115 min for about $2. **Nothing beat it.** Ten of eleven lost:
+
+    ass=5    56.9%  p=0.052      neu=0.7  43.3%  p=0.027
+    neu=0.4  49.5%  p=1.000      neu=1    42.9%  p=0.023
+    neu=0.1  49.4%  p=1.000      opp=2.5  42.7%  p=0.024
+    opp=1.5  44.7%  p=0.052      opp=3    41.8%  p=0.009
+    opp=2    44.0%  p=0.080      ass=20   36.8%  p=0.000
+                                 ass=40   34.7%  p=0.000
+
+The prior going in -- an opponent card is a two-card swing, so 1.0 underprices
+it -- is not supported. Raising it is monotonically worse (44.7 -> 41.8 as the
+cost goes 1.5 -> 3.0), and every penalty increase on every axis hurts. The
+gradient points at a *more aggressive* model, not a more careful one.
+
+The mechanism is doing what it should, which is the check that says the
+parameter is wired up: mean k runs 2.31 at ass=5 down to 1.70 at ass=40, and
+own/clue tracks it.
+
+**The sweep bracketed opponent on one side only** -- 1.5/2.0/2.5/3.0, nothing
+below 1.0, while neutral and assassin both straddle the incumbent. So the one
+direction the data points to, on the axis the question was about, is the one
+never tested. Next run: opp 0.5/0.75, ass 2/7.
+
+Two reasons not to bank any of it yet. `ass=5` is p=0.052 and the best of
+eleven comparisons, where ~0.6 false positives are expected. And the discard
+question below is unresolved, worst exactly where the effects are largest.
+
+### The guesser degenerates, and the retry does not help
+
+gpt-oss discarded 6-32 boards per setting. It is not a refusal, a content
+filter, or truncation -- finish_reason is `stop` and the JSON is well formed.
+It repeats one token instead of ranking:
+
+    clue 'gross', 20 words -> ["gross","gross","gross", ... ]  (19x)
+
+`_query` retries once at double the token budget on the documented assumption
+that truncation is the only failure. It isn't, and no temperature or seed is
+set, so attempt two resamples identically -- visible in the errors, where both
+attempts report the same count ("named only 1/19" twice). Doubling the budget
+is a no-op for this failure.
+
+Mostly transient: 'loan' and 'treasure' both returned full rankings when
+retried later, though 'gross' reproduces.
+
+**The censoring is arm-specific, which is the shape that biases a comparison.**
+Of 61 boards lost in at least one arm, *zero* were lost in all seven then
+complete -- if these were simply hard boards, every arm would lose the same
+ones. And corr(boards lost, |win% - 50|) = +0.82 over 7 settings: the arms with
+the most discards have the most extreme results. That is not proof of bias --
+a setting that changes play a lot plausibly produces both more unusual clues
+and a genuinely different win rate -- but n=7 cannot separate the two.
+
+Cheap to settle: the cache key is (model, clue, candidates, number) and does
+**not** include temperature, so a re-run after fixing the retry replays every
+successful call from cache and only re-queries the ~10-20% that degenerated.
