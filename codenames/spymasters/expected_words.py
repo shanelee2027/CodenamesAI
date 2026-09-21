@@ -106,6 +106,7 @@ import torch
 from codenames.board import Board, OpponentBoardView, Role, is_legal_clue
 from codenames.clue_search import top_legal_clue
 from codenames.clue_stats import ClueStats
+from codenames.acronyms import load_acronym_mask
 from codenames.game import role_costs
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
@@ -224,6 +225,7 @@ class ExpectedWordsSpymaster(Spymaster):
         neutral_cost: float | None = None,
         opponent_cost: float | None = None,
         assassin_cost: float | None = None,
+        exclude_acronyms: bool = True,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         clue_stats: ClueStats | None = None,
@@ -243,6 +245,10 @@ class ExpectedWordsSpymaster(Spymaster):
         # the previous behaviour; see codenames/game.py::role_costs.
         self.costs = role_costs(neutral_cost, opponent_cost, assassin_cost)
         self.clue_stats = clue_stats if clue_stats is not None else ClueStats.load(cache_dir=cache_dir)
+        # A pool restriction like max_rarity, not a rule of the game -- see
+        # scripts/data/build_acronym_mask.py on why this is not in is_legal_clue.
+        self.exclude_acronyms = exclude_acronyms
+        self.acronym_mask = load_acronym_mask(cache_dir, self.clue_stats.clue_words) if exclude_acronyms else None
 
     def to_device(self, device) -> None:
         """No-op: this model is numpy/CPU only, see the module
@@ -280,6 +286,8 @@ class ExpectedWordsSpymaster(Spymaster):
         costs = np.array([self.costs[r] for r in non_own_roles], dtype=np.float32)  # (n_non_own,)
 
         rarity_ok = self.clue_stats.rarity_percentile <= self.max_rarity
+        if self.acronym_mask is not None:
+            rarity_ok = rarity_ok & ~self.acronym_mask
         candidate_idx = np.flatnonzero(rarity_ok)
         if candidate_idx.size == 0:
             # Nothing clears the rarity filter -- it's a pool restriction,

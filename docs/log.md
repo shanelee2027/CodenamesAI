@@ -5626,3 +5626,68 @@ and a genuinely different win rate -- but n=7 cannot separate the two.
 Cheap to settle: the cache key is (model, clue, candidates, number) and does
 **not** include temperature, so a re-run after fixing the retry replays every
 successful call from cache and only re-queries the ~10-20% that degenerated.
+
+## 2026-09-20 — the k=1 rule becomes a tiebreak, and acronyms leave the pool
+
+**The max-similarity rule was unsafe and is gone.** It took the
+highest-raw-cosine legal clue for the word the model meant, which ignores the
+rest of the board entirely. The failure is concrete: with CHICK and EAGLE both
+up and EAGLE the last word needed, the most obvious clue for EAGLE in
+isolation is BIRD, which hands CHICK to whoever owns it. Raw similarity cannot
+see CHICK.
+
+`k1_tiebreak` replaces it. Candidates must first come within
+`k1_tie_tolerance` of optimal under the full board-aware expected reward --
+which is computed over every remaining word and its role -- and similarity
+only breaks ties among those. A clue that also points at CHICK is marked down
+by exactly that much and leaves the tie set before similarity is consulted.
+The tolerance is therefore not a tuning knob so much as a statement of how
+much expected reward we will spend to be more obvious.
+
+**Tolerance 0.5, measured.** Over 18 forced-k=1 positions:
+
+    tol    changed   mean spend   max spend
+    0.1      9/18       0.0302      0.0934
+    0.25    10/18       0.0648      0.2190
+    0.5     11/18       0.1146      0.3782
+    1.0     11/18       0.1146      0.3782
+    2.0     11/18       0.1146      0.3782
+
+It saturates at 0.5 -- 1.0 and 2.0 change not one clue more, the shortlist
+having run out of near-optimal alternatives -- and spends far less than the
+cap, 0.115 own words on average. Larger tolerances buy nothing on real boards
+and only widen the door to the failure above: on a contrived board with EAGLE
+against CHICK/HAWK/DUCK, off gives BALD, 0.5 gives PATRIOT, and 2.0 reaches
+OWL. The regression test asserts exactly that progression.
+
+A first attempt to measure the spend read the score off the swapped array,
+where `_swap_k1` has inflated it by +1 to outrank the incumbent, so the
+subtraction cancelled to 0.000 by construction. The real numbers come from an
+independent un-inflated scoring pass.
+
+### Acronyms
+
+The model played `phd` 29 times, `uk` 29, `nasa` 21, `gm` 20, `rn` 14,
+`hsbc` 8. All legal one-word clues, all bad at a table.
+`scripts/data/build_acronym_mask.py` flags 9,128 of 111,440 vocabulary entries
+(4.2% of the admissible pool after the rarity filter).
+
+Detection reads WordNet's *casing*, which is the only surviving signal that a
+word is conventionally written in caps: flag when every lemma spelling is ALL
+CAPS or dotted (CIA, PhD, U.S.A.), plus a no-vowel test for `gm`/`hsbc` and a
+short-and-absent test for `nba`/`wwe`. Three earlier attempts failed and are
+worth recording. Requiring *any* caps spelling flagged `cat`, `pet`, `zip`,
+`shape` and `led`, all of which carry an acronym sense beside the ordinary
+word. Using WordNet membership alone flagged `australia`, `germany`, `limbs`
+and `gods` -- proper nouns and plurals. Testing vowels without `y` flagged
+`rhythm`, `sky`, `myth` and `fry`. The final rule leaves `laser`, `radar` and
+`scuba` alone, lexicalised and lower-cased in WordNet, and its residual false
+positives are short names WordNet lacks (`jill`, `joey`) plus `the` and
+`when`, which are no loss.
+
+**It is a pool restriction, not a rule of Codenames** -- applied like
+`max_rarity` rather than in `is_legal_clue`, because legality is identical for
+every model and every recorded result was produced under the current
+definition. Moving this into the rules would silently redefine what those runs
+measured. `exclude_acronyms` defaults to True, so this does change the shipped
+model; it needs a docs/versions entry before it is treated as the baseline.

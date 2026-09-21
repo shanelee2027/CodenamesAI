@@ -13,12 +13,16 @@ words back with every request. The server therefore keeps no per-game state:
 reconstructs the position exactly. Refreshing the page mid-game loses nothing,
 and two browsers can play the same seed without interfering.
 
-The k=1 substitution rule (`k1_max_similarity`) is ON by default here and OFF
-in `configs/spymasters.json`. That is deliberate: the rule is directionally
-positive but not significant in the arena (22-18 head to head, p = 0.73;
-identical 33-7 against the centroid), while against a human it is clearly
-better -- it is what makes the one-word clue for Bat be BASEBALL rather than
-whichever safe clue wins by the third decimal. Pass --no-k1 to turn it off.
+The k=1 tiebreak (`k1_tiebreak`) is ON by default here and OFF in
+`configs/spymasters.json`. Among clues already within `k1_tie_tolerance` of
+optimal under the full board-aware reward, it plays the one most obviously
+tied to the word it means -- BASEBALL for Bat, rather than whichever safe clue
+wins by the third decimal. Pass --no-k1 to turn it off.
+
+An earlier version took the highest-similarity legal clue outright, ignoring
+the board. That is unsafe and was removed: with CHICK and EAGLE both up, the
+most obvious clue for EAGLE alone is BIRD, which hands CHICK to the other
+team. Restricting to the tie set is what prices CHICK back in.
 
 Usage:
     python scripts/tools/play_server.py            # http://127.0.0.1:8000
@@ -58,7 +62,7 @@ _LOCK = threading.Lock()
 class Engine:
     def __init__(self, k1: bool):
         self.sims = SimilarityTensor.load(DEFAULT_CACHE_DIR)
-        self.spymaster = LearnedListenerSpymaster(k1_max_similarity=k1)
+        self.spymaster = LearnedListenerSpymaster(k1_tiebreak=k1)
         self.k1 = k1
 
     def new_board(self) -> dict:
@@ -147,7 +151,7 @@ def main() -> None:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--no-k1", dest="k1", action="store_false",
-                    help="disable the k=1 max-similarity substitution")
+                    help="disable the k=1 similarity tiebreak")
     ap.add_argument("--no-open", dest="open_browser", action="store_false")
     ap.set_defaults(k1=True)
     args = ap.parse_args()

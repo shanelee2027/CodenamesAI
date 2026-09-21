@@ -36,6 +36,7 @@ import numpy as np
 from codenames.board import Board, OpponentBoardView, Role
 from codenames.clue_search import is_legal_clue
 from codenames.clue_stats import ClueStats
+from codenames.acronyms import load_acronym_mask
 from codenames.game import role_costs
 from codenames.listener_features import (
     EntitySims,
@@ -51,6 +52,10 @@ from codenames.spymasters.base import MAX_CLUE_NUMBER, Spymaster, TurnContext
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
 
 SHORTLIST = 200
+
+# Numberbatch, the space the listener's strongest features are built on and the
+# one the k=1 tiebreak reads raw cosines from.
+NB_SPACE = 1
 
 
 @dataclass(frozen=True)
@@ -109,10 +114,12 @@ class LearnedListenerSpymaster(Spymaster):
         shortlist: int = SHORTLIST,
         sigma: float = 1.5,
         max_rarity: float = 10.0,
-        k1_max_similarity: bool = False,
+        k1_tiebreak: bool = False,
+        k1_tie_tolerance: float = 0.5,
         neutral_cost: float | None = None,
         opponent_cost: float | None = None,
         assassin_cost: float | None = None,
+        exclude_acronyms: bool = True,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         model_path: Path | None = None,
@@ -126,7 +133,8 @@ class LearnedListenerSpymaster(Spymaster):
         `ExpectedWordsSpymaster`'s convention."""
         self.shortlist = shortlist
         self.max_rarity = max_rarity
-        self.k1_max_similarity = k1_max_similarity
+        self.k1_tiebreak = k1_tiebreak
+        self.k1_tie_tolerance = k1_tie_tolerance
         self.costs = role_costs(neutral_cost, opponent_cost, assassin_cost)
         self.clue_stats = clue_stats if clue_stats is not None else ClueStats.load(cache_dir=cache_dir)
         # The costs go to the shortlisting stage too. They have to: the second
@@ -136,7 +144,9 @@ class LearnedListenerSpymaster(Spymaster):
         self._first_stage = ExpectedWordsSpymaster(
             sigma=sigma, max_rarity=max_rarity, cache_dir=cache_dir, clue_stats=self.clue_stats,
             neutral_cost=neutral_cost, opponent_cost=opponent_cost, assassin_cost=assassin_cost,
+            exclude_acronyms=exclude_acronyms,
         )
+        self.acronym_mask = self._first_stage.acronym_mask
         self.bundle = bundle if bundle is not None else ListenerBundle.load(
             cache_dir, model_path or (cache_dir / "listener_gbt.txt")
         )
@@ -218,7 +228,7 @@ class LearnedListenerSpymaster(Spymaster):
         scores[idx] = np.take_along_axis(net, best_m[:, None], axis=1)[:, 0]
         best_n[idx] = best_m + 1
 
-        if self.k1_max_similarity:
+        if self.k1_tiebreak:
             sub = self._swap_k1(sims, board, words=candidates, own_n=n_own,
                                 scores=scores, best_n=best_n, S=S, keep=keep)
             if sub is not None:
@@ -229,35 +239,51 @@ class LearnedListenerSpymaster(Spymaster):
         return best_n, scores, margin
 
     def _swap_k1(self, sims, board, words, own_n, scores, best_n, S, keep):
-        """When the best clue is a k=1 clue, keep the word it means but swap the
-        clue for the highest raw-similarity legal one.
+        """When the best clue is a k=1 clue, break the tie among near-optimal
+        clues by raw similarity to the word it means.
 
-        The expected reward saturates at k=1 -- once one own word dominates,
-        almost any safe clue scores within noise of the best (measured: the top
-        two k=1 clues on one board tied to four decimal places), so the argmax
-        is settled by the third decimal rather than by which clue a teammate
-        would actually get. This picks by raw cosine instead, on the argument
-        that for a one-word clue the only thing that matters is how obvious the
-        link is.
+        Expected reward saturates at k=1: once one own word dominates, every
+        safe clue scores within noise of the best, so the argmax is settled by
+        the third decimal rather than by which clue a teammate would actually
+        get. BAT is the case -- the model preferred CRICKET where a human says
+        BASEBALL, on a difference no guesser could perceive.
 
-        **It is off by default and it is not free.** Raw similarity ignores the
-        rest of the board, so it can select a clue that also points at the
-        assassin -- BASEBALL for Bat carries 23x the assassin mass of CRICKET
-        on one measured board, because "on deck" is a baseball term. The
-        listener's tail is calibrated (words it gives under 1% are picked 341
-        times against 290 predicted), so that risk is real rather than an
-        artifact. Enabled deliberately, measured in the arena, not assumed.
+        **Why a tie set and not the maximum-similarity clue.** Picking the
+        highest-cosine legal clue outright ignores the rest of the board, and
+        the failure is not hypothetical: with CHICK and EAGLE both on the
+        board and EAGLE the last word needed, the most obvious clue for EAGLE
+        in isolation is BIRD -- which hands CHICK to whoever owns it. Raw
+        similarity cannot see CHICK. Expected reward can, and prices it.
+
+        So the tie set is the safeguard rather than an implementation detail:
+        every candidate is already within `k1_tie_tolerance` of optimal under
+        the full board-aware reward, which is computed over all remaining
+        words and their roles. A clue that also points at CHICK is penalised
+        by exactly that much and drops out of the set before similarity is
+        ever consulted. Similarity only ever chooses among clues that are
+        already safe, so the tolerance is precisely how much expected reward
+        we are willing to spend on being more obvious.
+
+        **Why 0.5.** Measured over 18 forced-k=1 positions, the tiebreak fires
+        on 11 of them and the effect saturates there -- 1.0 and 2.0 change not
+        one clue more, because the shortlist runs out of near-optimal
+        alternatives. What it actually spends is far under the cap: 0.115 own
+        words on average, 0.378 at worst. Larger tolerances buy nothing on real
+        boards and only widen the door to the failure above; on a contrived
+        board with EAGLE against CHICK/HAWK/DUCK, 0.5 gives PATRIOT while 2.0
+        reaches OWL.
         """
         # The best-scoring clue is often ILLEGAL -- it shares a stem with the
-        # word it points at, which is exactly what makes it score well. The
-        # clue actually played is the best LEGAL one, so the target has to be
-        # read from that; taking it from the raw argmax made this rule answer a
-        # question about a clue nobody would give.
+        # word it points at, which is what makes it score well. The clue
+        # actually played is the best LEGAL one, so the target is read from
+        # that; taking it from the raw argmax made this rule answer a question
+        # about a clue nobody would give.
         finite = np.flatnonzero(np.isfinite(scores))
         if finite.size == 0:
             return None
+        order = finite[np.argsort(-scores[finite])]
         best = None
-        for ci in finite[np.argsort(-scores[finite])]:
+        for ci in order:
             if is_legal_clue(sims.clue_words[int(ci)], board.words):
                 best = int(ci)
                 break
@@ -271,20 +297,28 @@ class LearnedListenerSpymaster(Spymaster):
         if ti is None:
             return None
 
-        space_i = sims._space_index(self.space) if hasattr(self, "space") else 1
-        cand = np.flatnonzero(self.clue_stats.rarity_percentile <= self.max_rarity)
-        cos = np.asarray(sims.tensor[cand, ti, space_i], dtype=np.float64)
-        for r in np.argsort(-cos):
-            ci = int(cand[r])
-            if not np.isfinite(cos[r]):
-                continue
-            if is_legal_clue(sims.clue_words[ci], board.words):
-                if ci != best:
-                    scores = scores.copy(); best_n = best_n.copy()
-                    scores[ci] = float(scores[best]) + 1.0   # outrank the incumbent
-                    best_n[ci] = 1
-                return scores, best_n
-        return None
+        cutoff = float(scores[best]) - self.k1_tie_tolerance
+        tie = []
+        for ci in order:                                  # descending, so stop at the cutoff
+            ci = int(ci)
+            if scores[ci] < cutoff:
+                break
+            if best_n[ci] == 1 and is_legal_clue(sims.clue_words[ci], board.words):
+                tie.append(ci)
+        if len(tie) <= 1:
+            return None
+
+        cos = np.asarray(sims.tensor[tie, ti, NB_SPACE], dtype=np.float64)
+        if not np.any(np.isfinite(cos)):
+            return None
+        pick = tie[int(np.nanargmax(cos))]
+        if pick == best:
+            return None
+        scores = scores.copy()
+        best_n = best_n.copy()
+        scores[pick] = float(scores[best]) + 1.0          # outrank the incumbent
+        best_n[pick] = 1
+        return scores, best_n
 
     def score_batch(self, sims: SimilarityTensor, contexts: list[TurnContext]) -> list[tuple[np.ndarray, np.ndarray]]:
         return [self._score_all_clues(ctx.board, sims)[:2] for ctx in contexts]
