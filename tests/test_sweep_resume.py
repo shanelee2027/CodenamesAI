@@ -77,23 +77,45 @@ class TestUnpairedBoardsAreDropped:
 
 
 class TestResumeState:
+    NAME = "opp=2"
+
     def test_absent_when_nothing_recorded(self, tmp_path):
         db = tmp_path / "g.db"
         record(db, 1, "A", "base", "x", run="other")
-        assert sweep.resume_state(db, RUN, n_boards=2) == "absent"
+        assert sweep.resume_state(db, RUN, 2, {}, self.NAME) == "absent"
 
-    def test_partial_when_some_games_are_missing(self, tmp_path):
+    def test_partial_when_rows_exist_but_the_setting_never_finished(self, tmp_path):
         db = tmp_path / "g.db"
         record(db, 1, "A", "base", "opp=2")
         record(db, 1, "B", "opp=2", "base")
-        assert sweep.resume_state(db, RUN, n_boards=2) == "partial"
+        assert sweep.resume_state(db, RUN, 2, {}, self.NAME) == "partial"
 
-    def test_complete_when_both_assignments_of_every_board_are_present(self, tmp_path):
+    def test_complete_comes_from_the_progress_file_not_a_row_count(self, tmp_path):
+        """The bug this replaces: a setting that finished WITH discarded boards
+        writes fewer than 2*n_boards rows (ass=5 finished with 196 of 200), so
+        counting rows called every real run partial and cleared it -- deleting
+        precisely the work --resume exists to keep."""
         db = tmp_path / "g.db"
-        for seed in (1, 2):
+        for seed in (1, 2):                      # 4 rows, but n_boards says 100
             record(db, seed, "A", "base", "opp=2")
             record(db, seed, "B", "opp=2", "base")
-        assert sweep.resume_state(db, RUN, n_boards=2) == "complete"
+        finished = {self.NAME: {"setting": self.NAME}}
+        assert sweep.resume_state(db, RUN, 100, finished, self.NAME) == "complete"
+        assert sweep.resume_state(db, RUN, 100, {}, self.NAME) == "partial"
+
+
+class TestProgressFile:
+    def test_round_trips_finished_settings(self, tmp_path):
+        p = sweep.progress_path(tmp_path / "out.json", "lbl")
+        sweep.save_progress(p, [{"setting": "ass=2", "win_rate": 0.569}])
+        assert sweep.load_progress(p)["ass=2"]["win_rate"] == 0.569
+
+    def test_a_missing_or_corrupt_file_resumes_from_scratch(self, tmp_path):
+        """A half-written progress file must not stop the sweep from running."""
+        assert sweep.load_progress(tmp_path / "nope.json") == {}
+        bad = tmp_path / "bad.json"
+        bad.write_text("{not json")
+        assert sweep.load_progress(bad) == {}
 
 
 class TestClearRun:

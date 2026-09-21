@@ -144,23 +144,45 @@ def per_board(db: Path, run: str) -> tuple[dict[str, int], dict[str, int], tuple
     return dict(wins), dict(assassin), (dict(swept), split, paired)
 
 
-def resume_state(db: Path, run: str, n_boards: int) -> str:
-    """"complete" | "partial" | "absent" for one setting's run label.
+def progress_path(out: Path | None, label: str) -> Path:
+    """Where finished settings are remembered between runs."""
+    base = out if out is not None else Path(f"{label}.json")
+    return base.with_suffix(".progress.json")
 
-    Complete means both side assignments of every board are on disk. Anything
-    short of that is partial and gets cleared rather than topped up: the games
-    are recorded by label with no natural key, so there is no way to ask which
-    seeds are missing without also trusting that the present ones came from
-    this exact spymaster pair.
+
+def load_progress(path: Path) -> dict:
+    try:
+        return {r["setting"]: r for r in json.loads(path.read_text())}
+    except (OSError, json.JSONDecodeError, KeyError, TypeError):
+        return {}
+
+
+def save_progress(path: Path, rows: list[dict]) -> None:
+    """Written after every setting, not at the end -- the whole point is to
+    survive a run that does not reach the end."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows, indent=1))
+
+
+def resume_state(db: Path, run: str, n_boards: int, finished: dict, name: str) -> str:
+    """"complete" | "partial" | "absent" for one setting.
+
+    Completion is read from the progress file, NOT from a row count. Counting
+    rows looked obvious and was wrong: a setting that finishes with discarded
+    boards writes fewer than 2*n_boards rows -- ass=5 finished with 196 and
+    ass=2 with 184 of 200 -- so every setting that lost a board to the guesser
+    would have been judged partial, cleared, and replayed from scratch. The
+    discards are the normal case, so that bug would have made --resume delete
+    exactly the work it exists to preserve.
     """
+    if name in finished:
+        return "complete"
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         n = con.execute("select count(*) from game_records where label like ?", (run + "|%",)).fetchone()[0]
     finally:
         con.close()
-    if n == 0:
-        return "absent"
-    return "complete" if n >= 2 * n_boards else "partial"
+    return "partial" if n else "absent"
 
 
 def clear_run(db: Path, run: str) -> int:
@@ -246,16 +268,20 @@ def main() -> None:
     print(f"{len(settings)} settings x {2*len(seeds)} games = {len(settings)*2*len(seeds)} games, "
           f"guesser {args.guesser}\n", flush=True)
 
+    prog = progress_path(args.out, args.label)
+    finished = load_progress(prog) if args.resume else {}
+    if finished:
+        print(f"resuming: {len(finished)} setting(s) already finished\n", flush=True)
     rows = []
     t_start = time.time()
     for i, overrides in enumerate(settings, 1):
         name = tag(overrides)
         run = f"{args.label}_{name}"
         if args.resume and args.record_games and args.record_games.exists():
-            state = resume_state(args.record_games, run, len(seeds))
+            state = resume_state(args.record_games, run, len(seeds), finished, name)
             if state == "complete":
                 print(f"[{i}/{len(settings)}] {name:<16} already complete -- skipping", flush=True)
-                rows.append(summarise(name, overrides, args.record_games, run))
+                rows.append(finished.get(name) or summarise(name, overrides, args.record_games, run))
                 continue
             if state == "partial":
                 n = clear_run(args.record_games, run)
@@ -291,6 +317,7 @@ def main() -> None:
         lo, hi = wilson(chal_st.wins, result.n_games)
         row["ci"] = [lo, hi]
         rows.append(row)
+        save_progress(prog, rows)
         print(f"[{i}/{len(settings)}] {name:<16} win {chal_st.win_rate:6.1%} "
               f"[{lo:.2f},{hi:.2f}]  p={row.get('p_sign', float('nan')):.3f}  "
               f"({row['seconds']:.0f}s)", flush=True)
