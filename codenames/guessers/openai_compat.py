@@ -65,6 +65,13 @@ from codenames.similarity import SimilarityTensor
 
 # Known OpenAI-compatible hosts. `base_url` may also be passed directly --
 # these are shorthands so a config file names a provider, not a URL.
+# Four, not two. See `_query`: the failure is a transient repetition loop at
+# roughly 1 call in 4 on a bad position, and a board needs ~30 calls to finish,
+# so two attempts still lost ~20% of boards. Four takes that to a few percent.
+# Retries only ever fire on failure, so this costs nothing on the happy path.
+ATTEMPTS = 4
+RETRY_FREQUENCY_PENALTY = 1.0
+
 PROVIDERS = {
     "deepinfra": ("https://api.deepinfra.com/v1/openai", "DEEPINFRA_API_KEY"),
     "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
@@ -150,16 +157,40 @@ class OpenAICompatGuesser(Guesser):
         the board in exactly this order" from "the model returned nothing",
         and on a reasoning model the second is the common case.
 
-        One retry at double the token budget, because the only failure seen
-        in practice is truncation and doubling fixes it; a second failure is
-        a real problem (wrong model id, a host that ignores
-        `reasoning_effort`, a prompt the model won't answer) and should stop
-        the run while it is still cheap to stop."""
+        Retries because the observed failure is not truncation. The model
+        finishes cleanly (`finish_reason == "stop"`) and returns well-formed
+        JSON, then fills it with one repeated token instead of board words:
+
+            clue 'gross', 20 words -> ["gross","gross","gross", ... ]
+
+        Measured at ~1 call in 4 on a bad position, and *transient* -- the same
+        prompt returns a full 20/20 ranking on the next try. No temperature is
+        set, so every attempt already samples independently; the old two
+        attempts were not the problem so much as there being only two of them.
+        A board needs ~30 successful calls to finish, so even a 1% chance of
+        both attempts failing discards ~20% of boards, which is what an
+        11-setting sweep actually saw.
+
+        Hence ATTEMPTS, not a cleverer single call. `frequency_penalty` from
+        the second attempt on, because a repetition loop is what it exists to
+        break and it measured 4/4 against the default's 3/4 (small samples --
+        it is insurance, not a fix on its own). The budget doubles once in case
+        truncation ever IS the cause, then stays put: growing it four times
+        over just buys a longer degenerate response.
+
+        Retried calls therefore sample from a slightly different distribution
+        than first-attempt ones. That is a real inconsistency, and it is much
+        the lesser evil against censoring the board entirely -- the discards
+        were arm-specific, which biases a comparison, while this is not.
+
+        Exhausting every attempt is still a real problem (wrong model id, a
+        host that ignores `reasoning_effort`, a prompt the model won't answer)
+        and still stops the run."""
         count_note = f" for {number} word(s)" if number else ""
         prompt = _PROMPT_TEMPLATE.format(clue=clue, count_note=count_note, words="\n".join(candidate_words))
         budget = self.max_tokens
         problems = []
-        for attempt in (1, 2):
+        for attempt in range(1, ATTEMPTS + 1):
             request = {
                 "model": self.model,
                 "max_completion_tokens": budget,
@@ -167,6 +198,8 @@ class OpenAICompatGuesser(Guesser):
             }
             if self.reasoning_effort is not None:
                 request["reasoning_effort"] = self.reasoning_effort
+            if attempt > 1:
+                request["frequency_penalty"] = RETRY_FREQUENCY_PENALTY
             choice = self.client.chat.completions.create(**request).choices[0]
             text = choice.message.content or ""
             named = self._named_by_model(text, candidate_words)
@@ -176,7 +209,8 @@ class OpenAICompatGuesser(Guesser):
                     self.partial_responses += 1
                 return self._ranking_from(text, candidate_words)
             problems.append(f"attempt {attempt} (budget {budget}): {problem}")
-            budget *= 2
+            if attempt == 1:
+                budget *= 2
         raise RuntimeError(
             f"{self.cache_model_id} did not return a usable ranking for clue {clue!r} "
             f"over {len(candidate_words)} words. " + "; ".join(problems) + ". "

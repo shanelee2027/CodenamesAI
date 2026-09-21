@@ -75,8 +75,16 @@ BASE = {"neutral_cost": 0.2, "opponent_cost": 1.0, "assassin_cost": 10.0}
 # is measuring the cost rather than noise.
 AXES = {
     "neutral": ("neutral_cost", [0.1, 0.4, 0.7, 1.0]),
-    "opponent": ("opponent_cost", [1.5, 2.0, 2.5, 3.0]),
-    "assassin": ("assassin_cost", [5.0, 20.0, 40.0]),
+    # 0.5/0.75 matter more than the values above 1.0. The first sweep only
+    # went up -- 1.5/2.0/2.5/3.0 -- on the theory that an opponent card is a
+    # two-card swing and 1.0 underprices it. It measured the opposite:
+    # monotonically worse as the price rose (44.7% -> 41.8%). The gradient
+    # points down on every axis, and down is the side this axis never had.
+    "opponent": ("opponent_cost", [0.5, 0.75, 1.5, 2.0, 2.5, 3.0]),
+    # 2/7 for the same reason: ass=5 was the only setting to beat the
+    # incumbent (56.9%, p=0.052), and 20/40 were the two worst results in the
+    # sweep. Whatever is happening is below 10, not above it.
+    "assassin": ("assassin_cost", [2.0, 5.0, 7.0, 20.0, 40.0]),
 }
 
 

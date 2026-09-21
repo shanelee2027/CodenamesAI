@@ -17,7 +17,7 @@ from codenames.guessers.confidence_threshold import ConfidenceThresholdGuesser
 from codenames.guessers.history_aware import HistoryAwareGuesser
 from codenames.guessers.llm import LLMGuesser
 from codenames.guessers.noisy import NoisyGuesser
-from codenames.guessers.openai_compat import OpenAICompatGuesser
+from codenames.guessers.openai_compat import ATTEMPTS, OpenAICompatGuesser
 from codenames.guessers.rank_based import RankBasedGuesser
 from codenames.guessers.registry import DEFAULT_POOL_CONFIG, held_out_pool, load_pool, training_pool
 from codenames.guessers.single_space import SingleSpaceGuesser
@@ -794,7 +794,7 @@ class TestOpenAICompatGuesserStrictness:
         ]
 
     def test_truncated_response_raises_rather_than_returning_board_order(self):
-        g, _ = self._guesser([_FakeOpenAIChoice("", "length")] * 2)
+        g, _ = self._guesser([_FakeOpenAIChoice("", "length")] * ATTEMPTS)
         with pytest.raises(RuntimeError, match="max_completion_tokens"):
             g.rank_candidates("vehicle", self.WORDS, None, number=2)
 
@@ -810,7 +810,7 @@ class TestOpenAICompatGuesserStrictness:
         """The parser backfills, so length proves nothing -- what matters is
         whether the model named enough to cover what the turn consumes."""
         partial = _FakeOpenAIChoice('["Car", "Apple"]')
-        g, _ = self._guesser([partial, partial])
+        g, _ = self._guesser([partial] * ATTEMPTS)
         with pytest.raises(RuntimeError, match="named only 2/5"):
             g.rank_candidates("vehicle", self.WORDS, None, number=3)
 
@@ -829,9 +829,39 @@ class TestOpenAICompatGuesserStrictness:
         """score_candidates passes number=None and wants the whole board
         ordered, so the prefix rule does not apply there."""
         partial = _FakeOpenAIChoice('["Car", "Apple"]')
-        g, _ = self._guesser([partial, partial])
+        g, _ = self._guesser([partial] * ATTEMPTS)
         with pytest.raises(RuntimeError, match="full ranking"):
             g.score_candidates("vehicle", self.WORDS, None)
+
+    def test_a_degenerate_response_is_retried_past_the_second_attempt(self):
+        """The real failure: well-formed JSON filled with one repeated token
+        (["gross","gross",...]) rather than truncation. It is transient at
+        roughly 1 call in 4, and a board needs ~30 calls, so stopping at two
+        attempts discarded ~20% of boards in an 11-setting sweep."""
+        degenerate = _FakeOpenAIChoice('["vehicle", "vehicle", "vehicle"]')
+        g, client = self._guesser([degenerate, degenerate, _FakeOpenAIChoice(self.RANKING)])
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=2)[0] == "Car"
+        assert len(client.calls) == 3, "must not give up after two attempts"
+
+    def test_frequency_penalty_is_sent_only_on_retries(self):
+        """A repetition loop is what frequency_penalty exists to break, but
+        the first call must stay on the provider's defaults so the common
+        path -- and everything already cached -- is unchanged."""
+        g, client = self._guesser(
+            [_FakeOpenAIChoice('["vehicle", "vehicle"]'), _FakeOpenAIChoice(self.RANKING)])
+        g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        assert "frequency_penalty" not in client.calls[0]
+        assert client.calls[1]["frequency_penalty"] > 0
+
+    def test_budget_doubles_once_and_then_stops_growing(self):
+        """Doubling guards the truncation case, but growing it every attempt
+        just buys a longer degenerate response."""
+        bad = _FakeOpenAIChoice('["vehicle"]')
+        g, client = self._guesser([bad] * ATTEMPTS, max_tokens=1000)
+        with pytest.raises(RuntimeError):
+            g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        budgets = [c["max_completion_tokens"] for c in client.calls]
+        assert budgets == [1000] + [2000] * (ATTEMPTS - 1)
 
     def test_duplicate_words_are_removed(self):
         """A repeated word would otherwise survive into the ranking and make
@@ -845,7 +875,7 @@ class TestOpenAICompatGuesserStrictness:
         """The whole point: a fabricated ranking in the store would outlive
         the run that produced it and be served to every later comparison."""
         db = tmp_path / "store.db"
-        g, _ = self._guesser([_FakeOpenAIChoice("", "length")] * 2, cache_path=db)
+        g, _ = self._guesser([_FakeOpenAIChoice("", "length")] * ATTEMPTS, cache_path=db)
         with pytest.raises(RuntimeError):
             g.rank_candidates("vehicle", self.WORDS, None, number=2)
         assert sqlite3.connect(db).execute("SELECT COUNT(*) FROM responses").fetchone()[0] == 0
