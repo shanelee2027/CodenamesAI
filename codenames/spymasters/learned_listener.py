@@ -115,7 +115,7 @@ class LearnedListenerSpymaster(Spymaster):
         sigma: float = 1.5,
         max_rarity: float = 10.0,
         k1_tiebreak: bool = False,
-        k1_tie_tolerance: float = 0.5,
+        k1_tie_tolerance: float = 0.1,
         neutral_cost: float | None = None,
         opponent_cost: float | None = None,
         assassin_cost: float | None = None,
@@ -264,14 +264,25 @@ class LearnedListenerSpymaster(Spymaster):
         already safe, so the tolerance is precisely how much expected reward
         we are willing to spend on being more obvious.
 
-        **Why 0.5.** Measured over 18 forced-k=1 positions, the tiebreak fires
-        on 11 of them and the effect saturates there -- 1.0 and 2.0 change not
-        one clue more, because the shortlist runs out of near-optimal
-        alternatives. What it actually spends is far under the cap: 0.115 own
-        words on average, 0.378 at worst. Larger tolerances buy nothing on real
-        boards and only widen the door to the failure above; on a contrived
-        board with EAGLE against CHICK/HAWK/DUCK, 0.5 gives PATRIOT while 2.0
-        reaches OWL.
+        **Why 0.1.** The unit is own-words, and the best k=1 clue scores 0.96
+        on average (0.845 to 0.997 over 18 forced-k=1 positions) -- a k=1 turn
+        is worth about one own word and no more. So the tolerance is a
+        fraction of a single turn, and it has to be read that way:
+
+            tol    fires    worst spend    as % of the turn
+            0.1     9/18       0.093             9.5%
+            0.25   10/18       0.219            23.2%
+            0.5    11/18       0.378            37.9%
+
+        0.5 was the first default here and it was wrong. Clues 38% apart in
+        expected reward are not tied, and swapping between them is not a
+        tiebreak -- it is choosing a materially worse clue because it reads
+        better. The justification offered for it was that the effect saturates
+        at 0.5, 1.0 and 2.0 changing nothing more; that is an argument against
+        going higher, not an argument for 0.5 over 0.1.
+
+        0.1 still fires on half the positions, so it does the job the rule
+        exists for, and caps the damage at a tenth of a turn.
         """
         # The best-scoring clue is often ILLEGAL -- it shares a stem with the
         # word it points at, which is what makes it score well. The clue

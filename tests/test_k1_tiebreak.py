@@ -95,6 +95,16 @@ class TestTheTieSetIsTheSafeguard:
         new_scores, _ = run_swap(sims, board, 2.0, scores)
         assert CLUES[int(np.argmax(new_scores))] == "owl"
 
+    def test_the_default_tolerance_is_a_small_fraction_of_a_turn(self):
+        """The unit is own-words and a k=1 turn is worth about one, so the
+        default has to be read as a share of the turn it is spent on. 0.5 was
+        the first default and allowed giving up 38% of a turn, which is not a
+        tie between clues but a decision to play a worse one."""
+        import inspect
+        default = inspect.signature(
+            LearnedListenerSpymaster.__init__).parameters["k1_tie_tolerance"].default
+        assert default <= 0.15, "a tiebreak must not be able to spend a sixth of the turn"
+
     def test_an_illegal_clue_never_wins_however_similar(self, sims, board):
         """`eagles` shares a stem with Eagle, which is exactly why it scores
         best. The clue actually played is the best LEGAL one."""

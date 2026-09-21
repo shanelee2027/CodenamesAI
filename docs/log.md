@@ -5644,7 +5644,7 @@ by exactly that much and leaves the tie set before similarity is consulted.
 The tolerance is therefore not a tuning knob so much as a statement of how
 much expected reward we will spend to be more obvious.
 
-**Tolerance 0.5, measured.** Over 18 forced-k=1 positions:
+**Tolerance 0.1, after getting it wrong at 0.5.** Over 18 forced-k=1 positions:
 
     tol    changed   mean spend   max spend
     0.1      9/18       0.0302      0.0934
@@ -5653,12 +5653,27 @@ much expected reward we will spend to be more obvious.
     1.0     11/18       0.1146      0.3782
     2.0     11/18       0.1146      0.3782
 
-It saturates at 0.5 -- 1.0 and 2.0 change not one clue more, the shortlist
-having run out of near-optimal alternatives -- and spends far less than the
-cap, 0.115 own words on average. Larger tolerances buy nothing on real boards
-and only widen the door to the failure above: on a contrived board with EAGLE
-against CHICK/HAWK/DUCK, off gives BALD, 0.5 gives PATRIOT, and 2.0 reaches
-OWL. The regression test asserts exactly that progression.
+0.5 was the first default and it was wrong. The unit is own-words and the
+best k=1 clue scores 0.96 on average (0.845-0.997), so a k=1 turn is worth
+about one own word and the tolerance has to be read as a share of that:
+
+    tol    fires    worst spend    as % of the turn
+    0.1     9/18       0.093             9.5%
+    0.25   10/18       0.219            23.2%
+    0.5    11/18       0.378            37.9%
+
+Clues 38% apart in expected reward are not tied, and swapping between them is
+not a tiebreak -- it is choosing a materially worse clue because it reads
+better. The argument originally given for 0.5 was that the effect saturates
+there, 1.0 and 2.0 changing nothing more; that is an argument against going
+higher and says nothing about 0.5 against 0.1. 0.1 still fires on half the
+positions, so the rule does what it exists for, and caps the damage at a tenth
+of a turn. A test now asserts the default stays at or under 0.15.
+
+Larger tolerances also widen the door to the failure the rule was written to
+avoid: on a contrived board with EAGLE against CHICK/HAWK/DUCK, off gives
+BALD, 0.5 gives PATRIOT, and 2.0 reaches OWL. The regression test asserts that
+progression.
 
 A first attempt to measure the spend read the score off the swapped array,
 where `_swap_k1` has inflated it by +1 to outrank the incumbent, so the
