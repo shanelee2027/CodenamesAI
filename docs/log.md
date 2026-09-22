@@ -6149,3 +6149,64 @@ measured above, its decoy-vs-board hazard is at chance from the second pick
 onward. The outside option exists to model exactly the behaviour gpt-oss does
 not exhibit. So a flat or slightly negative head-to-head against gpt-oss is
 not a verdict on the idea, and should not be treated as one.
+
+## The outside option loses to gpt-oss, monotonically -- and the mechanism works
+
+`outside_n` swept against the incumbent (`outside_n=0`), both arms on the
+decoy-trained booster, 300 boards each played both ways, gpt-oss guesser,
+paired sign test on decisive boards (2,820 games, 84 min):
+
+    setting   win vs base    95% CI      swept    sign p   assassin   own/clue  mean k
+    out=1        48.1%    [0.44,0.52]   20-31     0.161    38 v 37     1.60     2.00
+    out=5        47.9%    [0.44,0.52]   40-52     0.251    34 v 38     1.58     1.93
+    out=10       44.7%    [0.41,0.49]   28-58     0.002    30 v 37     1.52     1.84
+    out=25       36.0%    [0.32,0.40]   19-96    <0.001    22 v 23     1.45     1.68
+    out=50       31.3%    [0.28,0.35]   20-123   <0.001    15 v 28     1.35     1.54
+
+(assassin = challenger's assassin losses v the base's.)
+
+**The control behaved.** `out=1` takes under 1% of the softmax rate and lands
+at 48.1%, p = 0.16 -- indistinguishable from the null.
+
+**The mechanism does what it was built to do.** Announced k falls
+monotonically, 2.00 -> 1.54, and at `out=50` the challenger loses to the
+assassin 15 times against the base's 28. Pricing "the guesser has stopped
+knowing" makes the spymaster claim fewer words and walk into the assassin
+less. The pl_reward test that pinned the "dangerous clue becomes MORE
+attractive" flank describes a real property of the reward, but in play the
+drop in k dominates it.
+
+**And against this guesser it costs more than it saves.** Own words per clue
+fall 1.60 -> 1.35, and the win rate falls with them, monotonically, reaching
+significance at 10 (p = 0.002, inside a Bonferroni threshold of 0.01 for five
+comparisons) and collapsing to 31% at 50. The swept-board margins at 25 and
+50 (19-96, 20-123) are far too large for the unbalanced discards (3 boards at
+out=1, 18-25 elsewhere -- arm-specific censoring, since refusals depend on the
+clue) to explain.
+
+**This is the same shape as the role-cost sweep.** There, every price that
+made the spymaster more cautious lost to gpt-oss -- opponent cost monotone
+worse from 0.5 to 3.0, assassin 20 and 40 the two worst results. Two
+independent levers now say the same thing: gpt-oss rewards tempo over caution.
+It ranks every word whether or not it knows anything (its decoy-vs-board hazard
+is at chance from the second pick on), so a clue that promises three words
+gets three guesses, and conservatism simply leaves words on the table.
+
+**What this does not settle** (raised by Shane before the run): whether a
+human guesser rewards the caution. A human stops when they stop recognising a
+connection; gpt-oss does not. The outside option models exactly the behaviour
+this guesser lacks, so a monotone loss here is evidence about gpt-oss, not a
+verdict on the idea. Its case now rests entirely on human play, which the
+arena cannot provide.
+
+`outside_n` stays at 0. The decoy-trained booster itself is not tested by this
+sweep -- both arms used it -- and is not deployed.
+
+**Infrastructure, found on the way:** the run used 6 processes x 16 threads
+pulling from a shared queue (codenames/two_team_arena.py), after three wrong
+diagnoses of why it was slow. Fixed chunks left five of six workers idle on
+one worker's stragglers; an unguarded first stage peaked at 13 GB for two
+processes; and the evidence first cited against threads compared new
+llm_store rows during a cache replay, which counts nothing. Measured CPU-bound
+at ~15.6 of 16 cores, versus an estimated 12 hours on the old 14-process
+setup.

@@ -1,0 +1,132 @@
+[
+ {
+  "setting": "out=1",
+  "overrides": {
+   "neutral_cost": 0.2,
+   "opponent_cost": 1.0,
+   "assassin_cost": 10.0,
+   "outside_n": 1
+  },
+  "games": 594,
+  "win_rate": 0.48148148148148145,
+  "assassin_base": 37,
+  "assassin_challenger": 38,
+  "own_per_clue": 1.5990396158463385,
+  "mean_k": 1.9959983993597439,
+  "seconds": 688.5258543491364,
+  "discarded": 3,
+  "swept_base": 31,
+  "swept_challenger": 20,
+  "split": 246,
+  "decisive": 51,
+  "p_sign": 0.16077960181198847,
+  "ci": [
+   0.44154731131008446,
+   0.5216536435916821
+  ]
+ },
+ {
+  "setting": "out=5",
+  "overrides": {
+   "neutral_cost": 0.2,
+   "opponent_cost": 1.0,
+   "assassin_cost": 10.0,
+   "outside_n": 5
+  },
+  "games": 562,
+  "win_rate": 0.4786476868327402,
+  "assassin_base": 38,
+  "assassin_challenger": 34,
+  "own_per_clue": 1.583050847457627,
+  "mean_k": 1.9275423728813559,
+  "seconds": 850.9010694026947,
+  "discarded": 19,
+  "swept_base": 52,
+  "swept_challenger": 40,
+  "split": 189,
+  "decisive": 92,
+  "p_sign": 0.25132210347485445,
+  "ci": [
+   0.43763174197251714,
+   0.5199535610522164
+  ]
+ },
+ {
+  "setting": "out=10",
+  "overrides": {
+   "neutral_cost": 0.2,
+   "opponent_cost": 1.0,
+   "assassin_cost": 10.0,
+   "outside_n": 10
+  },
+  "games": 564,
+  "win_rate": 0.44680851063829785,
+  "assassin_base": 37,
+  "assassin_challenger": 30,
+  "own_per_clue": 1.524024640657084,
+  "mean_k": 1.841889117043121,
+  "seconds": 946.9501631259918,
+  "discarded": 18,
+  "swept_base": 58,
+  "swept_challenger": 28,
+  "split": 196,
+  "decisive": 86,
+  "p_sign": 0.001605564929564241,
+  "ci": [
+   0.40627453901275323,
+   0.4880621915120973
+  ]
+ },
+ {
+  "setting": "out=25",
+  "overrides": {
+   "neutral_cost": 0.2,
+   "opponent_cost": 1.0,
+   "assassin_cost": 10.0,
+   "outside_n": 25
+  },
+  "games": 550,
+  "win_rate": 0.36,
+  "assassin_base": 23,
+  "assassin_challenger": 22,
+  "own_per_clue": 1.4496969696969697,
+  "mean_k": 1.6804040404040403,
+  "seconds": 1119.986997127533,
+  "discarded": 25,
+  "swept_base": 96,
+  "swept_challenger": 19,
+  "split": 160,
+  "decisive": 115,
+  "p_sign": 7.050723457788825e-13,
+  "ci": [
+   0.3209828091317459,
+   0.4009593490593325
+  ]
+ },
+ {
+  "setting": "out=50",
+  "overrides": {
+   "neutral_cost": 0.2,
+   "opponent_cost": 1.0,
+   "assassin_cost": 10.0,
+   "outside_n": 50
+  },
+  "games": 550,
+  "win_rate": 0.31272727272727274,
+  "assassin_base": 28,
+  "assassin_challenger": 15,
+  "own_per_clue": 1.3459416863672182,
+  "mean_k": 1.5397951142631994,
+  "seconds": 1406.6547615528107,
+  "discarded": 25,
+  "swept_base": 123,
+  "swept_challenger": 20,
+  "split": 132,
+  "decisive": 143,
+  "p_sign": 1.5773024918785614e-12,
+  "ci": [
+   0.27539343377053893,
+   0.35265906354999466
+  ]
+ }
+]
