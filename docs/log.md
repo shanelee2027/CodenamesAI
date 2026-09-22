@@ -5755,3 +5755,41 @@ Not yet decided, and the reason nothing has been collected: how many decoys to
 use at training versus inference time, and whether a decoy win should be
 modelled as the turn ending at cost 0 or as the guesser picking on regardless
 -- a human does not pass, they guess wrong, so cost 0 may understate it.
+
+## 2026-09-22 — role costs, measured cleanly: the incumbent stands
+
+The sweep re-run on the acronym-free model, with the guesser's retry fixed and
+the arm-specific censoring gone -- discards fell from 6-32 boards per setting
+to a mean of 2.6. 15 settings, 100 boards each both ways.
+
+    ass=2    54.5%  p=0.188      opp=1.5  46.4%  p=0.248
+    ass=5    54.0%  p=0.185      opp=2    45.5%  p=0.188
+    opp=0.5  52.2%  p=0.608      neu=1    44.8%  p=0.099
+    ass=7    50.5%  p=1.000      opp=2.5  44.4%  p=0.071
+    neu=0.1  50.0%  p=1.000      neu=0.7  44.3%  p=0.061
+    opp=0.75 49.0%  p=0.832      opp=3    43.4%  p=0.029
+    neu=0.4  48.0%  p=0.503      ass=20   37.1%  p=0.000
+                                 ass=40   36.6%  p=0.000
+
+**Nothing beats the incumbent.** The best challenger is p=0.188 and is the
+best of 15 comparisons, where ~0.8 false positives are expected.
+
+The opponent axis now has both sides and is monotone across all six values:
+52.2 / 49.0 / [50 by definition] / 46.4 / 45.5 / 44.4 / 43.4 as the cost goes
+0.5 -> 3.0. The prior that an opponent card is underpriced at 1.0 is not just
+unsupported, it is backwards -- and the other direction, which the first sweep
+never tested, buys 2.2 points at p=0.61. There is nothing here.
+
+Fixing the censoring shrank the effects, as the +0.82 discard/effect-size
+correlation warned it would: ass=5 read 56.9% at p=0.052 under the biased run
+and 54.0% at p=0.185 clean. Acting on the first run would have been acting on
+the bias.
+
+One result worth keeping for later. `ass=2` walks into the assassin **32 times
+against the incumbent's 6** -- more than five times as often -- and still
+finishes ahead on win rate. Cheap assassin insurance buys tempo that mostly
+pays for the losses. It is a genuinely higher-variance strategy rather than a
+straightforwardly better one, and win rate alone hides that.
+
+The mechanism check holds throughout: mean k runs 2.50 at ass=2 down to 1.72
+at ass=40, own/clue with it.
