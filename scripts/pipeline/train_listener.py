@@ -115,7 +115,7 @@ def resolve_seed(candidates: list[str], boards: list[tuple[int, frozenset[str]]]
 
 
 def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
-                   refresh_features: bool = False):
+                   refresh_features: bool = False, decoys: Path | None = None):
     """Positions for training.
 
     `refresh_features` decides what a step-2+ row means. Off (the default and
@@ -211,7 +211,76 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                 continue
             rec["steps"] = steps
         out.append(rec)
+    if decoys is not None:
+        got = decoy_positions(decoys, sims, stats, clue_index, wstats, swow, entity, pmi,
+                              extra, norms, wordnet, lexical, dropped)
+        print(f"decoy positions: {len(got)} from {decoys}")
+        out.extend(got)
     return out, dropped
+
+
+def decoy_positions(path: Path, sims, stats, clue_index, wstats, swow, entity, pmi,
+                    extra, norms, wordnet, lexical, dropped: dict) -> list[dict]:
+    """Positions from scripts/data/collect_decoy_data.py, in the same shape.
+
+    Words drawn uniformly from the vocabulary are mixed into the candidate
+    list. They fix the composition of the comparison set, which is what makes
+    the absolute level identifiable: the board-normalised softmax is
+    shift-invariant, so training on boards alone says which word is best and
+    never whether any of them is good.
+
+    Two differences from a DB position, both load-bearing:
+
+    `k` is the TRUNCATION point, not the announced clue number -- rankings are
+    cut at and including the first decoy, because below that line own-rate is
+    33.2% against a 36% base rate, i.e. zero information. Setting k this way
+    makes build_groups emit exactly the kept steps with no special case.
+
+    `n_candidates` is overwritten with the board count. extract() computes it
+    over whatever list it is given, so leaving it alone lets the decoy count
+    enter as a feature -- the model could then read D directly, which both
+    defeats the point and makes the invariance check vacuous.
+    """
+    ncand = FEATURE_NAMES.index("n_candidates")
+    out = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        if not r.get("ranking"):
+            dropped["decoy_short"] = dropped.get("decoy_short", 0) + 1
+            continue
+        cand = r["candidates"]
+        perm = random.Random(f"{r['seed']}|{r['clue']}").sample(range(len(cand)), len(cand))
+        shuffled = [cand[i] for i in perm]
+        where = {w: i for i, w in enumerate(shuffled)}
+        n_steps = min(r["cut"] + 1, len(shuffled) - 1)
+        picks = [w for w in r["ranking"][:n_steps] if w in where]
+        if n_steps < 1 or len(picks) < n_steps:
+            dropped["decoy_short"] = dropped.get("decoy_short", 0) + 1
+            continue
+        feats = extract(r["clue"], shuffled, r["number"], sims, stats, wstats, clue_index,
+                        swow, entity, pmi, extra, norms, wordnet, lexical)
+        if feats is None:
+            dropped["decoy_features"] = dropped.get("decoy_features", 0) + 1
+            continue
+        feats = np.array(feats, dtype=np.float64)
+        feats[:, ncand] = r["n_board"]
+        out.append({"seed": r["seed"], "clue": r["clue"], "k": n_steps, "x": feats,
+                    "n": len(shuffled), "targets": [where[w] for w in picks],
+                    "decoy": True, "n_decoys": r["n_decoys"],
+                    "decoy_rows": [where[w] for w in r["decoys"] if w in where]})
+    return out
+
+
+def decoy_group_mask(positions: list[dict]) -> np.ndarray:
+    """One flag per choice event, in build_groups order: is it a decoy group?
+
+    Lets the two tasks be scored apart, so the headline R2 stays comparable
+    with every run before decoys existed.
+    """
+    return np.array([bool(p.get("decoy")) for p in positions
+                     for _ in range(min(p["k"], p["n"] - 1))], dtype=bool)
 
 
 def build_groups(positions: list[dict]) -> tuple[np.ndarray, np.ndarray, list[int], np.ndarray]:
@@ -261,8 +330,16 @@ STEP_DECAY = 0.75
 
 
 def step_weights(positions: list[dict], decay: float = STEP_DECAY) -> np.ndarray:
-    """One weight per choice event, decaying with depth into the turn."""
-    return np.array([decay ** j for p in positions
+    """One weight per choice event, decaying with depth into the turn.
+
+    Decoy positions are exempt. The decay exists because the teacher's ranking
+    tail is arbitrary once it has taken the words it wants; truncation at the
+    first decoy already removes that tail, and the decoy term sits at the
+    DEEPEST kept step -- so the decay would fall hardest on the one observation
+    the position was collected for (mean cut 3.5 would weight it 0.75**3.5).
+    """
+    return np.array([1.0 if p.get("decoy") else decay ** j
+                     for p in positions
                      for j in range(min(p["k"], p["n"] - 1))], dtype=np.float64)
 
 
@@ -444,20 +521,36 @@ def main() -> None:
     ap.add_argument("--blocks", default="all",
                     help="comma-separated feature blocks to keep: "
                          + ",".join(FEATURE_BLOCKS) + " (default: all)")
+    ap.add_argument("--decoys", type=Path, default=None,
+                    help="jsonl from scripts/data/collect_decoy_data.py. Mixes "
+                         "vocabulary words into the candidate list, which is what "
+                         "makes the absolute level identifiable -- see decoy_positions")
     ap.add_argument("--out", type=Path, default=CACHE / "listener_gbt.txt")
     args = ap.parse_args()
 
     t0 = time.time()
     positions, dropped = load_positions(args.db, args.model, args.max_seed, args.collected,
-                                        refresh_features=args.refresh_features)
+                                        refresh_features=args.refresh_features,
+                                        decoys=args.decoys)
     print(f"teacher: {args.model}")
     print(f"usable positions: {len(positions)}   dropped: {dropped}")
     if not positions:
         raise SystemExit("no usable positions")
 
-    seeds = sorted({p["seed"] for p in positions})
+    # Board and decoy seeds are drawn SEPARATELY, so the board split is
+    # byte-identical whether or not --decoys is passed. Pooling them would make
+    # every board accuracy incomparable with the run it is supposed to be
+    # measured against: adding seeds changes the draw for all of them, and a
+    # -0.005 difference is then partly a different validation set.
+    seeds = sorted({p["seed"] for p in positions if not p.get("decoy")})
     rng = np.random.default_rng(args.seed)
     val_seeds = set(rng.choice(seeds, size=max(1, int(len(seeds) * args.val_frac)), replace=False).tolist())
+    dec_seeds = sorted({p["seed"] for p in positions if p.get("decoy")})
+    if dec_seeds:
+        rng_d = np.random.default_rng(args.seed + 1)
+        val_seeds |= set(rng_d.choice(dec_seeds, size=max(1, int(len(dec_seeds) * args.val_frac)),
+                                      replace=False).tolist())
+        seeds = seeds + dec_seeds
     tr_pos = [p for p in positions if p["seed"] not in val_seeds]
     va_pos = [p for p in positions if p["seed"] in val_seeds]
     print(f"boards: {len(seeds)} total -> {len(seeds)-len(val_seeds)} train / {len(val_seeds)} val")
@@ -489,6 +582,7 @@ def main() -> None:
     nb = (Xva[:, names.index("z_numberbatch")] if "z_numberbatch" in names
           else Xva_full[:, FEATURE_NAMES.index("z_numberbatch")])
     step1 = first_step_mask(va_pos)
+    is_decoy = decoy_group_mask(va_pos)
     base_all = accuracy_on(nb, gva, yva)
     base_s1 = accuracy_on(nb, gva, yva, step1)
     print(f"\nbaseline (numberbatch z alone): all steps {base_all:.4f}   step-1 only {base_s1:.4f}")
@@ -515,6 +609,39 @@ def main() -> None:
     m_all, m_s1 = accuracy_on(preds, gva, yva), accuracy_on(preds, gva, yva, step1)
     print(f"model    : all steps {m_all:.4f} ({m_all-base_all:+.4f})   "
           f"step-1 only {m_s1:.4f} ({m_s1-base_s1:+.4f})")
+
+    # Scored apart so the board number stays comparable with every run before
+    # decoys existed -- pooling them would silently redefine the headline.
+    if is_decoy.any():
+        print(f"\nR2  boards {mcfadden_on(preds, gva, yva, ~is_decoy):.4f}"
+              f"   decoys {mcfadden_on(preds, gva, yva, is_decoy):.4f}"
+              f"   pooled {mcfadden_on(preds, gva, yva):.4f}")
+        print(f"    board accuracy {accuracy_on(preds, gva, yva, ~is_decoy):.4f}"
+              f"   ({int((~is_decoy).sum())} board events, {int(is_decoy.sum())} decoy)")
+
+        # Is the fitted scale a property of the clue, or of how many decoys were
+        # mixed in? `level` is the mean decoy score minus the best board score:
+        # deliberately a mean, since the softmax denominator's total decoy mass
+        # grows like log(D) whatever the model does, and a logsumexp is further
+        # dominated by the largest of D draws. Neither is a defect in the fit,
+        # and a statistic carrying either cannot test invariance. `n_decoys` is
+        # not a feature, so nothing here forces the columns to agree.
+        va_dec = [q for q in va_pos if q.get("decoy") and q["decoy_rows"]]
+        if va_dec:
+            print("\n  D     n   level (nats)    predicted   observed")
+            for d in sorted({q["n_decoys"] for q in va_dec}):
+                lv, pr, ob = [], [], []
+                for q in (x for x in va_dec if x["n_decoys"] == d):
+                    rows = q["x"] if args.blocks == "all" else q["x"][:, cols]
+                    sc = booster.predict(rows, raw_score=True)
+                    dr = np.asarray(q["decoy_rows"], dtype=int)
+                    board = np.setdiff1d(np.arange(q["n"]), dr)
+                    lv.append(sc[dr].mean() - sc[board].max())
+                    e = np.exp(sc - sc.max())
+                    pr.append(e[dr].sum() / e.sum())
+                    ob.append(float(q["targets"][0] in set(dr.tolist())))
+                print(f" {d:2d} {len(lv):5d} {np.mean(lv):9.2f} +-{np.std(lv)/np.sqrt(len(lv)):.2f}"
+                      f" {np.mean(pr):11.3f} {np.mean(ob):10.3f}")
 
     imp = sorted(zip(names, booster.feature_importance("gain")), key=lambda t: -t[1])
     print("\nfeature importance (gain):")

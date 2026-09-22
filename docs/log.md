@@ -6027,3 +6027,67 @@ Next: retrain the deployed listener with these rows added to the existing
 positions and check the level survives at full data, then decide how
 `pl_reward` consumes it -- scale reference or lostness weight (previous
 entry).
+
+## Decoys at full data: the level holds at ~4.1 nats and boards do not suffer
+
+`train_listener.py --decoys` now mixes the collected positions into the
+distillation. Both runs below use the gpt-oss teacher and an IDENTICAL board
+validation split (see the split note further down).
+
+    run                     board acc (all steps)   step-1
+    baseline, no decoys                    0.4766   0.6755
+    + 1,679 decoy positions                0.4781   0.6713
+    numberbatch z alone                    0.4340   0.6521
+
+    R2 (decoy run)   boards 0.3559   decoys 0.2046   pooled 0.3147
+
+Board accuracy is unchanged -- +0.0015, noise. That is the safety check the
+whole integration needed: decoys buy a quantity the model could not previously
+represent without costing anything on the task it already did.
+
+Level invariance on the deployed-size model, validation only:
+
+      D     n   level (nats)    predicted   observed
+      2   142     -4.09 +-0.15       0.055      0.035
+      5   118     -4.14 +-0.16       0.123      0.127
+     10   159     -4.09 +-0.15       0.223      0.226
+
+Flat to 0.05 nats against standard errors of 0.15. Calibration is near-exact
+at D=5 and D=10; the D=2 arm over-predicts by 0.020, which is ~1.3 SE on about
+5 events and is the low-D arm being noisy exactly as the CI widths predicted.
+
+**The level is ~4.1 nats, not the 3.4 from the decoy-only fit.** A model that
+also sees 8,869 board positions scores board words higher relative to a random
+word, so the gap widens. 4.1 nats is about 1.7% of the best board word's rate.
+The decoy-only figure was a measurement instrument on 1,176 positions; this is
+the number that should be quoted.
+
+**Three pipeline decisions worth naming**, all of which would have quietly
+produced a wrong answer:
+
+1. *The board and decoy splits are drawn separately*, so the board half is
+   byte-identical whether or not `--decoys` is passed. Pooled, adding 1,679
+   seeds changes the draw for all of them -- the first attempt at this
+   comparison reported 0.4766 -> 0.4716 and that -0.005 was partly a different
+   validation set. Drawn apart it is +0.0015.
+2. *Decoy positions are exempt from the 0.75**j step decay.* The decay exists
+   because the teacher's ranking tail is arbitrary; truncation already removes
+   that tail, and the decoy term sits at the deepest kept step, so the decay
+   would fall hardest on the one observation each position was collected for
+   (mean cut 3.5 weights it 0.75**3.5 = 0.37).
+3. *`n_candidates` is overwritten with the board count.* extract() computes it
+   over whatever list it is given, so otherwise the model reads D straight off
+   a feature and the invariance check above is vacuous.
+
+Also noted: `DEFAULT_MODEL` in train_listener.py is `claude-sonnet-5`, but the
+store holds 62k gpt-oss responses against 10k sonnet, and the arena guesser is
+gpt-oss. Both runs here passed `--model deepinfra/openai/gpt-oss-120b+effort=low`
+explicitly. Distilling sonnet while playing against gpt-oss would be modelling
+the wrong guesser; the default looks stale and should be settled.
+
+**Not deployed.** `cache/listener_gbt.txt` is untouched; both models are in the
+scratchpad. Shipping this is a new model under the naming convention -- a
+`docs/versions/` entry and a `configs/spymasters.json` entry -- and it has not
+been played in the arena yet, which is the only test that matters. The open
+question from the previous entry still decides the reward: scale reference or
+lostness weight.
