@@ -167,3 +167,114 @@ class TestExpectedReward:
     def test_rejects_mismatched_costs(self):
         with pytest.raises(ValueError, match="costs"):
             gain_and_penalty(np.zeros((1, 2)), np.zeros((1, 3)), np.ones(2), 2)
+
+
+class TestTheOutsideOption:
+    """`s_out` prices "the guesser picks something the clue never meant".
+
+    Its whole purpose is to break the shift-invariance the rest of the module
+    relies on. Without an anchor the softmax scores a clue on the ordering it
+    induces and never on how confidently it induces it, so a clue that barely
+    points at its own words and one that points hard at them are worth the same.
+    """
+
+    @staticmethod
+    def _board(n_own=3, n_bad=4, seed=0):
+        rng = np.random.default_rng(seed)
+        return (rng.normal(size=(1, n_own)), rng.normal(size=(1, n_bad)),
+                rng.uniform(0.2, 2.0, size=n_bad))
+
+    def test_omitting_it_reproduces_the_old_result_exactly(self):
+        """Every recorded result predates the outside option, so the default
+        path must be bit-identical, not merely close."""
+        s_own, s_bad, costs = self._board()
+        a = gain_and_penalty(s_own, s_bad, costs, 3)
+        b = gain_and_penalty(s_own, s_bad, costs, 3, s_out=None)
+        assert np.array_equal(a[0], b[0]) and np.array_equal(a[1], b[1])
+
+    def test_it_is_exactly_a_free_non_team_word(self, ):
+        """The semantics are "hitting it ends the turn and scores nothing", so
+        passing it via s_out must equal listing it as a bad word costing 0.
+        Checked against the brute-force tree, not against the fast path."""
+        s_own, s_bad, costs = self._board()
+        out = np.array([[0.3]])
+        for k in (1, 2, 3):
+            g, p = gain_and_penalty(s_own, s_bad, costs, k, s_out=out[:, 0])
+            bg, bp = brute_force(s_own[0], np.concatenate([s_bad[0], out[0]]),
+                                 np.concatenate([costs, [0.0]]), k)
+            assert g[0, k - 1] == pytest.approx(bg, abs=2e-3)
+            assert p[0, k - 1] == pytest.approx(bp, abs=2e-3)
+
+    def test_a_negligible_outside_option_changes_nothing(self):
+        s_own, s_bad, costs = self._board()
+        base = gain_and_penalty(s_own, s_bad, costs, 3)
+        tiny = gain_and_penalty(s_own, s_bad, costs, 3, s_out=np.array([-50.0]))
+        assert np.allclose(base[0], tiny[0], atol=1e-6)
+        assert np.allclose(base[1], tiny[1], atol=1e-6)
+
+    def test_raising_it_monotonically_lowers_the_gain(self):
+        """A clue the guesser is more likely to wander off ends its turn
+        sooner, so fewer of our words get claimed."""
+        s_own, s_bad, costs = self._board()
+        gains = [gain_and_penalty(s_own, s_bad, costs, 3,
+                                  s_out=np.array([v]))[0][0, 2]
+                 for v in (-6.0, -3.0, -1.0, 0.0, 2.0)]
+        assert all(a > b for a, b in zip(gains, gains[1:])), gains
+
+    def test_it_drives_a_vague_clue_toward_zero_not_toward_a_penalty(self):
+        """The reason cost is 0 rather than a neutral's cost: a clue pointing
+        at nothing should be worthless, not catastrophic. Both halves must
+        fall, or the model would simply avoid vagueness by fearing it."""
+        s_own, s_bad, costs = self._board()
+        g0, p0 = gain_and_penalty(s_own, s_bad, costs, 3)
+        g1, p1 = gain_and_penalty(s_own, s_bad, costs, 3, s_out=np.array([4.0]))
+        assert g1[0, 2] < g0[0, 2]
+        assert p1[0, 2] < p0[0, 2], "free endings must lower the expected miss cost"
+        assert abs(g1[0, 2] - p1[0, 2]) < abs(g0[0, 2] - p0[0, 2])
+
+    def test_it_breaks_shift_invariance_which_is_the_entire_point(self):
+        """Adding a constant to every board score is invisible to the softmax.
+        With a fixed anchor it must not be -- that is what makes "how good is
+        this clue" answerable at all."""
+        s_own, s_bad, costs = self._board()
+        out = np.array([0.0])
+        a = gain_and_penalty(s_own, s_bad, costs, 3, s_out=out)[0]
+        b = gain_and_penalty(s_own + 2.0, s_bad + 2.0, costs, 3, s_out=out)[0]
+        assert not np.allclose(a, b, atol=1e-3)
+        assert b[0, 2] > a[0, 2], "a clue that points harder should claim more"
+
+    def test_expected_reward_threads_it_through(self):
+        """The contract is just that the argument reaches gain_and_penalty."""
+        s_own, s_bad, costs = self._board()
+        out = np.array([1.0])
+        g, p = gain_and_penalty(s_own, s_bad, costs, 3, s_out=out)
+        k, v = expected_reward(s_own, s_bad, costs, 3, s_out=out)
+        best = np.argmax(g - p, axis=1)
+        assert k[0] == best[0] + 1
+        assert v[0] == pytest.approx((g - p)[0, best[0]])
+
+    def test_a_good_clue_is_worth_less_once_wandering_is_priced(self):
+        s_own = np.array([[3.0, 2.5, 2.0]])          # clue points hard at ours
+        s_bad, costs = np.array([[-1.0, -1.5]]), np.array([1.0, 1.0])
+        _, v0 = expected_reward(s_own, s_bad, costs, 3)
+        _, v1 = expected_reward(s_own, s_bad, costs, 3, s_out=np.array([1.0]))
+        assert v1[0] < v0[0]
+
+    def test_a_DANGEROUS_clue_is_worth_MORE_once_wandering_is_priced(self):
+        """Counterintuitive, and a direct consequence of costing the outside
+        option at zero: it competes with the assassin for the same probability
+        mass, so a clue that mostly pointed at danger now mostly points at a
+        harmless nothing instead.
+
+        This is the modelling choice's weak flank, and it runs against the
+        measurement -- in the probe, turns where a decoy won had 7.6x the base
+        assassin rate, so a real guesser wandering off is MORE dangerous, not
+        less. The reward is therefore optimistic for exactly the clues it
+        should fear most. Recorded here rather than hidden because it is the
+        argument for eventually pricing the outside option above zero.
+        """
+        s_own = np.array([[-1.0]])                   # clue barely points at ours
+        s_bad, costs = np.array([[2.0, 1.5]]), np.array([10.0, 10.0])   # assassin-ish
+        _, v0 = expected_reward(s_own, s_bad, costs, 3)
+        _, v1 = expected_reward(s_own, s_bad, costs, 3, s_out=np.array([3.0]))
+        assert v0[0] < 0 and v1[0] > v0[0]

@@ -24,6 +24,29 @@ softmax again -- which turns the tree into minima of independent exponentials.
 `tests/test_pl_reward.py` brute-forces the tree on small boards and checks the
 two agree to floating-point, because the whole approach rests on that identity.
 
+**The outside option.** `s_out` is the score of "the guesser picks something
+the clue never meant". It is identified by training the listener against words
+drawn uniformly from the vocabulary (scripts/data/collect_decoy_data.py): the
+board-normalised softmax is shift-invariant, so without such an anchor nothing
+pins how good a clue is in absolute terms, only which word it favours -- a
+clue at z=1 over four own words and one at z=3 over the same four are
+indistinguishable. Measured, a random word sits about 4.1 nats below the best
+board word.
+
+It enters as a non-team word with cost ZERO: hitting it ends the turn and
+scores nothing, which is the modelling choice that its expected value is that
+of passing. Two things follow, and both are the point. A vague clue has a
+large `s_out` relative to its board words, so the turn ends sooner and `gain`
+falls. And because some endings are now free, `cbar` falls too -- so a vague
+clue is driven toward zero reward rather than toward a large penalty. A sharp
+clue has `s_out` far below its best word and is barely touched.
+
+Worth naming: cost zero is more optimistic than the measured behaviour. When a
+decoy won in the probe, 36.5% of turns ended and the assassin rate was 7.6x
+the base -- a real guesser does not pass, it guesses wrong. Zero is therefore
+a floor on the harm, and the direction is still correct relative to the status
+quo, where the outside option is not priced at all.
+
 **Where this is cheaper than the Gaussian model.** For independent exponentials
 the minimum and its argument are independent, so which non-team word ends the
 turn does not depend on when. The expected miss cost is therefore one constant
@@ -64,6 +87,7 @@ def gain_and_penalty(
     costs: np.ndarray,
     max_k: int,
     cells: int = GRID_CELLS,
+    s_out: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(gain, penalty)`, each `(n_cand, max_k)`, column `m` being `k = m + 1`.
 
@@ -74,16 +98,28 @@ def gain_and_penalty(
 
     Expected reward for a clue at `k` is `gain[:, k-1] - penalty[:, k-1]`.
 
+    `s_out` is `(n_cand,)` or `(n_cand, 1)`, the outside option's score -- see
+    the module docstring. It is appended to `s_bad` with cost 0, so it is
+    exactly a non-team word that ends the turn for free. Omitted, the result is
+    identical to every run made before the outside option existed.
+
     Scores are shifted by their per-row maximum before exponentiating. The
     shift cancels in every ratio the derivation uses -- `lambda_i / Lambda` and
     `lambda_w / Lambda` are both scale-invariant -- so it changes nothing but
-    keeps `exp` away from overflow on confident rows.
+    keeps `exp` away from overflow on confident rows. NOTE that this is why
+    `s_out` must be on the same scale as `s_own`/`s_bad`: the shift-invariance
+    the derivation enjoys is exactly what the anchor gives up, deliberately.
     """
     if s_own.ndim != 2 or s_bad.ndim != 2:
         raise ValueError("s_own and s_bad must be (n_cand, n_words)")
     if s_bad.shape[1] != len(costs):
         raise ValueError(f"costs has {len(costs)} entries for {s_bad.shape[1]} non-team words")
     n_cand, n_own = s_own.shape
+
+    if s_out is not None:
+        extra = np.asarray(s_out, dtype=np.float64).reshape(n_cand, 1)
+        s_bad = np.concatenate([np.asarray(s_bad, dtype=np.float64), extra], axis=1)
+        costs = np.concatenate([np.asarray(costs, dtype=np.float64), [0.0]])
 
     shift = np.maximum(s_own.max(axis=1, keepdims=True), s_bad.max(axis=1, keepdims=True))
     lam_own = np.exp(s_own - shift)                       # (n_cand, n_own)
@@ -137,12 +173,13 @@ def expected_reward(
     costs: np.ndarray,
     max_k: int,
     cells: int = GRID_CELLS,
+    s_out: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(best_k, value)` per candidate clue, each `(n_cand,)`.
 
     `best_k` is 1-based, so it is the number to announce.
     """
-    gain, penalty = gain_and_penalty(s_own, s_bad, costs, max_k, cells)
+    gain, penalty = gain_and_penalty(s_own, s_bad, costs, max_k, cells, s_out)
     net = gain - penalty
     best = net.argmax(axis=1)
     return best + 1, net[np.arange(len(best)), best]

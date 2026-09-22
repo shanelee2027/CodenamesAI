@@ -28,6 +28,8 @@ would look excellent in the arena and be worthless as a model of a guesser.
 
 from __future__ import annotations
 
+import hashlib
+import random
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +41,7 @@ from codenames.clue_stats import ClueStats
 from codenames.acronyms import load_acronym_mask
 from codenames.game import role_costs
 from codenames.listener_features import (
+    FEATURE_NAMES,
     EntitySims,
     ExtraSims,
     SwowTables,
@@ -53,9 +56,23 @@ from codenames.spymasters.expected_words import ExpectedWordsSpymaster
 
 SHORTLIST = 200
 
+# How many "the guesser picks something the clue never meant" alternatives the
+# reward prices. 0 reproduces every result recorded before the outside option
+# existed, byte for byte, which is why it is the default.
+#
+# The listener's decoy training (scripts/data/collect_decoy_data.py) identifies
+# the LEVEL of such a word -- about 4.1 nats below the best board word -- but
+# not how many of them a real game contains, because a real game contains none:
+# the guesser must pick from the board. So this is a free parameter of the same
+# kind as `sigma` and the role costs, to be swept against play rather than
+# derived. It matters a great deal: at 1 the outside option takes under 1% of
+# the rate and barely moves the argmax, while at 10 it took 22% in collection.
+OUTSIDE_N = 0
+
 # Numberbatch, the space the listener's strongest features are built on and the
 # one the k=1 tiebreak reads raw cosines from.
 NB_SPACE = 1
+NCAND = FEATURE_NAMES.index("n_candidates")
 
 
 @dataclass(frozen=True)
@@ -112,6 +129,7 @@ class LearnedListenerSpymaster(Spymaster):
     def __init__(
         self,
         shortlist: int = SHORTLIST,
+        outside_n: int = OUTSIDE_N,
         sigma: float = 1.5,
         max_rarity: float = 10.0,
         k1_tiebreak: bool = False,
@@ -132,6 +150,7 @@ class LearnedListenerSpymaster(Spymaster):
         dependency-injection hooks for tests, matching
         `ExpectedWordsSpymaster`'s convention."""
         self.shortlist = shortlist
+        self.outside_n = outside_n
         self.max_rarity = max_rarity
         self.k1_tiebreak = k1_tiebreak
         self.k1_tie_tolerance = k1_tie_tolerance
@@ -156,8 +175,39 @@ class LearnedListenerSpymaster(Spymaster):
         """No-op: LightGBM and numpy, CPU only."""
         return None
 
+    def _outside_words(self, board, sims: SimilarityTensor) -> list[str]:
+        """`outside_n` vocabulary words that are not on this board.
+
+        Drawn UNIFORMLY, matching how the listener's decoy training sampled
+        them -- a top-similarity sample would be cheaper per clue but would
+        measure a different quantity, since the level was estimated against
+        uniform draws. Screened against the board by `is_legal_clue` so a
+        "decoy" is never a legitimate answer in disguise, exactly as
+        collect_decoy_data.py does.
+
+        The draw is seeded from the board's own words via a stable hash, not
+        `hash()`, whose string seed is randomised per process: the arena builds
+        a fresh spymaster in every worker, so a process-dependent draw would
+        make the same board score differently from one worker to the next.
+        """
+        if not self.outside_n:
+            return []
+        words = list(board.words)
+        on_board = {w.lower() for w in words}
+        digest = hashlib.blake2b("|".join(sorted(on_board)).encode(), digest_size=8).digest()
+        rng = random.Random(int.from_bytes(digest, "big"))
+        off = [w for w in sims.board_index if w not in on_board]
+        out: list[str] = []
+        for w in rng.sample(off, len(off)):
+            if is_legal_clue(w, words):
+                out.append(w.capitalize())
+                if len(out) == self.outside_n:
+                    break
+        return out
+
     def _listener_scores(
-        self, clue: str, candidates: list[str], number: int, sims: SimilarityTensor
+        self, clue: str, candidates: list[str], number: int, sims: SimilarityTensor,
+        n_board: int | None = None,
     ) -> np.ndarray | None:
         b = self.bundle
         feats = extract(clue, candidates, number, sims, self.clue_stats, b.word_stats,
@@ -165,6 +215,12 @@ class LearnedListenerSpymaster(Spymaster):
                         b.wordnet, b.lexical)
         if feats is None:
             return None
+        if n_board is not None:
+            # Outside words are not board words. extract() counts whatever list
+            # it is given, and training overwrote this the same way -- leaving
+            # it would feed `outside_n` in as a feature the model never saw.
+            feats = np.array(feats, dtype=np.float64)
+            feats[:, NCAND] = n_board
         return b.booster.predict(feats, raw_score=True)
 
     def _score_all_clues(
@@ -205,6 +261,9 @@ class LearnedListenerSpymaster(Spymaster):
         # Stage two: the listener, on the candidates in one fixed order. Roles
         # are used only to split the scores afterwards.
         candidates = own + non_own
+        n_board = len(candidates)
+        outside = self._outside_words(board, sims)
+        scored = candidates + outside
         n_own, K_max = len(own), min(len(own), MAX_CLUE_NUMBER)
         rows, keep = [], []
         for ci in take:
@@ -212,7 +271,8 @@ class LearnedListenerSpymaster(Spymaster):
             # `number` is a feature, and the clue's own best k is not known
             # until the reward is computed. K_max is the least arbitrary
             # choice available and matches how training sampled it.
-            s = self._listener_scores(clue, candidates, K_max, sims)
+            s = self._listener_scores(clue, scored, K_max, sims,
+                                      n_board=n_board if outside else None)
             if s is None:
                 continue
             rows.append(s)
@@ -220,8 +280,18 @@ class LearnedListenerSpymaster(Spymaster):
         if not rows:
             return g_best_n, g_scores, g_margin
 
-        S = np.asarray(rows, dtype=np.float64)              # (n_keep, n_candidates)
-        gain, penalty = gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max)
+        S = np.asarray(rows, dtype=np.float64)              # (n_keep, n_scored)
+        if outside:
+            # Total rate of the outside option, on the same scale as the board
+            # scores: the whole point of the anchor is that this comparison is
+            # meaningful, which a board-normalised softmax cannot make.
+            out_block = S[:, n_board:]
+            s_out = out_block.max(axis=1) + np.log(
+                np.exp(out_block - out_block.max(axis=1, keepdims=True)).sum(axis=1))
+            S = S[:, :n_board]
+        else:
+            s_out = None
+        gain, penalty = gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max, s_out=s_out)
         net = gain - penalty                                 # (n_keep, K_max)
         best_m = np.argmax(net, axis=1)
         idx = np.asarray(keep)

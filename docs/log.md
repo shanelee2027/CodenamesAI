@@ -6091,3 +6091,61 @@ scratchpad. Shipping this is a new model under the naming convention -- a
 been played in the arena yet, which is the only test that matters. The open
 question from the previous entry still decides the reward: scale reference or
 lostness weight.
+
+## The outside option in the reward: a non-team word that costs nothing
+
+Decided (Shane): if the guesser hits the outside option its EV is zero --
+equivalent to passing. That makes the implementation exact rather than
+approximate, because `pl_reward` already has the right shape for it: the
+outside option is a non-team word with cost 0. `gain_and_penalty(...,
+s_out=)` appends it to `s_bad` with a zero cost, and omitting it is
+bit-identical to every run made before it existed.
+
+Two effects, both intended:
+
+  * `big_lambda` rises, so the turn ends sooner and `gain` falls -- a vague
+    clue no longer gets promised four words.
+  * `cbar` falls, because some endings are now free -- so a vague clue is
+    driven toward ZERO reward rather than toward a large penalty.
+
+**The weak flank, recorded rather than hidden.** Because the outside option
+competes with the assassin for the same probability mass, a clue that mostly
+pointed at danger now mostly points at a harmless nothing, and its expected
+reward goes UP. That is a direct consequence of costing it at zero, and it
+runs against the measurement: in the probe, turns where a decoy won had 7.6x
+the base assassin rate, so a guesser wandering off is more dangerous, not
+less. The reward is therefore optimistic for exactly the clues it should fear
+most. `tests/test_pl_reward.py::test_a_DANGEROUS_clue_is_worth_MORE_once_wandering_is_priced`
+pins the behaviour so it cannot drift silently, and it is the argument for
+eventually pricing the outside option above zero.
+
+**`outside_n` is a free parameter, not a measurement.** The decoy training
+identifies the LEVEL of an outside word (~4.1 nats below the best board word)
+but not how many such alternatives a game contains -- a real game contains
+none, since the guesser must pick from the board. So it joins `sigma` and the
+role costs as something swept against play. It matters a lot:
+
+    outside_n        0     1     5    10    25
+    same clue as 0  12/12 11/12 10/12 9/12  5/12
+
+At 1 the outside option takes under 1% of the rate and barely moves the
+argmax; at 25 it changes seven clues in twelve and drops the announced number
+from 3-4 to 2, which is the risk-aversion the whole exercise was after. The
+default is 0, so nothing changes until a sweep says what to set.
+
+Inference draws the outside words UNIFORMLY from the vocabulary, matching how
+training sampled them -- a top-similarity draw would be cheaper but would
+measure a different quantity, since the level was estimated against uniform
+draws. The draw is seeded from a blake2b of the board's words rather than
+`hash()`, whose string seed is randomised per process: the arena builds a
+fresh spymaster in every worker, so a process-dependent draw would make the
+same board score differently from one worker to the next.
+
+**A caveat on how the arena result should be read** (Shane): this change may
+do worse against an LLM guesser and better against humans. Humans stop being
+able to order words by similarity after a few positions; gpt-oss keeps
+producing a full ranking of 30-40 words whether or not it knows anything --
+measured above, its decoy-vs-board hazard is at chance from the second pick
+onward. The outside option exists to model exactly the behaviour gpt-oss does
+not exhibit. So a flat or slightly negative head-to-head against gpt-oss is
+not a verdict on the idea, and should not be treated as one.
