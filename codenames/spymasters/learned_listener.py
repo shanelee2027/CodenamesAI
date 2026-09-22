@@ -205,10 +205,18 @@ class LearnedListenerSpymaster(Spymaster):
                     break
         return out
 
-    def _listener_scores(
+    def _listener_features(
         self, clue: str, candidates: list[str], number: int, sims: SimilarityTensor,
         n_board: int | None = None,
     ) -> np.ndarray | None:
+        """The feature matrix for one clue, without scoring it.
+
+        Split out from `_listener_scores` so the whole shortlist can be scored
+        in ONE booster call. Profiled, a turn spent 3.94s of 5.3s inside
+        LightGBM's predict across 200 one-clue calls, against 0.04s in
+        `extract` -- it was per-call overhead on a 25-row matrix, not feature
+        building, and it grew with the booster.
+        """
         b = self.bundle
         feats = extract(clue, candidates, number, sims, self.clue_stats, b.word_stats,
                         self._clue_index, b.swow, b.entity, b.pmi, b.extra, b.norms,
@@ -221,7 +229,15 @@ class LearnedListenerSpymaster(Spymaster):
             # it would feed `outside_n` in as a feature the model never saw.
             feats = np.array(feats, dtype=np.float64)
             feats[:, NCAND] = n_board
-        return b.booster.predict(feats, raw_score=True)
+        return feats
+
+    def _listener_scores(
+        self, clue: str, candidates: list[str], number: int, sims: SimilarityTensor,
+        n_board: int | None = None,
+    ) -> np.ndarray | None:
+        """One clue's scores. Kept for callers outside the search loop."""
+        feats = self._listener_features(clue, candidates, number, sims, n_board)
+        return None if feats is None else self.bundle.booster.predict(feats, raw_score=True)
 
     def _score_all_clues(
         self, board: Board | OpponentBoardView, sims: SimilarityTensor
@@ -271,16 +287,21 @@ class LearnedListenerSpymaster(Spymaster):
             # `number` is a feature, and the clue's own best k is not known
             # until the reward is computed. K_max is the least arbitrary
             # choice available and matches how training sampled it.
-            s = self._listener_scores(clue, scored, K_max, sims,
-                                      n_board=n_board if outside else None)
-            if s is None:
+            f = self._listener_features(clue, scored, K_max, sims,
+                                        n_board=n_board if outside else None)
+            if f is None:
                 continue
-            rows.append(s)
+            rows.append(f)
             keep.append(ci)
         if not rows:
             return g_best_n, g_scores, g_margin
 
-        S = np.asarray(rows, dtype=np.float64)              # (n_keep, n_scored)
+        # One predict over the whole shortlist. Every clue's matrix has the
+        # same row count (the candidate list is fixed), so stacking and
+        # reshaping back is exact -- see _listener_features on why this matters.
+        n_scored = rows[0].shape[0]
+        flat = self.bundle.booster.predict(np.vstack(rows), raw_score=True)
+        S = np.asarray(flat, dtype=np.float64).reshape(len(keep), n_scored)
         if outside:
             # Total rate of the outside option, on the same scale as the board
             # scores: the whole point of the anchor is that this comparison is
