@@ -137,6 +137,9 @@ def ask(guesser, prompt: str, attempts: int = 4) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--boards", type=int, default=40)
+    ap.add_argument("--decoys", type=int, default=N_DECOYS)
+    ap.add_argument("--skip-pass", action="store_true",
+                    help="PASS measured inert (r=-0.068, p=0.47); skip to spend the calls on decoys")
     ap.add_argument("--first-seed", type=int, default=90000)
     ap.add_argument("--mid-rank", type=int, default=300, help="Gaussian rank for the 'mid' clue")
     ap.add_argument("--out", type=Path, required=True)
@@ -176,15 +179,18 @@ def main() -> None:
         # the candidates in register and frequency and differ only in never
         # having been selected for by this clue
         off = [w for w in vocab if w.lower() not in {x.lower() for x in words}]
-        decoys = [w.capitalize() for w in rng.sample(off, N_DECOYS)]
+        decoys = [w.capitalize() for w in rng.sample(off, args.decoys)]
 
         for grade, clue in (("top", top), ("mid", mid), ("random", rand)):
             # --- PASS ---
             shuffled = words[:]
             rng.shuffle(shuffled)
-            txt = ask(guesser, PASS_PROMPT.format(clue=clue, words="\n".join(shuffled)))
-            rank = parse_array(txt, set(shuffled) | {SENTINEL})
-            pass_pos = rank.index(SENTINEL) / max(1, len(words)) if SENTINEL in rank else None
+            if args.skip_pass:
+                rank, pass_pos = [], None
+            else:
+                txt = ask(guesser, PASS_PROMPT.format(clue=clue, words="\n".join(shuffled)))
+                rank = parse_array(txt, set(shuffled) | {SENTINEL})
+                pass_pos = rank.index(SENTINEL) / max(1, len(words)) if SENTINEL in rank else None
 
             # --- DECOYS ---
             mixed = shuffled + decoys
@@ -212,7 +218,16 @@ def main() -> None:
                          "n_words": len(words), "pass_pos": pass_pos,
                          "pass_parsed": SENTINEL in rank, "top_decoy": top_decoy,
                          "board_below_decoy": below, "n_ranked": len(rank2),
-                         "n_decoys_ranked": n_decoys_ranked, "n_decoys": N_DECOYS})
+                         "n_decoys_ranked": n_decoys_ranked, "n_decoys": args.decoys,
+                         # The averages were inert and the tail was not: a decoy
+                         # competes with the ~21 unrelated board words, so its
+                         # typical rank tracks the size of that soup rather than
+                         # the clue. Only the top of the list discriminates, so
+                         # that is where the resolution goes.
+                         "decoys_in_top3": sum(1 for w in rank2[:3] if w in dset),
+                         "decoys_in_top5": sum(1 for w in rank2[:5] if w in dset),
+                         "decoy_wins": bool(rank2 and rank2[0] in dset),
+                         "ranking": rank2, "decoys": decoys})
             args.out.write_text(json.dumps(rows, indent=1))      # incremental
         print(f"  board {b+1}/{args.boards} (seed {seed}) done", flush=True)
 
