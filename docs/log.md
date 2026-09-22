@@ -5921,3 +5921,60 @@ point at anything"), under which a lucky decoy is legitimate evidence; or the
 mixing weight on a "guesser is lost" component of the reward, under which it
 is contamination. The two want different treatment of exactly the case above,
 and the reward code has to pick one.
+
+## The decoy level is invariant to D, so D can be chosen for efficiency
+
+1,679 positions collected (25 guesser refusals, 1.5%, discarded).
+`scripts/tools/analyze_decoy_invariance.py`:
+
+    D    source        n     O/E    95% CI
+    ---------------------------------------
+    2    collected   588    0.50   [0.37,0.66]
+    5    collected   535    0.50   [0.40,0.60]
+   10    collected   556    0.50   [0.42,0.59]
+
+    2    from D=10   556    0.48   gap vs collected -0.02
+    5    from D=10   556    0.48   gap vs collected -0.02
+
+O/E is observed decoy-first events over the sum of per-row chance rates, which
+handles the varying board size; 1.00 is no information.
+
+**Both halves came out clean.** The level is the same at every D -- 0.50, 0.50,
+0.50 -- so mixing in more decoys does not move where the teacher's boundary
+sits. And subsampling D=10 down reproduces the collected figures to within
+0.02, far inside the intervals, so removing decoys after the fact gives the
+same answer as never having shown them. Decoys do not interact.
+
+**This settles how to pick D, which the earlier subsample curve could not.**
+Contamination from accidentally-related decoys is a real mechanism -- the
+probe's subsample showed observed/chance drifting 0.43 to 0.52 from D=1 to
+D=15 -- but over D in [2,10] it does not bite: the level is flat and only the
+precision changes, with the CI narrowing from 0.29 wide at D=2 to 0.17 at
+D=10 for the same number of positions. So D=10 is both unbiased and the most
+efficient of the three, and the choice costs nothing. This should NOT be
+extrapolated past 10; the probe's drift was measured at 15 and the range
+above 10 is untested here.
+
+**Announced k does not move the boundary either.** Mean cut by k over the
+first 444 rows: 3.46, 3.50, 3.46, 3.58, 3.65 for k=1..5, with the ratio to
+chance flat at 1.13-1.24. Telling the teacher to name more words does not make
+it name more real ones. Two consequences: the boundary is a property of the
+clue and board rather than of the prompt, which is the k-analogue of the
+invariance above; and the earlier justification for randomising k -- "so the
+fit observes positions past where the teacher stops knowing" -- was wrong, as
+the teacher stops in the same place regardless. Randomising k remains
+necessary because `k` is a feature and the fit must not extrapolate at
+inference, but it buys no observations past the boundary.
+
+Overall cut 3.52 against a null of 2.99, ratio 1.18 -- genuinely above chance,
+unlike the D=15 probe's 1.05. The difference is that these boards are
+partially revealed and carry fewer decoys.
+
+**Truncation is an adapted stopping time**, so dropping the tail after the
+first decoy costs no validity, but it does keep more terms when the clue is
+good (decoy late) than when it is bad. That is an implicit weighting toward
+good clues in the likelihood; weighting rows by 1/terms would remove it if it
+turns out to matter.
+
+Next: fit the scorer with these rows in the PL denominator and check that the
+fitted level, not just the nonparametric O/E, is invariant to D.
