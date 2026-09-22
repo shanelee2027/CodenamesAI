@@ -5793,3 +5793,48 @@ straightforwardly better one, and win rate alone hides that.
 
 The mechanism check holds throughout: mean k runs 2.50 at ass=2 down to 1.72
 at ass=40, own/clue with it.
+
+### The decoy anchor is incremental -- the case is made
+
+Two further probes closed the question the three-grade result left open.
+
+**Within the shortlist**, where the confound is gone by construction (80 boards
+x 4 clues drawn from the listener's own top 50, 271 usable positions):
+
+                        n   top pick OWN   ends turn   assassin
+    decoy won          52          63.5%       36.5%       3.8%
+    no decoy won      219          90.9%        9.1%       0.5%
+                                        Fisher p = 4.6e-06
+
+Among clues the deployed model would actually play, a decoy win costs 27
+points of accuracy, quadruples the chance the turn ends, and multiplies the
+assassin rate by 7.6.
+
+This mattered because the pooled three-grade figure (34.3% vs 73.5%,
+p = 0.00014) was partly measuring the grade: decoy wins are common on random
+clues and random clues fail anyway. Broken out, the effect was absent within
+`random` (27% vs 22%) and rested on n=4 within `top`.
+
+**And the anchor is incremental, which is the whole case.** Against the
+listener's own predicted P(pick is own):
+
+    decoy won      model predicted 73.1%, actual 63.5%   (gap -9.7%)
+    no decoy win   model predicted 86.0%, actual 90.9%   (gap +4.9%)
+
+    within one band of model confidence:
+      0.50-0.70   decoy won 47% actual  |  no decoy win 73%
+      0.70-0.85   decoy won 69% actual  |  no decoy win 89%
+
+The model is overconfident precisely where a decoy wins and slightly
+underconfident elsewhere -- a ~15 point swing in calibration error that it
+cannot currently see. Had decoy_wins merely tracked the model's own score,
+there would be nothing to collect.
+
+Thin cells worth naming: the 0.95+ band has n=3 on the decoy-won side (33%
+actual, dramatic and unreliable) and the sub-0.5 band has n=5/6. The evidence
+is the 0.50-0.85 range, where n is adequate.
+
+Open, and the reason no collection has started: how many decoys at training
+versus inference, and whether a decoy win should end the turn at cost 0 or
+have the guesser pick on regardless. A human does not pass, they guess wrong
+-- and the 36.5% turn-ending rate above suggests cost 0 understates it.
