@@ -5838,3 +5838,86 @@ Open, and the reason no collection has started: how many decoys at training
 versus inference, and whether a decoy win should end the turn at cost 0 or
 have the guesser pick on regardless. A human does not pass, they guess wrong
 -- and the 36.5% turn-ending rate above suggests cost 0 understates it.
+
+## The decoy cut-point was chance, and the signal is the first pick alone
+
+The previous entry left decoy collection blocked on two questions. Answering
+them retracted a headline number from it.
+
+**Retraction: "mean cut 1.89 words" was not a finding.** It was read off
+`probe_shortlist.json`, which is D=15. With 15 decoys among 25 board words, a
+uniformly random ranking already puts 25/16 = 1.56 board words before the
+first decoy. Observed: 1.63. Ratio 1.05 -- chance. The cut was then compared
+against the model's mean announced k of 2.2-2.5 and read as "the model claims
+more words than the guesser can find." That comparison put a D-dependent
+statistic against a D-free one, and the D-dependence was essentially all of
+it. Nothing about announced k was measured.
+
+**What is real is confined to the first pick.** Per-position hazard against
+the depletion-implied chance rate, 272 shortlisted boards at D=15:
+
+    pos    P(decoy) obs     null    obs/null
+      0            0.195    0.375      0.52      z = -6.1
+      1            0.367    0.380      0.97
+      2            0.354    0.380      0.93
+      3            0.408    0.381      1.07
+      4-7          ~0.39    ~0.38      0.95-1.14
+
+And it tracks clue quality: the listener's own best shortlisted clue puts a
+decoy first at 0.36 of chance, the worst at 0.58.
+
+So gpt-oss at low effort identifies one word and is at chance thereafter.
+That is consistent with the earlier `decoy_wins` results (r = -0.305;
+63.5% vs 90.9% own) -- it just locates the effect, and narrows the claim: the
+anchor informs *whether the top word is findable*, not *how many* are.
+
+**D dilutes the signal, as predicted, and cannot be chosen from the data.**
+Subsampling the 15 collected decoys down (valid under Luce/IIA):
+
+    D'     1     2     3     5     8    10    15
+    O/N  0.43  0.45  0.45  0.47  0.48  0.49  0.52
+    gap  0.22  0.28  0.26  0.25  0.25  0.24  0.22
+
+More decoys, more chances one relates to the clue by accident and outranks
+the word the clue meant, so the deficit from chance erodes. But `obs/null` is
+feature-blind and the fitted model is not -- a decoy that wins on genuine
+relatedness has similarity features saying so -- and the discriminative gap is
+flat from D=2 to D=10. The curve cannot settle D, and picking a compromise
+would hide the assumption rather than test it.
+
+**So D is randomised over {2,5,10}, which makes IIA measurable.** Under IIA
+the fitted level is a property of the clue and must not move with D.
+`scripts/tools/analyze_decoy_invariance.py` subsamples the collected D=10
+positions down to 2 and 5 and compares against positions actually collected
+at 2 and 5 -- same clue distribution, same prompt, differing only in whether
+the decoys were absent when the teacher answered or removed afterwards. A
+systematic gap is IIA failing, which would invalidate reading a level off
+decoys at all.
+
+**Collection design** (`scripts/data/collect_decoy_data.py`, 1,704 positions):
+the clue number is GIVEN and randomised over 1-5, because `k` is already a
+feature and -1 ("no number") is a regime the spymaster never operates in.
+Rankings are truncated at and including the first decoy; below that line
+own-rate is 33.2% against a 36% base rate, i.e. zero information. Decoys are
+screened against the board via `is_legal_clue` but never against the clue --
+screening on clue relatedness makes the reference distribution clue-dependent,
+which destroys the fixed anchor and would have to be reproduced at inference
+using the same embedding similarity the model is judged against.
+
+It buys through the ordinary response cache under the real guesser prompt.
+The cache key is (model, clue, candidates, number) and decoys are part of
+`candidates`, so these cannot collide with existing rows. `probe_anchors.py`
+had to bypass the cache because it asked a different question under the same
+key; this asks the same question with a longer candidate list.
+
+**One blocker dissolved.** Whether a decoy win means the guesser stops or
+guesses wrong anyway affects only the reward computation -- the PL likelihood
+needs nothing but the observed orderings. It does not block collection and is
+revisable without re-collecting.
+
+**Still open:** what the outside option *means* at inference, where there is
+no off-board choice. Either a scale reference ("how strongly does this clue
+point at anything"), under which a lucky decoy is legitimate evidence; or the
+mixing weight on a "guesser is lost" component of the reward, under which it
+is contamination. The two want different treatment of exactly the case above,
+and the reward code has to pick one.
