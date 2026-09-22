@@ -66,7 +66,10 @@ binom_two_sided, wilson = _h2h.binom_two_sided, _h2h.wilson
 MODEL = "learned_listener"
 
 # The incumbent, from codenames/game.py's reward table.
-BASE = {"neutral_cost": 0.2, "opponent_cost": 1.0, "assassin_cost": 10.0}
+BASE = {"neutral_cost": 0.2, "opponent_cost": 1.0, "assassin_cost": 10.0,
+        # 0 is the incumbent: it disables the outside option entirely and
+        # reproduces every result recorded before it existed.
+        "outside_n": 0}
 
 # Pinned, not inherited. Everything the spymaster reads that is NOT the axis
 # under test has to be fixed here, or a change to a default silently splits the
@@ -93,6 +96,17 @@ AXES = {
     # incumbent (56.9%, p=0.052), and 20/40 were the two worst results in the
     # sweep. Whatever is happening is below 10, not above it.
     "assassin": ("assassin_cost", [2.0, 5.0, 7.0, 20.0, 40.0]),
+    # How many "the guesser picks something the clue never meant" alternatives
+    # the reward prices, each ending the turn for zero. The decoy training
+    # identifies the LEVEL of such a word (~4.1 nats below the best board
+    # word) but not how many a game contains -- a real game contains none,
+    # since the guesser must pick from the board -- so it is swept, not
+    # derived. 1 is the control: it takes under 1% of the rate and changed
+    # 1 clue in 12 offline, so an arm that moves at 1 is measuring noise.
+    # REQUIRES --model-path pointing at a decoy-trained booster; against the
+    # deployed model, which never saw an unrelated word in training, the
+    # scores for the drawn words are extrapolation.
+    "outside": ("outside_n", [1, 5, 10, 25, 50]),
 }
 
 
@@ -256,6 +270,10 @@ def main() -> None:
     ap.add_argument("--max-workers", type=int, default=None)
     ap.add_argument("--record-games", type=Path, default=None,
                     help="required for the paired sign test -- it needs per-board results")
+    ap.add_argument("--model-path", type=Path, default=None,
+                    help="booster for BOTH arms. The outside axis needs a decoy-trained "
+                         "one; left unset, every arm uses the deployed model and the "
+                         "outside option is scoring words it was never fitted on.")
     ap.add_argument("--label", default="role_cost_sweep")
     ap.add_argument("--resume", action="store_true",
                     help="skip settings already complete in --record-games, and clear any "
@@ -272,8 +290,23 @@ def main() -> None:
             settings.append({**BASE, key: v})
 
     seeds = list(range(args.first_seed, args.first_seed + args.n_boards))
-    base_spec = spymaster_spec(MODEL, **BASE, **MODEL_PINS)
-    print("model pins: " + ", ".join(f"{k}={v}" for k, v in MODEL_PINS.items()), flush=True)
+    # Fail before the pool starts. A missing guesser raises KeyError inside the
+    # ProcessPoolExecutor initializer, which surfaces only as BrokenProcessPool
+    # with no cause named -- the default config carries the synthetic guessers,
+    # so forgetting --guesser-pool-config looks exactly like a crash.
+    from codenames.guessers.registry import load_pool
+    available = load_pool(args.guesser_pool_config)
+    if args.guesser not in available:
+        raise SystemExit(
+            f"guesser {args.guesser!r} is not in {args.guesser_pool_config}; "
+            f"it has {sorted(available)}. The LLM guesser lives in "
+            f"configs/guesser_pool_oss120b.json.")
+
+    pins = dict(MODEL_PINS)
+    if args.model_path is not None:
+        pins["model_path"] = args.model_path
+    base_spec = spymaster_spec(MODEL, **BASE, **pins)
+    print("model pins: " + ", ".join(f"{k}={v}" for k, v in pins.items()), flush=True)
     print(f"{len(settings)} settings x {2*len(seeds)} games = {len(settings)*2*len(seeds)} games, "
           f"guesser {args.guesser}\n", flush=True)
 
@@ -298,7 +331,7 @@ def main() -> None:
                       flush=True)
         t0 = time.time()
         result = run_two_team_matchup(
-            base_spec, spymaster_spec(MODEL, **overrides, **MODEL_PINS), ("base", name),
+            base_spec, spymaster_spec(MODEL, **overrides, **pins), ("base", name),
             guesser_pool_config=args.guesser_pool_config, guesser_name=args.guesser,
             seeds=seeds, max_workers=args.max_workers,
             game_record_db=args.record_games, run_label=run,
