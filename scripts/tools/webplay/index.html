@@ -81,6 +81,12 @@ button.act:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .foot{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5}
 .foot code{font-size:10.5px;background:var(--surface);border:1px solid var(--line);
   border-radius:4px;padding:1px 4px}
+.picker{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:var(--muted)}
+.picker label{letter-spacing:.1em;text-transform:uppercase;font-size:11px}
+.picker select{flex:1;min-width:0;font-family:Inter,sans-serif;font-size:13px;font-weight:500;
+  padding:7px 8px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.picker select:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.about{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;line-height:1.45}
 .banner{border-radius:12px;padding:12px 14px;margin-bottom:12px;font-weight:600;font-size:14px;color:#fff}
 .banner.a{background:var(--blue)} .banner.b{background:var(--red)}
 .banner.err{background:var(--black);color:#F3EFE7}
@@ -93,6 +99,11 @@ button.act:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   <h1>Spymaster Table <span id="bno" style="opacity:.65;letter-spacing:.06em"></span></h1>
   <div class="tally"><span class="pip a" id="ta">9</span><span class="pip b" id="tb">8</span></div>
 </header>
+<div class="picker">
+  <label for="sm">Spymaster</label>
+  <select id="sm" aria-describedby="smabout"></select>
+</div>
+<div class="about" id="smabout"></div>
 <div id="banner"></div>
 <div class="clue">
   <div class="turnline" id="turnline">Dealing a board…</div>
@@ -106,16 +117,19 @@ button.act:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 </div>
 <div class="log" id="log"></div>
 <div class="foot">
-  Both spymasters are the distilled listener, running in Python on this machine —
+  Clues come from the distilled listener running in Python on this machine —
   <code>LearnedListenerSpymaster</code>, the same object the arena plays. Boards are
   generated at random from the full word list; the seed in the header reproduces one.
   Every turn the server re-extracts all 44 features for the words still standing,
   re-scores the shortlist, and picks the clue and number maximising expected reward
-  under a Plackett–Luce model of the guesser. k=1 max-similarity rule: <b>__K1__</b>.
+  under a Plackett–Luce model of the guesser. Changing the spymaster takes effect
+  from the next clue. k=1 tiebreak: <b>__K1__</b>.
+  Blind one-clue study: <a href="/eval" style="color:inherit">/eval</a>.
 </div>
 
 <script>
 let B=null, revealed=[], turn='a', clue=null, left=0, over=null, busy=false;
+let SM={}, smKey=null;
 
 const $ = id => document.getElementById(id);
 const teamName = t => t==='a' ? 'Blue' : 'Red';
@@ -150,6 +164,7 @@ function render(){
     : busy ? 'Re-scoring every clue for the board as it stands.'
     : 'Tap the words you think it means.';
   $('endturn').disabled=!!over||busy;
+  $('sm').disabled=busy;
   $('newgame').disabled=busy;
 }
 
@@ -163,7 +178,7 @@ function fail(msg){
 function newClue(){
   busy=true; clue=null; render();
   const words = B.words.filter((w,i)=>revealed[i]);
-  post('/api/clue', {seed:B.seed, revealed:words, turn})
+  post('/api/clue', {seed:B.seed, revealed:words, turn, spymaster:smKey})
     .then(r=>{
       busy=false;
       if(r.error) return fail(r.error);
@@ -171,7 +186,8 @@ function newClue(){
       clue=r;
       left=r.number+1;                   // Codenames allows one guess beyond the number
       say(`<b>${teamName(turn)}</b> spymaster: <b>${r.clue.toUpperCase()} ${r.number}</b>`
-          + ` <span style="opacity:.6">(${r.ms} ms)</span>`);
+          + ` <span style="opacity:.6">— ${SM[r.spymaster]?SM[r.spymaster].label:r.spymaster},`
+          + ` ${r.ms} ms</span>`);
       render();
     })
     .catch(e=>fail('Lost the server — is play_server.py still running?'));
@@ -218,9 +234,28 @@ function start(seed){
 $('endturn').onclick=()=>{ if(!over&&!busy){ say('Stopped guessing.'); nextTurn(); } };
 $('newgame').onclick=()=>{ if(!busy) start(null); };
 
-// ?seed=12345 replays a specific board; otherwise the server deals a random one.
+function showAbout(){ $('smabout').textContent = SM[smKey] ? SM[smKey].about : ''; }
+
+$('sm').onchange = e => {
+  smKey = e.target.value;
+  try { localStorage.setItem('spymaster', smKey); } catch(_) {}
+  showAbout();
+  if(B && !over) say(`Spymaster set to <b>${SM[smKey].label}</b> — from the next clue.`);
+};
+
+// ?seed=12345 replays a specific board; ?spymaster=decoy_out10 picks a model.
 const qs=new URLSearchParams(location.search);
-start(qs.has('seed') ? parseInt(qs.get('seed'),10) : null);
+fetch('/api/spymasters').then(r=>r.json()).then(d=>{
+  const sel=$('sm');
+  d.spymasters.forEach(m=>{
+    SM[m.id]=m;
+    const o=document.createElement('option'); o.value=m.id; o.textContent=m.label; sel.appendChild(o);
+  });
+  let saved=null; try { saved=localStorage.getItem('spymaster'); } catch(_) {}
+  smKey = [qs.get('spymaster'), saved, d.default].find(k=>k && SM[k]);
+  sel.value=smKey; showAbout();
+  start(qs.has('seed') ? parseInt(qs.get('seed'),10) : null);
+}).catch(()=>fail('Could not reach the server.'));
 </script>
 </body>
 </html>

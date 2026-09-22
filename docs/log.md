@@ -6210,3 +6210,39 @@ processes; and the evidence first cited against threads compared new
 llm_store rows during a cache replay, which counts nothing. Measured CPU-bound
 at ~15.6 of 16 cores, versus an estimated 12 hours on the old 14-process
 setup.
+
+## A blind one-clue study, because the arena cannot answer the outside-option question
+
+The outside_n sweep left the idea's case resting on human play: it models a
+guesser who stops when they stop recognising a connection, and gpt-oss never
+stops. So `scripts/tools/play_server.py` now serves `/eval`: one position, one
+clue from one of two spymasters, the human guesses under real turn rules,
+next. `scripts/tools/analyze_human_eval.py` compares the arms.
+
+Design choices, each protecting the data rather than the page:
+
+- **The arm and the key never reach the browser.** Each pick is a round trip
+  that returns that one card's role. Checked over 40 served positions: every
+  payload has exactly {token, words, clue, number, revealed, recorded}, no
+  value names an arm or a model file, and mid-turn picks return only {role}.
+- **Arms are assigned in shuffled blocks**, so they stay balanced to within one
+  position (tested over 40; the driven run came out 26 v 26).
+- **Stop is a recorded outcome, and there is no skip.** Stopping is the
+  behaviour under test. A skip would let people drop the clues they dislike,
+  and if they dislike one arm's clues more that is arm-specific censoring --
+  the same worry the guesser-refusal discards raised in the sweeps.
+- **Positions span a game**: 0-8 non-assassin cards pre-revealed, at least two
+  own words left, as the listener's training positions were.
+
+Default arms are `decoy` v `decoy_out25`: the same booster, differing only in
+the outside option -- the exact comparison the arena made. The game page also
+gained a spymaster menu (the incumbent and the decoy booster at every sweep
+value); the decoy variants share one loaded booster, so six options cost 1.5
+GB for the server.
+
+From 52 scripted test turns (random clicking, not data): the four metrics
+behave, and **reward is the noisiest** (sd ~2.1, dominated by -10 assassin
+hits), so a pilot will resolve on first-pick-own and stopping rate sooner. The
+plan is ~100 positions, then fix the full sample size from the observed gap
+BEFORE collecting more -- choosing it after peeking would inflate the false
+positive rate.

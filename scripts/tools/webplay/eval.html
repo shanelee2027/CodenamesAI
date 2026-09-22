@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blind Clue Study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#EFE9DD; --surface:#FBF8F2; --line:#D8CFBE;
+  --ink:#241F19; --muted:#6E6558;
+  --blue:#3A6EA5; --red:#B4504D; --tan:#C9B693; --black:#26282D;
+  --gold:#B4842A; --spent:0.30; --ring:#241F19;
+  --shadow:0 1px 2px rgba(36,31,25,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15171B; --surface:#1E2127; --line:#30343C;
+    --ink:#ECE7DE; --muted:#9A948A;
+    --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
+    --gold:#D4A33C; --spent:0.22; --ring:#ECE7DE; --shadow:0 1px 2px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15171B; --surface:#1E2127; --line:#30343C;
+  --ink:#ECE7DE; --muted:#9A948A;
+  --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
+  --gold:#D4A33C; --spent:0.22; --ring:#ECE7DE; --shadow:0 1px 2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:14px 16px calc(18px + env(safe-area-inset-bottom));
+  max-width:560px;margin:0 auto;min-height:100vh}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px}
+h1{font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:.14em;
+   text-transform:uppercase;margin:0;color:var(--muted)}
+.count{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.count b{color:var(--ink)}
+.brief{font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 10px}
+.brief b{color:var(--ink);font-weight:600}
+.who{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:11px;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.who input{flex:1;min-width:0;font-family:Inter,sans-serif;font-size:13px;letter-spacing:0;
+  text-transform:none;padding:7px 9px;border-radius:9px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink)}
+.who input:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.clue{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:12px 14px;margin-bottom:12px;box-shadow:var(--shadow);min-height:80px;
+  display:flex;flex-direction:column;justify-content:center}
+.turnline{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+.turnline b{color:var(--ink)}
+.word{font-family:Oswald,sans-serif;font-weight:600;font-size:clamp(24px,7vw,32px);
+  letter-spacing:.05em;text-transform:uppercase;line-height:1.05;display:flex;
+  align-items:baseline;gap:10px;flex-wrap:wrap}
+.num{color:var(--gold)}
+.bonus{font-family:Inter,sans-serif;font-weight:500;font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);align-self:center}
+.sub{font-size:12px;color:var(--muted);margin-top:5px;min-height:1.4em}
+.board{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin-bottom:12px}
+.card{aspect-ratio:1/.86;border:1px solid var(--line);border-radius:7px;
+  background:var(--surface);color:var(--ink);cursor:pointer;padding:3px 2px;
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-family:Oswald,sans-serif;font-weight:600;letter-spacing:.01em;
+  font-size:clamp(10px,3.15vw,16px);line-height:1.08;text-transform:uppercase;
+  overflow:hidden;word-break:break-word;hyphens:auto;
+  transition:transform .1s ease;box-shadow:var(--shadow);position:relative}
+.card:active{transform:scale(.96)}
+.card:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.card:disabled{cursor:default}
+.card.r-a{background:var(--blue);color:#fff;border-color:transparent}
+.card.r-b{background:var(--red);color:#fff;border-color:transparent}
+.card.r-n{background:var(--tan);color:#241F19;border-color:transparent}
+.card.r-x{background:var(--black);color:#F3EFE7;border-color:transparent}
+.card.spent{opacity:var(--spent);box-shadow:none}
+.card.key{opacity:.55;box-shadow:none}
+.card.mine{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--ring)}
+.card .ord{position:absolute;top:2px;left:4px;font-family:Inter,sans-serif;font-size:10px;font-weight:600;opacity:.9}
+.bar{display:flex;gap:8px}
+button.act{flex:1;font-family:Inter,sans-serif;font-weight:600;font-size:14px;
+  padding:13px 10px;border-radius:11px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+button.act:active{transform:scale(.985)}
+button.act.primary{background:var(--gold);border-color:transparent;color:#1A1509}
+button.act:disabled{opacity:.5;cursor:default}
+button.act:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.result{margin-top:12px;font-size:13px;line-height:1.5;min-height:1.5em}
+.result b{font-weight:600}
+.err{background:var(--black);color:#F3EFE7;border-radius:12px;padding:12px 14px;margin-bottom:12px;font-size:13.5px;font-weight:600}
+.foot{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5}
+.foot a{color:inherit}
+@media (max-width:400px){ body{padding-left:9px;padding-right:9px} .board{gap:3px} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Blind Clue Study</h1>
+  <div class="count"><b id="n">0</b> recorded this session</div>
+</header>
+<p class="brief">You're <b>Blue's guesser</b>. Each clue comes from one of two spymasters,
+  chosen at random — you won't be told which. Guess the way you would in a real game, and
+  <b>stop when you no longer see a connection</b>. Stopping is a real answer, not a failure:
+  it's the thing this study exists to measure.</p>
+<div class="who">
+  <label for="player">Your name</label>
+  <input id="player" autocomplete="nickname" placeholder="so your turns can be told apart">
+</div>
+<div id="err"></div>
+<div class="clue">
+  <div class="turnline" id="turnline">Dealing a position…</div>
+  <div class="word" id="clueword">—</div>
+  <div class="sub" id="cluesub"></div>
+</div>
+<div class="board" id="board"></div>
+<div class="bar">
+  <button class="act primary" id="stop">Stop guessing</button>
+  <button class="act" id="next" disabled>Next clue</button>
+</div>
+<div class="result" id="result"></div>
+<div class="foot">
+  Cards already coloured were revealed earlier in the game. After each turn the full key is
+  shown and your picks are ringed and numbered. Nothing about which spymaster gave the clue
+  reaches this page. <a href="/">Back to the full game</a>.
+</div>
+
+<script>
+let P=null, picks=[], key=null, busy=false, done=false;
+const $ = id => document.getElementById(id);
+const post = (path, body) => fetch(path, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}).then(r => r.json());
+const ENDED = {opponent:'on a red card', neutral:'on a bystander', assassin:'on the assassin',
+               cleared:'with every blue word found', exhausted:'out of guesses', stopped:'because you stopped'};
+
+try { $('player').value = localStorage.getItem('player') || ''; } catch(_) {}
+$('player').oninput = e => { try { localStorage.setItem('player', e.target.value); } catch(_) {} };
+
+function guessesLeft(){ return P ? P.number + 1 - picks.filter(p=>p.role==='a').length : 0; }
+
+function render(){
+  const bd=$('board'); bd.innerHTML='';
+  P && P.words.forEach((w,i)=>{
+    const el=document.createElement('button');
+    const pre=P.revealed[i], mine=picks.findIndex(p=>p.i===i);
+    const role = pre || (mine>=0 ? picks[mine].role : (key ? key[i] : null));
+    el.className = 'card' + (role ? ' r-'+role : '') + (pre ? ' spent' : '')
+      + (!pre && mine<0 && key ? ' key' : '') + (mine>=0 ? ' mine' : '');
+    el.textContent = w;
+    if(mine>=0){ const o=document.createElement('span'); o.className='ord'; o.textContent=mine+1; el.appendChild(o); }
+    el.disabled = !!(pre || mine>=0 || done || busy);
+    el.setAttribute('aria-label', w + (pre ? ' — revealed earlier' : mine>=0 ? ` — your pick ${mine+1}` : ''));
+    el.onclick = () => pick(i);
+    bd.appendChild(el);
+  });
+  $('turnline').innerHTML = !P ? 'Dealing a position…'
+    : done ? 'Turn over' : `<b>Blue</b> to guess · ${guessesLeft()} guess${guessesLeft()===1?'':'es'} left`;
+  $('clueword').innerHTML = P ? `${P.clue} <span class="num">${P.number}</span> <span class="bonus">+1 bonus</span>` : '—';
+  $('cluesub').textContent = !P ? '' : done ? 'The full key is shown.' : 'Tap the words you think it means.';
+  $('stop').disabled = !P || done || busy;
+  $('next').disabled = !done || busy;
+  $('next').className = 'act' + (done ? ' primary' : '');
+  $('stop').className = 'act' + (done ? '' : ' primary');
+}
+
+function fail(msg){ busy=false; $('err').innerHTML = `<div class="err">${msg}</div>`; render(); }
+
+function finish(r){
+  done=true; key=r.key; $('n').textContent=r.recorded;
+  const found=r.own_found;
+  $('result').innerHTML = `Found <b>${found}</b> blue word${found===1?'':'s'} — turn ended ${ENDED[r.ended_by]||r.ended_by}.`;
+}
+
+function next(){
+  busy=true; $('err').innerHTML=''; $('result').innerHTML=''; P=null; picks=[]; key=null; done=false; render();
+  post('/api/eval/next', {player: $('player').value.trim()}).then(r=>{
+    busy=false;
+    if(r.error) return fail(r.error);
+    P=r; $('n').textContent=r.recorded; render();
+  }).catch(()=>fail('Lost the server — is play_server.py still running?'));
+}
+
+function pick(i){
+  if(!P||done||busy) return;
+  busy=true; render();
+  post('/api/eval/pick', {token:P.token, index:i}).then(r=>{
+    busy=false;
+    if(r.error) return fail(r.error);
+    picks.push({i, role:r.role});
+    if(r.done) finish(r);
+    render();
+  }).catch(()=>fail('Lost the server — is play_server.py still running?'));
+}
+
+$('stop').onclick = () => {
+  if(!P||done||busy) return;
+  busy=true; render();
+  post('/api/eval/stop', {token:P.token}).then(r=>{
+    busy=false;
+    if(r.error) return fail(r.error);
+    finish(r); render();
+  }).catch(()=>fail('Lost the server — is play_server.py still running?'));
+};
+$('next').onclick = next;
+next();
+</script>
+</body>
+</html>

@@ -32,6 +32,9 @@ CACHE_FILES = [
     "similarity_tensor.npy", "similarity_meta.json", "clue_vocab.json",
     "board_vocab.json", "clue_stats.npz", "clue_stats_meta.json",
     "listener_gbt.txt", "word_stats.npz", "acronym_mask.npz",
+    # Optional: the decoy-trained booster, so the game's spymaster menu can
+    # offer the decoy variants. 25 MB; absent, those entries are just hidden.
+    "listener_gbt_decoy.txt",
     "swow.npz", "entity_sims.npz", "lm_pmi.npz", "extra_sims.npz",
     "word_norms.npz", "wordnet_sims.npz", "lexical_sims.npz",
 ]
@@ -101,6 +104,24 @@ opens http://127.0.0.1:8000 automatically.
 Options: `--port 9000` to move it, `--no-open` to skip the browser, `--no-k1`
 to disable the k=1 similarity tiebreak.
 
+## Choosing the spymaster
+
+The game page has a menu: the incumbent, and the decoy-trained model at each
+outside-option weight the arena sweep tested. The choice applies from the next
+clue, so you can switch mid-game and compare.
+
+## The blind study
+
+Open http://127.0.0.1:8000/eval. You are Blue's guesser; each clue comes from
+one of two spymasters chosen at random, and the page is never told which. Guess
+as you would in a real game, and press **Stop** when you no longer see a
+connection — that is the behaviour being measured. Every turn is appended to
+`cache/human_eval.jsonl`; send that file back, or read it here with
+
+    ./.venv/bin/python analyze_human_eval.py
+
+Choose what is compared with `./start.sh --eval-arms incumbent,decoy_out25`.
+
 ## What it needs
 
 - Python 3.11 or newer
@@ -138,6 +159,8 @@ def main() -> None:
     shutil.copytree(PROJECT_ROOT / "codenames", out / "codenames",
                     dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     shutil.copy2(PROJECT_ROOT / "scripts" / "tools" / "play_server.py", out / "play_server.py")
+    shutil.copy2(PROJECT_ROOT / "scripts" / "tools" / "analyze_human_eval.py",
+                 out / "analyze_human_eval.py")
     shutil.copytree(PROJECT_ROOT / "scripts" / "tools" / "webplay", out / "webplay",
                     dirs_exist_ok=True)
 
