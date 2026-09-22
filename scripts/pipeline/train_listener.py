@@ -525,6 +525,12 @@ def main() -> None:
                     help="jsonl from scripts/data/collect_decoy_data.py. Mixes "
                          "vocabulary words into the candidate list, which is what "
                          "makes the absolute level identifiable -- see decoy_positions")
+    ap.add_argument("--decoy-frac", type=float, default=1.0,
+                    help="fraction of TRAIN decoy boards to keep, for a learning curve "
+                         "over decoy data. Validation and the board half are untouched, "
+                         "so the numbers across fractions describe one fixed test set -- "
+                         "subsampling the whole decoy file instead shrinks val too, and "
+                         "then R2 falls as data GROWS purely because the test got bigger.")
     ap.add_argument("--out", type=Path, default=CACHE / "listener_gbt.txt")
     args = ap.parse_args()
 
@@ -553,6 +559,15 @@ def main() -> None:
         seeds = seeds + dec_seeds
     tr_pos = [p for p in positions if p["seed"] not in val_seeds]
     va_pos = [p for p in positions if p["seed"] in val_seeds]
+    if args.decoy_frac < 1.0:
+        dec_tr = sorted({p["seed"] for p in tr_pos if p.get("decoy")})
+        keep = set(np.random.default_rng(args.seed + 2).choice(
+            dec_tr, size=max(1, int(len(dec_tr) * args.decoy_frac)), replace=False).tolist())
+        before = len(tr_pos)
+        tr_pos = [p for p in tr_pos if not p.get("decoy") or p["seed"] in keep]
+        print(f"decoy-frac {args.decoy_frac:.0%}: {before} -> {len(tr_pos)} train positions "
+              f"({len(keep)}/{len(dec_tr)} decoy boards); val unchanged")
+
     print(f"boards: {len(seeds)} total -> {len(seeds)-len(val_seeds)} train / {len(val_seeds)} val")
     print(f"positions: {len(tr_pos)} train / {len(va_pos)} val")
 
