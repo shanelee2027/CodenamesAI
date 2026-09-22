@@ -5978,3 +5978,52 @@ turns out to matter.
 
 Next: fit the scorer with these rows in the PL denominator and check that the
 fitted level, not just the nonparametric O/E, is invariant to D.
+
+## The fitted level is invariant to D too, and the scale is ~3.4 nats
+
+`scripts/tools/fit_decoy_level.py`, decoy positions only (1,176 train / 503
+val, split by board seed; 5,286 / 2,291 PL groups truncated at the first
+decoy):
+
+      D     n    level (nats)      predicted   observed    gap
+      2   169     -3.46 +-0.11        0.071      0.071  +0.000
+      5   174     -3.52 +-0.10        0.141      0.144  -0.003
+     10   160     -3.35 +-0.12        0.241      0.244  -0.003
+
+    val McFadden R2 0.1901   top-1 0.315   best iter 388
+
+`level` is the mean decoy score minus the best board score. Flat across D --
+spread 0.17 nats against standard errors of ~0.11, and not even monotone --
+so the fitted scale is a property of the clue and board rather than of how
+many decoys were mixed in. `D` is not a feature, so nothing forces this.
+
+The calibration columns are the stronger statement: one fitted function
+reproduces the observed decoy-first rate at 2, 5 and 10 decoys to within
+0.003, without being told which regime it is in. That is invariance in the
+form the spymaster will actually consume.
+
+**The number this was all for.** A word drawn at random from the vocabulary
+sits about 3.4 nats below the board's best word -- roughly 3% of its rate in
+the softmax. That quantity was previously unidentified: the board-normalised
+softmax is shift-invariant, so nothing in the old training signal pinned it.
+It is now estimated.
+
+**Two corrections made on the way.** The first `level` statistic was
+logsumexp(decoy scores) - best board score, which reported -2.60/-1.58/-0.67
+and looked like a large trend. It is not a defect in the fit: the total decoy
+mass grows like log(D) whatever the model does, and logsumexp is dominated by
+the largest of D draws, so even dividing log(D) out leaves an extreme-value
+term. A statistic carrying either cannot test invariance. The mean has no
+such term. Separately, `n_candidates` is overwritten with the board count
+before fitting -- extract() computes it over whatever list it is given, so
+leaving it alone would let the model read D straight off a feature and make
+the whole test vacuous.
+
+R2 0.19 against the deployed model's ~0.35 is expected and not a regression:
+this is fitted on 1,176 positions where the deployed model has ~9k, and on
+truncated rankings. It is a measurement instrument, not a candidate model.
+
+Next: retrain the deployed listener with these rows added to the existing
+positions and check the level survives at full data, then decide how
+`pl_reward` consumes it -- scale reference or lostness weight (previous
+entry).
