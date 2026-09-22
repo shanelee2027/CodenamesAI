@@ -29,6 +29,7 @@ guesser is.
 from __future__ import annotations
 
 import multiprocessing
+import traceback
 import random
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
@@ -322,6 +323,15 @@ def _matchup_worker_init(
     _WORKER_STATE["run_label"] = run_label
 
 
+def _is_guesser_refusal(exc: Exception) -> bool:
+    """An LLM guesser that will not produce a usable ranking raises rather than
+    backfill board order (codenames/guessers/openai_compat.py), which is right
+    -- a fabricated ranking would be cached and poison every later run. It is a
+    property of the position, not a bug, so the board is discarded and the run
+    continues."""
+    return isinstance(exc, RuntimeError) and "usable ranking" in str(exc)
+
+
 def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult | None, bool, int, str | None]:
     seed, swapped = task
     state = _WORKER_STATE
@@ -335,15 +345,25 @@ def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult | None, boo
     by_role = board_by_role(board) if state["record_store"] is not None else None
     try:
         result = play_two_team_game(board, (first, guesser), (second, guesser), state["sims"], max_turns=state["max_turns"])
-    except RuntimeError as exc:
-        # An LLM guesser that will not produce a usable ranking raises rather
-        # than backfill board order (codenames/guessers/openai_compat.py), which
-        # is right -- a fabricated ranking would be cached and poison every later
-        # run. But it arrives here as an exception inside a pool worker, and
-        # letting it propagate ends the whole matchup: a single refusal on one
-        # board of one setting cost an 11-setting sweep 7 hours of work. Report
-        # it as a discard and let the caller drop the board.
-        return None, swapped, seed, str(exc)
+    except Exception as exc:                                   # noqa: BLE001 -- classified below
+        # Anything raised here has to cross a process boundary, and not every
+        # exception survives the trip. An openai APIStatusError does not:
+        # __init__ demands keyword-only `response` and `body`, unpickling it
+        # raises TypeError inside the pool's reader, and the run dies with
+        # BrokenProcessPool naming neither the board nor the cause. A 15-setting
+        # sweep was lost to exactly that. So nothing unpicklable leaves this
+        # function -- errors become strings here, at the point they are raised.
+        kind = type(exc).__module__.split(".")[0]
+        transient = kind == "openai" or isinstance(exc, (ConnectionError, TimeoutError))
+        if not (transient or _is_guesser_refusal(exc)):
+            # A real bug still stops the run, but as a readable error rather
+            # than a broken pool. The original type is kept in the message
+            # because the type itself may not survive pickling.
+            raise RuntimeError(
+                f"{type(exc).__name__} in seed {seed}: {exc}\n"
+                + "".join(traceback.format_exception(exc))
+            ) from None
+        return None, swapped, seed, f"{type(exc).__name__}: {exc}"
     if state["record_store"] is not None:
         # The side assignment is in the label because a recorded game
         # stores only "A"/"B" per turn -- without it a dumped transcript

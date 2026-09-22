@@ -166,6 +166,43 @@ class TestOneRefusalDoesNotEndTheMatchup:
         assert result is None and seed == 4242 and swapped is False
         assert "usable ranking" in err
 
+    def test_an_api_error_is_a_discard_not_a_crash(self, monkeypatch):
+        """openai errors cannot cross a process boundary: APIStatusError's
+        __init__ demands keyword-only `response`/`body`, so unpickling raises
+        inside the pool reader and the run dies as BrokenProcessPool, naming
+        neither board nor cause. A 15-setting sweep was lost to exactly that."""
+        class APIStatusError(Exception):
+            __module__ = "openai"
+
+        def boom(*a, **k):
+            raise APIStatusError("503 Service Unavailable")
+
+        monkeypatch.setattr(arena, "play_two_team_game", boom)
+        monkeypatch.setattr(arena, "_WORKER_STATE", {
+            "sims": None, "x": object(), "y": object(), "names": ("base", "opp=2"),
+            "guesser": object(), "max_turns": 40, "record_store": None, "run_label": "r",
+        })
+        result, _, seed, err = arena._matchup_task((77, False))
+        assert result is None and seed == 77 and "503" in err
+
+    def test_a_real_bug_propagates_but_stays_picklable(self, monkeypatch):
+        """A genuine bug must still stop the run -- as a readable error naming
+        the original type, not as a broken pool."""
+        import pickle
+
+        def boom(*a, **k):
+            raise ValueError("a real bug")
+
+        monkeypatch.setattr(arena, "play_two_team_game", boom)
+        monkeypatch.setattr(arena, "_WORKER_STATE", {
+            "sims": None, "x": object(), "y": object(), "names": ("base", "opp=2"),
+            "guesser": object(), "max_turns": 40, "record_store": None, "run_label": "r",
+        })
+        with pytest.raises(RuntimeError) as got:
+            arena._matchup_task((4242, False))
+        assert "ValueError" in str(got.value) and "a real bug" in str(got.value)
+        pickle.loads(pickle.dumps(got.value))        # must survive the trip home
+
     def test_an_unrelated_error_still_propagates(self, monkeypatch):
         """Only the guesser's documented refusal is swallowed. A bug in the
         game loop must not be silently recorded as a discarded board."""
@@ -177,5 +214,5 @@ class TestOneRefusalDoesNotEndTheMatchup:
             "sims": None, "x": object(), "y": object(), "names": ("base", "opp=2"),
             "guesser": object(), "max_turns": 40, "record_store": None, "run_label": "r",
         })
-        with pytest.raises(ValueError):
+        with pytest.raises(RuntimeError):
             arena._matchup_task((4242, False))
