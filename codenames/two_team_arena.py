@@ -29,9 +29,10 @@ guesser is.
 from __future__ import annotations
 
 import multiprocessing
+import threading
 import traceback
 import random
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -116,6 +117,10 @@ def finalize_result(s: dict[str, float]) -> TwoTeamSelfPlayResult:
 
 _WORKER_STATE: dict = {}
 
+# Guards the one shared GameRecordStore when workers are threads. Under
+# processes each worker had its own connection and needed no lock.
+_RECORD_LOCK = threading.Lock()
+
 
 def _worker_init(
     sims_cache_dir: Path,
@@ -160,7 +165,8 @@ def _play_task(seed: int) -> TwoTeamGameResult:
     by_role = board_by_role(board) if state["record_store"] is not None else None
     result = play_two_team_game(board, team, team, state["sims"], max_turns=state["max_turns"])
     if state["record_store"] is not None:
-        state["record_store"].add_game(by_role, result, label=state["run_label"])
+        with _RECORD_LOCK:
+            state["record_store"].add_game(by_role, result, label=state["run_label"])
     return result
 
 
@@ -385,6 +391,7 @@ def run_two_team_matchup(
     game_record_db: Path | None = None,
     run_label: str = "",
     progress: bool = False,
+    use_threads: bool = False,
 ) -> MatchupResult:
     """Plays each seed twice -- once with `names[0]` as team A, once with
     `names[1]` as team A -- so first-move advantage falls on both sides
@@ -407,12 +414,48 @@ def run_two_team_matchup(
     timeouts = 0
     done = 0
 
-    with ProcessPoolExecutor(
-        max_workers=max_workers,
-        mp_context=multiprocessing.get_context("spawn"),
-        initializer=_matchup_worker_init,
-        initargs=(sims_cache_dir, spec_x, spec_y, names, guesser_pool_config, guesser_name, max_turns, game_record_db, run_label),
-    ) as executor:
+    # Threads, not processes, when the guesser is an LLM.
+    #
+    # Each process holds a private copy of the tensor, the booster and the
+    # lexical tables -- 1.13 GB measured as PSS -- so a 30 GB machine caps out
+    # near 18 workers, and 48 once OOM-killed the editor. Throughput here is
+    # simply concurrency / latency: at the ~30s per ranking call this endpoint
+    # was serving, 14 workers gives 28 calls a minute and a 3,000-game sweep
+    # takes 12 hours. The data collector, which is threaded, ran 100 concurrent
+    # against the same endpoint without trouble.
+    #
+    # Threads are safe here for reasons that are checked, not assumed:
+    #   - workers sit at ~20% CPU, blocked on HTTP, and both the OpenAI client's
+    #     socket wait and LightGBM's predict release the GIL;
+    #   - spymasters assign no attributes outside __init__, so one instance
+    #     serves every thread;
+    #   - SimilarityTensor is a read-only mmap;
+    #   - llm_store opens WAL with check_same_thread=False and a 30s busy
+    #     timeout, i.e. it was built for concurrent workers;
+    #   - GameRecordStore writes under _RECORD_LOCK above.
+    # `_WORKER_STATE` is module-level, so with threads it is initialised ONCE in
+    # this process rather than per worker -- every worker was being handed
+    # identical values anyway, and that sharing is the entire memory win.
+    #
+    # What is given up is isolation from NATIVE crashes only; Python exceptions
+    # are per-thread either way and still arrive as future exceptions. Across
+    # every run this project has logged, failures were 90 RuntimeError, 7
+    # RateLimitError and 1 ValueError -- no segfaults. The `spawn` context the
+    # process path uses exists to dodge a CUDA-after-fork hazard, which cannot
+    # arise without a fork; the GPU arena keeps processes regardless.
+    init_args = (sims_cache_dir, spec_x, spec_y, names, guesser_pool_config,
+                 guesser_name, max_turns, game_record_db, run_label)
+    if use_threads:
+        _matchup_worker_init(*init_args)
+        pool = ThreadPoolExecutor(max_workers=max_workers)
+    else:
+        pool = ProcessPoolExecutor(
+            max_workers=max_workers,
+            mp_context=multiprocessing.get_context("spawn"),
+            initializer=_matchup_worker_init,
+            initargs=init_args,
+        )
+    with pool as executor:
         played, failed = [], {}
         for result, swapped, seed, err in executor.map(_matchup_task, tasks):
             if result is None:
