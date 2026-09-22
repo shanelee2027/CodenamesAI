@@ -29,6 +29,7 @@ guesser is.
 from __future__ import annotations
 
 import multiprocessing
+import os
 import threading
 import traceback
 import random
@@ -338,6 +339,84 @@ def _is_guesser_refusal(exc: Exception) -> bool:
     return isinstance(exc, RuntimeError) and "usable ranking" in str(exc)
 
 
+# Concurrent clue computations allowed per worker process under threads.
+#
+# One process cannot use more than ~2.5 cores of clue computation however many
+# threads it runs -- about a third of a turn holds the GIL (measured scaling
+# 1.0/1.9/2.3/2.6/2.5x at 1/4/8/16/32 threads) -- so letting more than a few
+# compute at once buys no speed. It does cost memory: the Gaussian first stage
+# allocates several hundred MB of temporaries per turn, and numpy releases the
+# GIL inside those operations, so every thread can hold them at the same time.
+# All games start on turn 1 together, and 2 processes x 16 unguarded threads
+# peaked at 13 GB -- which at 6 processes is an OOM kill. Threads waiting on
+# the guesser do not hold a slot, so this caps memory without capping the
+# number of games in flight.
+COMPUTE_SLOTS = 3
+
+
+def _guard_spymasters(slots: int) -> None:
+    """Wrap each spymaster's clue search in one per-process semaphore.
+
+    Runs at the start of a chunk, before its threads exist, and once per
+    process -- ProcessPoolExecutor hands a worker one chunk at a time, so there
+    is nothing to race. This sets an attribute on the spymaster outside its
+    __init__, which the thread-safety argument elsewhere says spymasters never
+    do; it is safe here only because no thread is running yet.
+    """
+    if _WORKER_STATE.get("guarded"):
+        return
+    sem = threading.BoundedSemaphore(slots)
+    for key in ("x", "y"):
+        sm = _WORKER_STATE.get(key)
+        inner = getattr(sm, "_score_all_clues", None)
+        if inner is None:
+            continue
+
+        def guarded(*args, _inner=inner, **kwargs):
+            with sem:
+                return _inner(*args, **kwargs)
+
+        sm._score_all_clues = guarded
+    _WORKER_STATE["guarded"] = True
+
+
+def _matchup_pull(tasks, threads: int) -> list[tuple]:
+    """Keep `threads` games in flight in this process, pulling from a queue
+    shared by every worker, until the queue is empty.
+
+    Replaces fixed chunks. With games pre-assigned two chunks per process, a
+    run was observed with five of six workers idle and one still playing the
+    slowest games of its last chunk -- mostly guesser refusals, each four
+    attempts at an 8k-token budget -- so the whole setting waited on one
+    process. Pulling from a shared queue means no worker idles while games
+    remain; the only tail left is the last games of the setting itself.
+
+    Results carry their own (seed, swapped), so completion order is
+    irrelevant to the caller. A game whose guesser refuses comes back as a
+    discard; a genuine bug raises out of `f.result()` below and ends the run.
+    """
+    import queue as _queue
+
+    _guard_spymasters(min(threads, COMPUTE_SLOTS))
+    out: list[tuple] = []
+    lock = threading.Lock()
+
+    def loop() -> None:
+        while True:
+            try:
+                task = tasks.get_nowait()
+            except _queue.Empty:
+                return
+            result = _matchup_task(task)
+            with lock:
+                out.append(result)
+
+    with ThreadPoolExecutor(max_workers=threads) as ex:
+        for f in [ex.submit(loop) for _ in range(threads)]:
+            f.result()
+    return out
+
+
 def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult | None, bool, int, str | None]:
     seed, swapped = task
     state = _WORKER_STATE
@@ -391,7 +470,7 @@ def run_two_team_matchup(
     game_record_db: Path | None = None,
     run_label: str = "",
     progress: bool = False,
-    use_threads: bool = False,
+    threads_per_worker: int = 1,
 ) -> MatchupResult:
     """Plays each seed twice -- once with `names[0]` as team A, once with
     `names[1]` as team A -- so first-move advantage falls on both sides
@@ -414,57 +493,82 @@ def run_two_team_matchup(
     timeouts = 0
     done = 0
 
-    # Threads, not processes, when the guesser is an LLM.
+    # Processes x threads, because each alone wastes a different resource.
     #
-    # Each process holds a private copy of the tensor, the booster and the
-    # lexical tables -- 1.13 GB measured as PSS -- so a 30 GB machine caps out
-    # near 18 workers, and 48 once OOM-killed the editor. Throughput here is
-    # simply concurrency / latency: at the ~30s per ranking call this endpoint
-    # was serving, 14 workers gives 28 calls a minute and a 3,000-game sweep
-    # takes 12 hours. The data collector, which is threaded, ran 100 concurrent
-    # against the same endpoint without trouble.
+    # A turn is ~1.8s of CPU followed by a guesser call that this endpoint has
+    # served in anywhere from 2.6s to 30s, so throughput is bounded twice: by
+    # games in flight / latency, and by CPU.
     #
-    # Threads are safe here for reasons that are checked, not assumed:
-    #   - workers sit at ~20% CPU, blocked on HTTP, and both the OpenAI client's
-    #     socket wait and LightGBM's predict release the GIL;
-    #   - spymasters assign no attributes outside __init__, so one instance
-    #     serves every thread;
-    #   - SimilarityTensor is a read-only mmap;
-    #   - llm_store opens WAL with check_same_thread=False and a 30s busy
-    #     timeout, i.e. it was built for concurrent workers;
-    #   - GameRecordStore writes under _RECORD_LOCK above.
-    # `_WORKER_STATE` is module-level, so with threads it is initialised ONCE in
-    # this process rather than per worker -- every worker was being handed
-    # identical values anyway, and that sharing is the entire memory win.
+    #   - Processes alone: each holds a private 1.13 GB (PSS, measured) copy of
+    #     the tensor, booster and lexical tables, so a 30 GB box caps near 16
+    #     and 48 once OOM-killed an editor. 16 in flight / 30s is 0.5 turns/s
+    #     while the CPU sits mostly idle.
+    #   - Threads alone: measured scaling on pure clue computation, no API, is
+    #     1.0 / 1.9 / 2.3 / 2.6 / 2.5x at 1/4/8/16/32 threads -- about a third
+    #     of a turn holds the GIL, so one process tops out near 1.5 turns/s
+    #     however many threads it has.
+    #   - Both: P processes of T threads each give P*T in flight and P GILs.
+    #     6 x 16 is ~96 in flight and ~8.7 turns/s of CPU, which is 5-6x the
+    #     16-process setup at either end of the latency range.
     #
-    # What is given up is isolation from NATIVE crashes only; Python exceptions
-    # are per-thread either way and still arrive as future exceptions. Across
-    # every run this project has logged, failures were 90 RuntimeError, 7
-    # RateLimitError and 1 ValueError -- no segfaults. The `spawn` context the
-    # process path uses exists to dodge a CUDA-after-fork hazard, which cannot
-    # arise without a fork; the GPU arena keeps processes regardless.
+    # An earlier note here said threads were MEASURED SLOWER (1.3 calls/min vs
+    # 28). That measurement counted new rows in llm_store while the run was
+    # replaying seeds an earlier run had already bought -- cache hits add no
+    # rows -- so it measured cache state, not speed. The scaling numbers above
+    # replace it.
+    #
+    # Threads within a process are safe for checked reasons: spymasters assign
+    # no attributes outside __init__; SimilarityTensor is a read-only mmap;
+    # llm_store opens WAL with check_same_thread=False; GameRecordStore writes
+    # under _RECORD_LOCK. OMP_NUM_THREADS is forced to 1 for the workers, or
+    # every thread's predict opens its own OpenMP pool (838 threads observed at
+    # 100). Native-crash isolation is kept at process granularity: a segfault
+    # loses one chunk, not the run.
     init_args = (sims_cache_dir, spec_x, spec_y, names, guesser_pool_config,
                  guesser_name, max_turns, game_record_db, run_label)
-    if use_threads:
-        _matchup_worker_init(*init_args)
-        pool = ThreadPoolExecutor(max_workers=max_workers)
-    else:
-        pool = ProcessPoolExecutor(
+    hybrid = threads_per_worker > 1
+    saved_omp = os.environ.get("OMP_NUM_THREADS")
+    manager = None
+    if hybrid:
+        # Spawned children inherit the environment at launch, and LightGBM's
+        # OpenMP runtime reads it when it loads -- so it must be set here.
+        os.environ["OMP_NUM_THREADS"] = "1"
+    try:
+        with ProcessPoolExecutor(
             max_workers=max_workers,
             mp_context=multiprocessing.get_context("spawn"),
             initializer=_matchup_worker_init,
             initargs=init_args,
-        )
-    with pool as executor:
-        played, failed = [], {}
-        for result, swapped, seed, err in executor.map(_matchup_task, tasks):
-            if result is None:
-                failed.setdefault(seed, err)
+        ) as executor:
+            if hybrid:
+                # One shared queue, one puller per process; see _matchup_pull.
+                manager = multiprocessing.get_context("spawn").Manager()
+                shared = manager.Queue()
+                for t in tasks:
+                    shared.put(t)
+                n_proc = max_workers or 1
+                futures = [executor.submit(_matchup_pull, shared, threads_per_worker)
+                           for _ in range(n_proc)]
+                results = (r for f in futures for r in f.result())
             else:
-                played.append((result, swapped, seed))
-            done += 1
-            if progress and done % 10 == 0:
-                print(f"  {done}/{len(tasks)} games", flush=True)
+                results = executor.map(_matchup_task, tasks)
+            played, failed = [], {}
+            for result, swapped, seed, err in results:
+                if result is None:
+                    failed.setdefault(seed, err)
+                else:
+                    played.append((result, swapped, seed))
+                done += 1
+                if progress and done % 10 == 0:
+                    print(f"  {done}/{len(tasks)} games", flush=True)
+    finally:
+        if hybrid:
+            if manager is not None:
+                manager.shutdown()
+            if saved_omp is None:
+                os.environ.pop("OMP_NUM_THREADS", None)
+            else:
+                os.environ["OMP_NUM_THREADS"] = saved_omp
 
     if failed:
         seed, err = next(iter(failed.items()))

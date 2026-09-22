@@ -216,3 +216,81 @@ class TestOneRefusalDoesNotEndTheMatchup:
         })
         with pytest.raises(RuntimeError):
             arena._matchup_task((4242, False))
+
+
+class TestHybridPull:
+    """`_matchup_pull` keeps games in flight from a queue shared by every worker."""
+
+    @staticmethod
+    def _queue(tasks):
+        import queue
+        q = queue.Queue()
+        for t in tasks:
+            q.put(t)
+        return q
+
+    def test_every_game_comes_back_exactly_once(self, monkeypatch):
+        """Results carry their own (seed, swapped), so order is free -- but a
+        game dropped or played twice would silently change the win rate."""
+        import time as _t
+
+        def fake(task):
+            seed, swapped = task
+            _t.sleep(0.02 if seed % 3 == 0 else 0.0)   # finish out of order
+            return ("r", swapped, seed, None)
+
+        monkeypatch.setattr(arena, "_WORKER_STATE", {})
+        monkeypatch.setattr(arena, "_matchup_task", fake)
+        tasks = [(s, sw) for s in range(20) for sw in (False, True)]
+        out = arena._matchup_pull(self._queue(tasks), threads=6)
+        assert sorted((r[2], r[1]) for r in out) == sorted(tasks)
+
+    def test_two_pullers_share_the_work_without_overlap(self, monkeypatch):
+        """The point of the queue: two workers draining it together must
+        partition the games, not each play all of them."""
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        monkeypatch.setattr(arena, "_WORKER_STATE", {})
+        monkeypatch.setattr(arena, "_matchup_task",
+                            lambda task: ("r", task[1], task[0], None))
+        tasks = [(s, False) for s in range(50)]
+        q = self._queue(tasks)
+        with _TPE(2) as ex:
+            a, b = ex.map(lambda _: arena._matchup_pull(q, threads=3), range(2))
+        assert len(a) + len(b) == 50
+        assert not {r[2] for r in a} & {r[2] for r in b}
+
+    def test_a_real_bug_still_ends_the_run(self, monkeypatch):
+        """Threads must not swallow what a process would have raised."""
+        def fake(task):
+            raise RuntimeError("ValueError in seed 7: a real bug")
+
+        monkeypatch.setattr(arena, "_WORKER_STATE", {})
+        monkeypatch.setattr(arena, "_matchup_task", fake)
+        with pytest.raises(RuntimeError, match="a real bug"):
+            arena._matchup_pull(self._queue([(7, False)]), threads=2)
+
+    def test_clue_search_is_capped_per_process(self, monkeypatch):
+        """At most COMPUTE_SLOTS threads may be inside a spymaster's clue
+        search at once. Unguarded, 2 processes x 16 threads peaked at 13 GB
+        because every thread held the first stage's temporaries together."""
+        import threading as _th
+        import time as _t
+
+        inside, peak, lock = [0], [0], _th.Lock()
+
+        class FakeSpymaster:
+            def _score_all_clues(self, *a):
+                with lock:
+                    inside[0] += 1
+                    peak[0] = max(peak[0], inside[0])
+                _t.sleep(0.02)
+                with lock:
+                    inside[0] -= 1
+
+        sm = FakeSpymaster()
+        monkeypatch.setattr(arena, "_WORKER_STATE", {"x": sm, "y": FakeSpymaster()})
+        monkeypatch.setattr(arena, "_matchup_task",
+                            lambda task: (sm._score_all_clues(), task[1], task[0], None))
+        arena._matchup_pull(self._queue([(s, False) for s in range(24)]), threads=16)
+        assert peak[0] <= arena.COMPUTE_SLOTS
+        assert peak[0] == arena.COMPUTE_SLOTS, "the cap should be reached, not starved"

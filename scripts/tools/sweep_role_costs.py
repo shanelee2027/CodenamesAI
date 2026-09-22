@@ -268,12 +268,13 @@ def main() -> None:
     ap.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG)
     ap.add_argument("--guesser", default="llm")
     ap.add_argument("--max-workers", type=int, default=None)
-    ap.add_argument("--threads", action="store_true",
-                    help="run games on threads rather than processes. Each process holds a "
-                         "private 1.13 GB copy of the tensor and tables, capping a 30 GB box "
-                         "near 18 workers; threads share one copy, so concurrency is bounded "
-                         "by the provider instead. Throughput is concurrency/latency, and this "
-                         "endpoint has served anywhere from 2.6s to 30s per ranking call.")
+    ap.add_argument("--threads-per-worker", type=int, default=1,
+                    help="threads inside each worker process. 1 is the old one-game-"
+                         "per-process behaviour. With an LLM guesser, e.g. "
+                         "--max-workers 6 --threads-per-worker 16: processes are capped "
+                         "by memory (1.13 GB each), a single process by its GIL (~2.5x a "
+                         "core), and the product sets games in flight. See "
+                         "codenames/two_team_arena.py::run_two_team_matchup.")
     ap.add_argument("--record-games", type=Path, default=None,
                     help="required for the paired sign test -- it needs per-board results")
     ap.add_argument("--model-path", type=Path, default=None,
@@ -341,7 +342,7 @@ def main() -> None:
             guesser_pool_config=args.guesser_pool_config, guesser_name=args.guesser,
             seeds=seeds, max_workers=args.max_workers,
             game_record_db=args.record_games, run_label=run,
-            use_threads=args.threads,
+            threads_per_worker=args.threads_per_worker,
         )
         base_st, chal_st = result.sides["base"], result.sides[name]
         row = {
