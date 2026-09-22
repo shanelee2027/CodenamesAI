@@ -138,6 +138,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--boards", type=int, default=40)
     ap.add_argument("--decoys", type=int, default=N_DECOYS)
+    ap.add_argument("--shortlist-sample", type=int, default=0,
+                    help="replace the three grades with K clues drawn from the listener's own\n                         top-50. The three-grade contrast is confounded: decoy wins are common\n                         on random clues and random clues fail anyway, so pooling grades\n                         conflates the anchor with the grade. Within the shortlist -- the only\n                         clues the deployed model ever plays -- that confound is gone.")
     ap.add_argument("--skip-pass", action="store_true",
                     help="PASS measured inert (r=-0.068, p=0.47); skip to spend the calls on decoys")
     ap.add_argument("--first-seed", type=int, default=90000)
@@ -181,7 +183,14 @@ def main() -> None:
         off = [w for w in vocab if w.lower() not in {x.lower() for x in words}]
         decoys = [w.capitalize() for w in rng.sample(off, args.decoys)]
 
-        for grade, clue in (("top", top), ("mid", mid), ("random", rand)):
+        if args.shortlist_sample:
+            pool = [sims.clue_words[int(c)] for c in order[:50]
+                    if is_legal_clue(sims.clue_words[int(c)], words)]
+            picks = rng.sample(pool, min(args.shortlist_sample, len(pool)))
+            grades = [(f"shortlist{j}", c) for j, c in enumerate(picks)]
+        else:
+            grades = [("top", top), ("mid", mid), ("random", rand)]
+        for grade, clue in grades:
             # --- PASS ---
             shuffled = words[:]
             rng.shuffle(shuffled)
