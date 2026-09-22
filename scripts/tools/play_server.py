@@ -41,7 +41,12 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Two layouts: in the repo this file sits at scripts/tools/, and in a demo
+# bundle (scripts/tools/make_demo_bundle.py) it sits beside `codenames/` at the
+# top level. Pick whichever actually contains the package rather than assuming
+# a depth, so the bundle does not depend on where it was unzipped.
+_HERE = Path(__file__).resolve().parent
+PROJECT_ROOT = next((c for c in (_HERE.parents[1], _HERE) if (c / "codenames").is_dir()), _HERE)
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
