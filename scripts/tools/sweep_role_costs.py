@@ -68,6 +68,14 @@ MODEL = "learned_listener"
 # The incumbent, from codenames/game.py's reward table.
 BASE = {"neutral_cost": 0.2, "opponent_cost": 1.0, "assassin_cost": 10.0}
 
+# Pinned, not inherited. Everything the spymaster reads that is NOT the axis
+# under test has to be fixed here, or a change to a default silently splits the
+# run into two models: `exclude_acronyms` flipped to True mid-sweep, and
+# resuming would have measured the last 13 settings against a different pool
+# than the first 2. Held apart from BASE because these are not swept -- they
+# are the model the sweep is a statement about.
+MODEL_PINS = {"exclude_acronyms": True, "k1_tiebreak": False}
+
 # One axis at a time, so a result points at a parameter rather than at a
 # corner of a grid. Values bracket the incumbent on both sides where that is
 # meaningful -- a setting that loses on the low side is as informative as one
@@ -264,7 +272,8 @@ def main() -> None:
             settings.append({**BASE, key: v})
 
     seeds = list(range(args.first_seed, args.first_seed + args.n_boards))
-    base_spec = spymaster_spec(MODEL, **BASE)
+    base_spec = spymaster_spec(MODEL, **BASE, **MODEL_PINS)
+    print("model pins: " + ", ".join(f"{k}={v}" for k, v in MODEL_PINS.items()), flush=True)
     print(f"{len(settings)} settings x {2*len(seeds)} games = {len(settings)*2*len(seeds)} games, "
           f"guesser {args.guesser}\n", flush=True)
 
@@ -289,7 +298,7 @@ def main() -> None:
                       flush=True)
         t0 = time.time()
         result = run_two_team_matchup(
-            base_spec, spymaster_spec(MODEL, **overrides), ("base", name),
+            base_spec, spymaster_spec(MODEL, **overrides, **MODEL_PINS), ("base", name),
             guesser_pool_config=args.guesser_pool_config, guesser_name=args.guesser,
             seeds=seeds, max_workers=args.max_workers,
             game_record_db=args.record_games, run_label=run,
