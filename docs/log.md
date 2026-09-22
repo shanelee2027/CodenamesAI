@@ -5706,3 +5706,52 @@ every model and every recorded result was produced under the current
 definition. Moving this into the rules would silently redefine what those runs
 measured. `exclude_acronyms` defaults to True, so this does change the shipped
 model; it needs a docs/versions entry before it is treated as the baseline.
+
+## 2026-09-22 — an absolute anchor: PASS is inert, decoys work
+
+The listener's softmax normalises over board words only, so a clue is scored
+on the ranking it induces and never on how confidently it induces it: z=1 over
+four own words and z=3 over the same four are indistinguishable to it. Two
+candidate anchors were measured before committing to a re-collection, on 40
+boards x 3 clue grades, with the grades verified genuinely far apart (Gaussian
+percentile 99.65 / 97.19 / 48.83, the last with *negative* expected reward).
+
+**PASS -- asking the teacher where it stops recognising a connection -- is
+dead.** Correlation with clue quality r = -0.068, p = 0.47. The damning
+figure: on clues with negative expected reward gpt-oss claims to recognise 7.4
+of 25 words; on strong clues, 8.5. It cannot separate its own best pick from a
+random word by introspection, which was the stated risk of asking a model to
+report its own uncertainty.
+
+**Decoys work, but only at the top of the ranking.** Real board-vocabulary
+words that are not on this board, mixed into the candidate list. At 5 decoys
+the averages were flat (best-decoy rank r = +0.007) and only the rare event of
+a decoy outranking every board word discriminated (0% / 8.6% / 18.4%,
+p = 0.0122). At 15 decoys that becomes a strong signal:
+
+    grade     decoy wins   in top3       (chance: 37.5%, 1.12)
+    top            9.5%      0.62
+    mid           25.0%      0.86
+    random        56.1%      1.17
+
+    decoy_wins      r = -0.305  p = 0.0014
+    decoys_in_top3  r = -0.269  p = 0.0016
+    top_decoy       r = -0.002  p = 0.985     <- the average, still inert
+
+The flat average has a structural cause worth keeping: a decoy competes with
+the ~21 *unrelated* board words, not with the intended ones, so its typical
+rank tracks the size of that soup rather than the clue. Clue quality only
+moves the top few positions. "An off-board word beat everything on the board"
+is the outside-option event we wanted, reached behaviourally rather than by
+introspection -- which is precisely why it survives where PASS did not.
+
+Confound recorded: 56.1% sits *above* the 37.5% chance line, which a neutral
+clue should not. `is_legal_clue` removes clues sharing a stem with any board
+word, so a random *legal* clue is mildly anti-selected away from the board.
+That inflates the random grade. The top grade (9.5% against 37.5%) is
+unaffected and is the number to quote.
+
+Not yet decided, and the reason nothing has been collected: how many decoys to
+use at training versus inference time, and whether a decoy win should be
+modelled as the turn ending at cost 0 or as the guesser picking on regardless
+-- a human does not pass, they guess wrong, so cost 0 may understate it.
