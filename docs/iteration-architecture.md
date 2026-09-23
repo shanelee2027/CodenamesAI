@@ -24,17 +24,16 @@ evaluation.
 
 Settled, and it drives everything below:
 
-- **Evaluation uses only LLM guessers.** Standardized across models, so
-  results are comparable. The LLM model id is part of the eval suite's
-  identity -- switching Haiku to Sonnet to Opus invalidates every cached
-  response and makes old numbers non-comparable.
-- **Every other guesser exists only for training.** Training against the
-  LLM would overfit the spymaster to how one specific model thinks, and
-  would collapse the train/eval distinction entirely.
-
-`scripts/pipeline/run_arena.py`'s spymaster x guesser matrix is therefore a
-training diagnostic, not a scoreboard. Its numbers must never be
-presented as evaluation results.
+- **Evaluation uses one fixed LLM guesser** (Sonnet, `configs/eval_suite.json`),
+  standardized across models so results are comparable. The guesser spec
+  is part of the eval suite's identity -- switching model or effort
+  invalidates every cached response and makes old numbers non-comparable.
+- **The teacher is a different LLM** (gpt-oss-120b). The distilled
+  listener learns how one model reads a clue; evaluating against that same
+  model would reward fitting its quirks and collapse the train/eval
+  distinction. Against Sonnet the comparison is a transfer test.
+- **Synthetic guessers** (`configs/guesser_pool.json`) are free smoke
+  tests. Their numbers are never presented as results.
 
 ## Step 1: TurnContext and a top-k interface
 
@@ -77,14 +76,13 @@ every model, and must not be reimplemented per model.
 ## Step 2: A spymaster registry
 
 Every runner used to keep its own private list of which spymasters
-exist (`run_arena.py`, `run_two_team_arena.py`, and the since-removed
-inspectors), so adding a model meant editing all of them.
+exist, so adding a model meant editing all of them.
 
 `spymasters/registry.py` mirrors `guessers/registry.py`: a
 `SPYMASTER_CLASSES` dict, a `configs/spymasters.json` giving each entry a
 `name`, `type`, and `params`, and loaders that every script reads.
 
-**Constraint:** `arena.py:188` constructs spymasters *inside* spawned
+**Constraint:** `codenames/two_team_arena.py` constructs spymasters *inside* spawned
 worker processes, so the registry must be able to hand out a picklable
 `(class, kwargs)` spec, not just a live instance. A name-plus-params
 config satisfies this more cleanly than a class reference does.
@@ -93,42 +91,13 @@ A model also declares whether it has a trained artifact. Not every
 spymaster trains -- `centroid` and `expected_words` don't -- so no code
 path may assume a checkpoint exists.
 
-## Step 3: A batched-scoring protocol
+## Step 3: A batched-scoring protocol (retired)
 
-The GPU arenas used to be hardcoded to one model: they imported it
-directly, reached into its torch internals, and computed expected reward
-themselves. Any new model that scores the whole vocabulary then gets
-either the slow per-process path or a forked copy of a subtle lockstep
-loop.
-
-The batched loop does five things inline. Only the first and last belong
-to the arena:
-
-| | who owns it |
-|---|---|
-| gather board views for active games | arena |
-| build features | **model** |
-| forward pass | **model** |
-| expected reward -> `(best_n, scores)` | **model** |
-| pick the best *legal* clue | arena (`clue_search`) |
-
-So the boundary is: hand the spymaster board views, get back per-view
-scores over the whole clue vocabulary.
-
-```python
-class BatchScoringSpymaster(Protocol):
-    def score_batch(self, sims, contexts: list[TurnContext],
-                    ) -> list[tuple[np.ndarray, np.ndarray]]:
-        """(best_n, scores) per context, indexed by sims.clue_words."""
-
-    def to_device(self, device) -> None: ...
-```
-
-`to_device` replaces the arena reaching into a model's internals. The
-single-board path routes through `score_batch` with a one-element list,
-so there is exactly one scoring implementation per model.
-`ExpectedWordsSpymaster` implements this protocol; `to_device` is a
-no-op for it, since it scores in numpy on the CPU.
+A `BatchScoringSpymaster` protocol let a GPU arena batch whole-vocabulary
+scoring across many simultaneous boards. Current evaluation is a
+head-to-head matchup whose cost is guesser latency, run on processes x
+threads (codenames/two_team_arena.py), so the GPU arena and the protocol
+were removed. The heading is kept so step numbers stay stable.
 
 ## Step 4: Cache rollouts, not features (retired)
 
@@ -155,25 +124,31 @@ for multi-turn play would need a different one.
   cutting training vocabulary below 250. Cost: training board vocabulary
   drops 340 -> 250. The mechanism is free (`board.py:208` is a set
   difference; the similarity tensor covers all 400 regardless).
-- **The LLM model id is part of the suite identity.**
+- **The guesser spec is part of the suite identity.**
+- **What is played is a head-to-head matchup**, the same comparison every
+  sweep makes: challenger against opponent, each board twice with the sides
+  swapped. `scripts/pipeline/run_eval_suite.py` runs it.
 
 ## Step 6: An eval store
 
 The prompt cache (`llm_store.py`) prevents re-paying for an identical
 prompt. It does not prevent re-running an eval. Store results per game,
-keyed by `(spymaster_id, suite_id, board_seed)`:
+keyed by `(seating, suite_id, board_seed)`, where the seating
+`"A=<id>,B=<id>"` names both spymasters and who moved first:
 
 - a rerun costs nothing;
 - going from 100 to 300 boards pays only for the 200 new games;
 - a crashed run resumes.
 
-`GameRecordStore` already writes one row per game and needs the right
-key, not a rewrite.
+`GameRecordStore` writes one row per game under that key; a board counts as
+done once both seatings are recorded.
 
 **Identify a model by its content, not by a name.** A model's
 `spymaster_id` has to change whenever anything that changes its clues
 changes -- its parameters included -- or a cache keyed on it would
 silently serve one model's expensive results as another's.
+`eval_suite.spymaster_identity` hashes the constructor parameters and the
+content of every model file the spymaster loads (`Spymaster.model_files`).
 
 Because the whole game replays through cached responses, and because the
 cache key does not mention the spymaster, two models that give the same
@@ -185,20 +160,13 @@ a methodological benefit, not just a cost saving.
 
 **Done.** `scripts/` is grouped by *when you run it* — `data/` (build
 time, once), `pipeline/` (the iteration loop), `tools/` (interactive) —
-with [`scripts/README.md`](../scripts/README.md) as the index. The
-grouping is constrained by the fact that scripts import their siblings
-through `sys.path`, so anything that imports another script lives in the
-same group; that held for all four such pairs without contortion.
+with [`scripts/README.md`](../scripts/README.md) as the index. Scripts
+import only the `codenames` package (editable install), never each other:
+anything two scripts share lives in the package.
 
 Naming conventions for models and for `cache/` artifacts moved into
 [`CLAUDE.md`](../CLAUDE.md), since that is what gets read at the start of
 a session where a new model is about to be named.
-
-**Existing `cache/` artifacts were deliberately not renamed.** `cache/m9/`,
-`cache/arena_blend.db` and friends are gitignored local data; renaming
-them would break nothing and prove nothing, while risking the one file
-that genuinely matters (`cache/llm_store.db`). The convention applies to
-what gets created from here on.
 
 Historical entries in `docs/log.md` still reference the pre-move script
 paths. That is intentional: the log is a record of what was true when
@@ -209,5 +177,6 @@ was updated.
 
 `cache/llm_store.db` is the record of every dollar spent, and since LLMs
 are not deterministic even at temperature 0, it is also the only thing
-making past evals reproducible. It lives in a gitignored directory with
-no backup. It needs a real backup story.
+making past evals reproducible. It lives in a gitignored directory; take a
+dated copy (`cache/llm_store.db.bak-YYYYMMDD`, via SQLite's backup API)
+before anything that rewrites it.

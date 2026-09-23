@@ -188,10 +188,11 @@ the heading named in each entry.
     only.
 - ✅ gpt-oss as the cheap bulk guesser, 47× cheaper than Sonnet per call —
   **[in use]** for sweeps.
-- ⬜ **Frozen benchmark `holdout_v1`**: 100 fixed boards built only from the
-  150 held-out words, with a Sonnet guesser. It is designed but **has never
-  been run**. Recent results use gpt-oss on ad-hoc seeds, so they are only
-  comparable within one sweep.
+- 🔄 **Frozen benchmark `holdout_v1`**: 100 fixed boards built only from the
+  150 held-out words, Sonnet guesser, played head to head in both seatings.
+  Runnable (`scripts/pipeline/run_eval_suite.py`) but **not yet run**. Recent
+  results use gpt-oss on ad-hoc seeds, so they are only comparable within one
+  sweep.
   - ⬜ Pin the incumbent's config for it, including whether the k=1 tiebreak
     is on.
 - ⬜ Teacher benchmark: fixed positions, scoring Qwen3-8B, gpt-oss and Sonnet

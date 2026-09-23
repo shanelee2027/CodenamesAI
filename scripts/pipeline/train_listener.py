@@ -18,7 +18,7 @@ mis-assigned seed silently contaminates the eval set.
 Usage:
     python scripts/pipeline/train_listener.py
     python scripts/pipeline/train_listener.py --learning-curve
-    python scripts/pipeline/train_listener.py --model deepinfra/openai/gpt-oss-120b+effort=low
+    python scripts/pipeline/train_listener.py --model claude-sonnet-5+effort=medium   # another teacher
 """
 
 from __future__ import annotations

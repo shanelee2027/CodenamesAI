@@ -2988,3 +2988,57 @@ bug could plausibly flatter a real strategy more than a random one.
 References to the earlier trained models were removed from every doc and
 docstring, and this log's entries from before the `z_threshold` baseline
 were cut (git history keeps them).
+
+## Cleanup, part two: what was unused, what was wasted, and a runnable benchmark
+
+Removed, because nothing current reads them: four synthetic guessers (blend,
+rank-based, confidence-threshold, history-aware) and their three pool configs,
+the single-team arena, the GPU two-team arena and the batch-scoring protocol
+that existed only for it, the orphaned inspector page (its server was deleted
+long ago), and four one-off probes. Kept at Shane's request: the scratch
+notebooks, and `clue_number_arc.py`, which one of them plots.
+
+**The history-aware guesser's bookkeeping was spending real money.** After
+every turn, `game.py` called `Guesser.update_history`, which re-asked the
+guesser to rank each earlier clue that had ended on a miss, against the words
+still on the board -- so a guesser like `HistoryAwareGuesser` could decide
+whether an earlier clue still "owed" a word. Only that guesser ever read the
+answer. Every other guesser, the LLMs included, paid for the call and threw
+the result away. Counted in the store: every response with no clue number is
+exactly this shape (an earlier clue, a strict subset of its candidates), and
+there are **3,354 of 10,176 Sonnet calls (33%, roughly $16) and 20,442 of
+88,077 gpt-oss calls (23%)**. No game outcome was affected -- the answer was
+never used -- but sweeps spent about a quarter of their guesser calls on it.
+The mechanism is gone; sweeps now make only the calls a turn needs.
+
+**The frozen suite is now runnable, and plays what the sweeps play.** It was
+built on the GPU arena as self-play (one spymaster on both sides) and nothing
+called it. It is now a head-to-head matchup on the held-out boards in both
+seatings (`scripts/pipeline/run_eval_suite.py`), each game stored under its
+seating, so a board counts as done only when both seatings are recorded and a
+rerun pays only for what is missing. A spymaster's identity hashes its
+parameters and the bytes of its booster (`Spymaster.model_files`).
+
+**Guessers are one spec string**, e.g. `anthropic:claude-sonnet-5:medium` or
+`deepinfra:openai/gpt-oss-120b`, replacing one JSON file per model. Checked
+before switching: the specs reproduce the stored cache identities exactly
+(`claude-sonnet-5+effort=medium`, `deepinfra/openai/gpt-oss-120b+effort=low`),
+so every past game still replays from cache. The suite's identity is now its
+name plus that spec; it had never been run, so nothing was orphaned.
+
+Consolidated: `codenames/stats.py` (Wilson, sign test, Fisher, bootstrap,
+permutation), `codenames/headtohead.py` (pairing recorded games by board),
+and `codenames/listener_training.py` (everything above `main()` in
+`train_listener.py`, which four tools imported by resetting `sys.argv` and
+putting the repo on `sys.path`). Scripts now import only the package, through
+the editable install. `DEFAULT_MODEL` for training is now the gpt-oss teacher
+rather than Sonnet, which every real run had to override by hand.
+
+**One bug fixed on the way:** a `--resume`d role-cost setting reported
+own/clue and mean k pooled over *both* arms rather than the challenger's.
+Only resumed rows were affected; freshly played rows were always right.
+
+`docs/design-decisions.md` said "the LLM guesser never appears in training".
+That stopped being true when the listener was distilled from gpt-oss; the
+guard that survives, and is now stated, is that the *evaluation* guesser is
+never the teacher.

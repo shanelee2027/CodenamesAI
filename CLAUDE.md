@@ -32,12 +32,8 @@ model, and nothing else edited.
 ## Cache layout
 
 Generated artifacts under `cache/` (gitignored) are named for what they
-are, not for the run that made them: `cache/rollouts/`,
-`cache/training_data/`, `cache/checkpoints/`, `cache/llm_store.db`. Older
-artifacts predating this (`cache/m9/`, `cache/arena_blend.db`,
-`cache/sanity_check2.db`) are left as they are rather than renamed —
-they're gitignored local data, and renaming them would break nothing but
-prove nothing either.
+are, not for the run that made them: `cache/listener_gbt.txt`,
+`cache/training_data/`, `cache/llm_store.db`.
 
 `cache/llm_store.db` is the exception worth care: it holds every paid LLM
 response, and since LLM output isn't deterministic even at temperature 0,

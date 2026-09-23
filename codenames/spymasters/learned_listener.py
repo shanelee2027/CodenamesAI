@@ -16,9 +16,8 @@ the shortlist. At the default 200 that is ~0.15 s per turn.
 
 The obvious risk is that the shortlist is itself chosen by the model we are
 trying to replace: a clue the Gaussian ranks 500th can never be recovered, no
-matter how good the listener is. `SHORTLIST` is therefore a parameter, and
-`scripts/tools/compare_shortlist_depth.py` measures how often the final pick
-changes between depths -- if it rarely changes, the depth is enough.
+matter how good the listener is. `SHORTLIST` is therefore a parameter. How
+often the final pick changes with the depth has not been measured.
 
 **The listener never sees roles.** Features are extracted for every unrevealed
 word at once, exactly as in training, and the scores are split into ours and

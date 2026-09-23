@@ -37,7 +37,7 @@ EXTRA_SIMS = CACHE / "extra_sims.npz"
 WORD_NORMS = CACHE / "word_norms.npz"
 WORDNET_SIMS = CACHE / "wordnet_sims.npz"
 LEXICAL_SIMS = CACHE / "lexical_sims.npz"
-DEFAULT_MODEL = "claude-sonnet-5+effort=medium"
+DEFAULT_MODEL = "deepinfra/openai/gpt-oss-120b+effort=low"  # the teacher
 
 # Named feature blocks, so an ablation is a flag rather than an edit. The point
 # of `nb` is that it is EXACTLY what a numberbatch-only model can see: the three

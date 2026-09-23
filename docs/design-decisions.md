@@ -48,16 +48,17 @@ unseen board *content*, which is a different axis from generalizing to an
 unseen listener. See `docs/iteration-architecture.md` step 5 for why 150
 rather than the original 60.
 
-**The LLM guesser never appears in training.** Evaluation uses only LLM
-guessers; every other guesser exists only for training. Training against
-the LLM would fit the spymaster to how one specific model reads a clue
-and would collapse the train/eval distinction entirely, leaving no
-held-out listener to measure against. The LLM model id is part of
-`EvalSuite.suite_id` for the same reason (`codenames/eval_suite.py`).
+**The evaluation guesser never appears in training.** The listener is
+distilled from one LLM (gpt-oss-120b) and evaluated against another
+(Sonnet). Training on the evaluation guesser's rankings would fit the
+spymaster to how that one model reads a clue and turn evaluation into a
+self-test. This was originally stated as "no LLM appears in training";
+distilling the listener from an LLM teacher changed that, and the guard
+that survives is the separation of teacher and evaluator. The guesser spec
+is part of `EvalSuite.suite_id` (`codenames/eval_suite.py`).
 
-A consequence worth stating plainly: `scripts/pipeline/run_arena.py`'s
-spymaster × guesser matrix is a training diagnostic, not a scoreboard.
-Its numbers must never be presented as evaluation results.
+Synthetic embedding guessers are free smoke tests; their numbers are never
+presented as results.
 
 ## Reward values are a scoring-time knob
 
@@ -90,13 +91,15 @@ can't be cited in a results table, swept over, or diffed between runs.
 
 ## Method decisions
 
-**Nothing here trains.** Every model is a scoring function written down
-in closed form and evaluated against the frozen LLM suite.
+**The spymaster is a search, not a trained policy.** What is fitted is the
+*listener*: a model of which word a guesser picks for a clue, distilled
+from an LLM's rankings (`codenames/listener_training.py`). The spymaster
+then maximises expected reward under it, in closed form
+(`codenames/pl_reward.py`). The baselines fit nothing at all.
 
-If a future model does need fitting, the outcome of a (board, clue,
-guesser) triple is directly simulable — full feedback on every action,
-for free, unlimited times — so it is a supervised problem, not an RL
-one. RL would deliver the same information through policy gradients over
+The outcome of a (board, clue, guesser) triple is directly simulable —
+full feedback on every action, unlimited times — so fitting is a
+supervised problem, not an RL one. RL would deliver the same information through policy gradients over
 a ~111k-action space, with high variance and no clean validation metric.
 Two rules worth not rediscovering: split
 train/val by board seed rather than by row, since one board appears in
