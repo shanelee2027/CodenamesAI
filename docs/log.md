@@ -6246,3 +6246,29 @@ hits), so a pilot will resolve on first-pick-own and stopping rate sooner. The
 plan is ~100 positions, then fix the full sample size from the observed gap
 BEFORE collecting more -- choosing it after peeking would inflate the false
 positive rate.
+
+## The eval guesser is Sonnet, not Opus
+
+Shane's call, on cost: the frozen eval suite (`configs/eval_suite.json`,
+`holdout_v1`) now points at `configs/guesser_pool_llm_sonnet.json`, and
+`llm_model` is `claude-sonnet-5`. Opus is kept for the very last stage, when
+final numbers are produced, and not before.
+
+This reverses the choice made in "Sonnet vs. Opus as the evaluation guesser"
+above, which kept Opus for defensibility even though 25 paired positions
+showed no detectable difference (-0.04 own/turn, 95% CI [-0.22, +0.14]) at
+about a fifth of the price. That measurement is what makes the switch
+reasonable: it rules out "a lot worse", though not "slightly worse".
+
+Nothing is invalidated. `llm_model` is part of `EvalSuite.suite_id`, so the
+switch does change the suite's identity -- but the suite has never been run
+(zero suite-tagged rows in `game_records`), so there were no recorded games to
+orphan.
+
+**One cost worth naming.** Sonnet is also the listener that `expected_words`'
+sigma was chosen against, so that baseline is now evaluated on the guesser it
+was tuned for. `docs/versions/expected_words.md` says so. The learned listener
+is distilled from gpt-oss-120b, so for it Sonnet is still a transfer test.
+
+`scripts/tools/compare_guesser_models.py` still defaults to comparing Opus
+and Sonnet. It is a diagnostic tool, not the suite, and was left alone.

@@ -146,11 +146,15 @@ drawn from held-out board words, scored the way the game scores a turn.
 assassin hits and 80/100 clean finishes; the announced number falls
 monotonically with `sigma`, from 3.96 at 0.25 to 1.13 at 10.0.
 
-**The guesser in that sweep was Claude Sonnet.** That is a deliberate
-split from the frozen eval suite, which uses Opus — but it does mean this
-model's one parameter was chosen against an LLM listener, which is worth
-stating plainly rather than leaving for someone to notice. See
-`docs/iteration-architecture.md`'s "two roles for guessers".
+**The guesser in that sweep was Claude Sonnet — and the frozen eval
+suite now uses Sonnet too.** It was originally a deliberate split from the
+suite, which used Opus; the suite moved to Sonnet on cost (see
+`docs/log.md`, "The eval guesser is Sonnet, not Opus"). So this model's one
+parameter was chosen against the same listener it is evaluated on, which
+flatters it slightly and is worth stating plainly rather than leaving for
+someone to notice. Opus stays available for final headline numbers, where
+the split is restored. See `docs/iteration-architecture.md`'s "two roles
+for guessers".
 
 **Stale class default.** `codenames/spymasters/expected_words.py` still
 defaults to `sigma=1.8`, which the sweep shows is miscalibrated (mean `k`

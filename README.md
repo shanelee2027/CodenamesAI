@@ -176,7 +176,7 @@ a new model would flatter them. Their measurements remain in
 The evaluation that replaces them is defined in
 [`docs/iteration-architecture.md`](docs/iteration-architecture.md): a frozen
 suite of board seeds built entirely from held-out words, played against a
-single fixed LLM guesser (Claude Opus 5 at medium effort), with every game
+single fixed LLM guesser (Claude Sonnet 5 at medium effort), with every game
 cached so a model is paid for exactly once. No model has been run against
 it yet.
 
