@@ -4,6 +4,7 @@ cache/*
 !cache/.gitkeep
 __pycache__/
 .venv/
+.venv-vllm/
 *.npy
 *.bin
 *.db

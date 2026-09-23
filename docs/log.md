@@ -3042,3 +3042,36 @@ Only resumed rows were affected; freshly played rows were always right.
 That stopped being true when the listener was distilled from gpt-oss; the
 guard that survives, and is now stated, is that the *evaluation* guesser is
 never the teacher.
+
+## Qwen3-8B as the whole teacher: scoring set-up
+
+**Expected:** a local model gives every candidate's probability at every
+step, so a listener could learn from full distributions rather than one
+sampled pick. **Decision (user):** Qwen is the *whole* teacher. Scoring
+along gpt-oss's pick order would smuggle gpt-oss into steps 2+, and fitting
+a temperature to gpt-oss or Sonnet picks would make them part of the
+teacher. So step j conditions on Qwen's own argmax at steps 1..j-1
+(`--source own`), labels are used at T=1, and Sonnet is used only to
+evaluate. A second scoring pass along Sonnet's actual picks (`--source
+<sonnet id>`) exists only to score raw Qwen as a predictor of Sonnet.
+
+**Calibration, measured before deciding anything:** on 3,026 first picks,
+Qwen's top word matched gpt-oss's 75% of the time when Qwen was 99%+ sure,
+39% at 90–99%, 49% overall at a mean confidence of 0.86, and gave gpt-oss's
+actual pick a median 0.002 when they disagreed. Overconfident as a model of
+another guesser, which is the reason to distil rather than use it raw.
+
+**FP8 numerics.** Batching prompts of different lengths needs a padding
+mask, and the mask switches PyTorch to a different attention kernel. On this
+FP8 checkpoint that moved candidate log-probs by ~1 nat, even for the
+unpadded row. vLLM, with its own kernels, differed from HF by up to 0.6 in
+probability. The HF backend now batches only prefixes of identical token
+length (bit-identical to scoring one at a time, and 2× faster than before);
+vLLM works but is not used, since one dataset must come from one set of
+kernels.
+
+**Throughput.** `--max-rows` bounds candidates per forward pass; each copies
+the prompt's key/value cache. At 80: 5.6 positions/s. At 120: 1.3/s, peak
+15.9 of 16 GB -- under WSL the driver spills GPU memory into system RAM
+instead of failing, so too large a batch is silently 4× slower rather than
+an out-of-memory error. 80 it is.

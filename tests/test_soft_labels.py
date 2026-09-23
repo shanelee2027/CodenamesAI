@@ -52,9 +52,15 @@ class TestLoadSoftLabels:
     def _store(self, tmp_path):
         st = DistributionStore(tmp_path / "d.db")
         lp = np.log(np.array([0.7, 0.2, 0.1]))
-        st.put("lm", "clue", ["a", "b", "c"], 2, ["a"],
-               [StepDistribution(["a", "b", "c"], lp), StepDistribution(["b", "c"], np.log([0.9, 0.1]))])
+        st.put_many("lm", "own", [("clue", ["a", "b", "c"], 2,
+                    [StepDistribution(["a", "b", "c"], lp), StepDistribution(["b", "c"], np.log([0.9, 0.1]))])])
         return tmp_path / "d.db"
+
+    def test_sources_are_kept_apart(self, tmp_path):
+        """Distributions conditioned on another guesser's picks evaluate; they
+        must never be loaded as training labels."""
+        path = self._store(tmp_path)
+        assert load_soft_labels(path, "lm", 1.0, source="some-guesser") == {}
 
     def test_temperature_one_is_the_model(self, tmp_path):
         d = load_soft_labels(self._store(tmp_path), "lm", 1.0)[("clue", ("a", "b", "c"), 2)]
@@ -72,3 +78,13 @@ class TestLoadSoftLabels:
 def test_answer_prefix_matches_the_prompts_json_format():
     assert answer_prefix([]) == '["'
     assert answer_prefix(["Wave", "Beach"]) == '["Wave", "Beach", "'
+
+
+class TestBoardIndex:
+    def test_indexed_lookup_agrees_with_a_scan(self):
+        from codenames.listener_training import BoardIndex, resolve_seed
+        boards = [(1, frozenset({"a", "b", "c"})), (2, frozenset({"a", "b", "d"})), (3, frozenset({"x", "y", "z"}))]
+        idx = BoardIndex(boards)
+        for cands in (["a", "b"], ["A", "c"], ["y", "z"], ["a", "x"], ["q"]):
+            assert resolve_seed(cands, idx) == resolve_seed(cands, boards)
+        assert resolve_seed(["a", "b"], idx) is None, "two boards fit: ambiguous, never guessed"

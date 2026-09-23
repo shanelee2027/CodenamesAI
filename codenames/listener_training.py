@@ -62,7 +62,21 @@ FEATURE_BLOCKS: dict[str, list[str]] = {
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
 
 
-def board_lookup(max_seed: int, collected: int = 0) -> list[tuple[int, frozenset[str]]]:
+class BoardIndex(list):
+    """(seed, word set) pairs, plus an index from each word to the boards
+    holding it, so a position resolves by intersecting a few sets instead of
+    scanning every board. At 45,000 boards x 67,000 cached rankings the
+    scan was billions of subset tests and dominated every load."""
+
+    def __init__(self, boards: list[tuple[int, frozenset[str]]]):
+        super().__init__(boards)
+        self.by_word: dict[str, set[int]] = {}
+        for i, (_, words) in enumerate(boards):
+            for w in words:
+                self.by_word.setdefault(w, set()).add(i)
+
+
+def board_lookup(max_seed: int, collected: int = 0) -> BoardIndex:
     """(seed, word set) for every board a cached response could have come from.
 
     Two sources, built with different vocabularies and disjoint seed ranges:
@@ -79,7 +93,7 @@ def board_lookup(max_seed: int, collected: int = 0) -> list[tuple[int, frozenset
         base = 1_000_000
         out += [(base + i, frozenset(w.lower() for w in Board.generate(seed=base + i, vocabulary=vocab).words))
                 for i in range(collected)]
-    return out
+    return BoardIndex(out)
 
 
 def resolve_seed(candidates: list[str], boards: list[tuple[int, frozenset[str]]]) -> int | None:
@@ -91,24 +105,49 @@ def resolve_seed(candidates: list[str], boards: list[tuple[int, frozenset[str]]]
     None rather than resolved arbitrarily -- putting the same board on both
     sides of the split is the one failure this whole function exists to prevent.
     """
-    want = frozenset(w.lower() for w in candidates)
-    hits = [s for s, words in boards if want <= words]
+    want = [w.lower() for w in candidates]
+    if isinstance(boards, BoardIndex):
+        sets = sorted((boards.by_word.get(w, set()) for w in set(want)), key=len)
+        hits = set.intersection(*sets) if sets else set()
+        return boards[next(iter(hits))][0] if len(hits) == 1 else None
+    want_set = frozenset(want)
+    hits = [s for s, words in boards if want_set <= words]
     return hits[0] if len(hits) == 1 else None
 
 
-def load_soft_labels(path: Path, lm: str, temperature: float = 1.0) -> dict:
+def _feature_cache_path() -> Path:
+    """Where extracted features are cached, named by a fingerprint of
+    everything they depend on: the feature list, this module and
+    listener_features.py, and every side table's size and mtime. Change any
+    of them and the name changes, so a stale cache is never read."""
+    import hashlib
+
+    h = hashlib.sha256(",".join(FEATURE_NAMES).encode())
+    here = Path(__file__).resolve().parent
+    for f in (here / "listener_features.py", here / "listener_training.py"):
+        h.update(f.read_bytes())
+    for f in (WORD_STATS, SWOW_TABLES, ENTITY_SIMS, LM_PMI, EXTRA_SIMS, WORD_NORMS, WORDNET_SIMS,
+              LEXICAL_SIMS, CACHE / "similarity_tensor.npy", CACHE / "clue_stats.npz"):
+        if f.exists():
+            st = f.stat()
+            h.update(f"{f.name}:{st.st_size}:{st.st_mtime_ns}".encode())
+    return CACHE / "training_data" / f"features_{h.hexdigest()[:12]}.pkl"
+
+
+def load_soft_labels(path: Path, lm: str, temperature: float = 1.0, source: str = "own") -> dict:
     """Teacher distributions from scripts/data/collect_lm_distributions.py,
     keyed by (clue, candidates, number) -> one {word: probability} per step.
 
     `temperature` rescales the log-probabilities before renormalising: above 1
     softens an overconfident teacher, and 0 keeps only its argmax, which is the
     hard-label control -- same teacher, same positions, the distribution
-    thrown away.
+    thrown away. `source` is what later steps were conditioned on
+    (codenames/local_lm.py::DistributionStore): "own" for training.
     """
     from codenames.local_lm import DistributionStore
 
     out = {}
-    for clue, cand, number, _path, steps in DistributionStore(path).all(lm):
+    for clue, cand, number, steps in DistributionStore(path).all(lm, source):
         dists = []
         for st in steps:
             lp = np.asarray(st["logprobs"], dtype=np.float64)
@@ -135,12 +174,12 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     columns) describes a board that no longer exists. On, features are
     re-extracted for the words actually remaining at each step.
 
-    `soft_labels` (from `load_soft_labels`) replaces each step's one-hot label
-    -- the word the teacher happened to pick -- with a local model's full
-    distribution over the same remaining words. The groups do not change: the
-    distributions were computed conditioned on this teacher's own pick order,
-    so step j still removes the teacher's first j-1 picks. Positions with no
-    distribution are dropped. `seed_filter`, if given, keeps only positions
+    `soft_labels` (from `load_soft_labels`) makes the local model the teacher:
+    each step's label is its full distribution over the remaining words, and
+    the words removed before step j are ITS argmax picks, not the ranking in
+    the store -- so nothing from the API guesser enters but the position
+    itself (board, clue, candidates), which our own sampler chose. Positions
+    with no distribution are dropped. `seed_filter`, if given, keeps only positions
     whose board seed it accepts.
 
     Frozen is what Plackett-Luce assumes and what codenames/pl_reward.py needs
@@ -182,6 +221,11 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
         (model,)).fetchall()
     conn.close()
 
+    import pickle
+
+    fcache_path = _feature_cache_path()
+    fcache = pickle.loads(fcache_path.read_bytes()) if fcache_path.exists() else {}
+    n_cached = len(fcache)
     out, dropped = [], {"clue_oov": 0, "bad_ranking": 0, "no_seed": 0, "features": 0}
     if soft_labels is not None:
         dropped["no_soft"] = 0
@@ -212,17 +256,28 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
         shuffled = [rank[i] for i in perm]
         where = {orig: new for new, orig in enumerate(perm)}
         targets = [where[j] for j in range(len(rank))]  # teacher's j-th pick -> its row
-        feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi, extra,
-                        norms, wordnet, lexical)
+        fkey = (clue, int(number), tuple(shuffled))
+        if fkey in fcache:
+            feats = fcache[fkey]
+        else:
+            feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi, extra,
+                            norms, wordnet, lexical)
+            fcache[fkey] = feats
         if feats is None:
             dropped["features"] += 1
             continue
         rec = {"seed": seed, "clue": clue, "k": int(number), "x": feats,
-               "n": len(rank), "targets": targets}
+               "n": len(rank), "targets": targets,
+               "key": (clue, tuple(cand), int(number)), "words": shuffled}
         if soft is not None:
-            # One label vector per step, over ALL rows in shuffled order; rows
-            # already taken carry 0 and are dropped by build_groups.
+            # One label vector per step over ALL rows, in shuffled order, and
+            # the local model's own picks as the targets that build_groups
+            # removes: step j's distribution covers exactly the words its
+            # argmax had not yet taken.
             rec["soft"] = [np.array([d.get(w, 0.0) for w in shuffled]) for d in soft]
+            where_w = {w: r for r, w in enumerate(shuffled)}
+            rec["targets"] = [where_w[max(d, key=d.get)] for d in soft]
+            rec["k"] = len(soft)
         if refresh_features:
             # One extraction per step on the words still standing. Cheap --
             # it is the observed path, not a tree over possible ones.
@@ -242,6 +297,11 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                 continue
             rec["steps"] = steps
         out.append(rec)
+    if len(fcache) > n_cached:
+        fcache_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = fcache_path.with_suffix(".tmp")
+        tmp.write_bytes(pickle.dumps(fcache, protocol=pickle.HIGHEST_PROTOCOL))
+        tmp.replace(fcache_path)
     if decoys is not None:
         got = decoy_positions(decoys, sims, stats, clue_index, wstats, swow, entity, pmi,
                               extra, norms, wordnet, lexical, dropped)

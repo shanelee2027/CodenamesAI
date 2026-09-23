@@ -171,14 +171,36 @@ the heading named in each entry.
     **`outside_n` stays 0.**
   - The case for it now rests on human guessers, who do stop.
 
-### 3c. Local LLM logprobs as the teacher — ⬜ not started
+### 3c. Local LLM log-probs as the teacher (Qwen3-8B-FP8) — 🔄 in progress
 - ✅ Checked DeepInfra: no usable logprobs. gpt-oss and Qwen2.5-72B return
   none, and Llama-3.1-8B returns only the chosen token's.
-- ⬜ Run Qwen3-8B (FP8) locally on the RTX 5080 and score whole words to get a
-  full probability over the board. That would be a soft-label teacher, or
-  possibly a listener used directly.
-- ⬜ First, quantify how much worse Qwen3-8B is than gpt-oss (and Sonnet) on
-  fixed positions (see #4).
+- ✅ Qwen3-8B-FP8 runs locally on the RTX 5080 (9.4 GB). It is given the same
+  prompt and word order as gpt-oss, and each word's probability is that of
+  the continuation `["<word>",` of its JSON answer. Every step of every
+  position then has a full distribution rather than one sampled pick. About
+  5 positions/s, free.
+- ✅ Qwen's confidence against gpt-oss's first pick, 3,026 positions: when
+  Qwen is 99%+ sure, gpt-oss picks the same word 75% of the time; at
+  90–99%, 39%; overall 49% at an average confidence of 0.86. When they
+  disagree, Qwen gave gpt-oss's pick a median probability of 0.002. So it is
+  overconfident as a model of *another* guesser, which is why the raw
+  distribution is not used directly as the listener.
+- 🔄 Qwen is the whole teacher. Every position gpt-oss was asked about is
+  rescored by Qwen, with step 2+ conditioned on **Qwen's own** earlier
+  picks, at T=1 with nothing fitted to any other guesser. gpt-oss
+  contributes only which boards and clues were asked (which our sampler
+  chose). ~26k positions, 5.7 positions/s.
+- 🔄 Train two listeners on exactly the incumbent's positions and features:
+  Qwen soft (full distributions, T=1) and Qwen hard (its argmax only), so the
+  value of the distributions is separable from the change of teacher.
+- 🔄 Compare them with the incumbent on **Sonnet's** observed picks (the
+  evaluation guesser, which no listener saw), and secondarily on held-out
+  gpt-oss picks (`scripts/tools/compare_listeners.py`). Raw Qwen is scored
+  too, conditioned on Sonnet's actual earlier picks.
+- ⬜ If a Qwen listener holds up, play it head to head against the incumbent on
+  the frozen suite (Sonnet, costs money).
+- ⬜ Idea: decoys become exact. The decoy level would come straight from
+  Qwen's probability mass on off-board words, with no sampling.
 
 ## 4. Evaluation and benchmarks
 
