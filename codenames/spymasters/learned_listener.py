@@ -38,7 +38,6 @@ import numpy as np
 from codenames.board import Board, OpponentBoardView, Role
 from codenames.clue_search import is_legal_clue
 from codenames.clue_stats import ClueStats
-from codenames.acronyms import load_acronym_mask
 from codenames.game import role_costs
 from codenames.listener_features import (
     FEATURE_NAMES,
@@ -171,9 +170,10 @@ class LearnedListenerSpymaster(Spymaster):
         )
         self._clue_index = {w.lower(): i for i, w in enumerate(self.clue_stats.clue_words)}
 
-    def to_device(self, device) -> None:
-        """No-op: LightGBM and numpy, CPU only."""
-        return None
+    @classmethod
+    def model_files(cls, params: dict) -> list[Path]:
+        cache_dir = Path(params.get("cache_dir", DEFAULT_CACHE_DIR))
+        return [Path(params.get("model_path") or cache_dir / "listener_gbt.txt")]
 
     def _outside_words(self, board, sims: SimilarityTensor) -> list[str]:
         """`outside_n` vocabulary words that are not on this board.
@@ -421,9 +421,6 @@ class LearnedListenerSpymaster(Spymaster):
         scores[pick] = float(scores[best]) + 1.0          # outrank the incumbent
         best_n[pick] = 1
         return scores, best_n
-
-    def score_batch(self, sims: SimilarityTensor, contexts: list[TurnContext]) -> list[tuple[np.ndarray, np.ndarray]]:
-        return [self._score_all_clues(ctx.board, sims)[:2] for ctx in contexts]
 
     def top_clues(self, ctx: TurnContext, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:
         best_n, scores, margin = self._score_all_clues(ctx.board, sims)

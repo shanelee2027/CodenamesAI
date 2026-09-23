@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -34,27 +33,11 @@ from pathlib import Path
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-sys.argv = [sys.argv[0]]
-import scripts.pipeline.train_listener as T  # noqa: E402
+import codenames.listener_training as T
 from codenames.listener_features import FEATURE_NAMES  # noqa: E402
 
 _D: dict = {}
-
-
-def mcfadden(preds: np.ndarray, groups: list[int], y: np.ndarray) -> float:
-    b = np.concatenate([[0], np.cumsum(groups)])
-    ll = np.empty(len(groups))
-    null = np.empty(len(groups))
-    for i, (lo, hi) in enumerate(zip(b[:-1], b[1:])):
-        s = preds[lo:hi] - preds[lo:hi].max()
-        e = np.exp(s)
-        p = e / e.sum()
-        ll[i] = -np.log(max(float(p[int(np.argmax(y[lo:hi]))]), 1e-12))
-        null[i] = np.log(hi - lo)
-    return 1.0 - ll.mean() / null.mean()
 
 
 def fit_score(keep: list[str], on: str = "cal") -> tuple[float, int]:
@@ -73,10 +56,10 @@ def fit_score(keep: list[str], on: str = "cal") -> tuple[float, int]:
     dtr = lgb.Dataset(Xf[:, cols], label=yf, feature_name=keep, free_raw_data=False)
     dva = lgb.Dataset(Xc[:, cols], label=yc, feature_name=keep, reference=dtr, free_raw_data=False)
     bst = lgb.train(params, dtr, num_boost_round=3000, valid_sets=[dva],
-                    feval=lambda p, d: ("r2", mcfadden(p, gc, yc), True),
+                    feval=lambda p, d: ("r2", T.mcfadden_on(p, gc, yc), True),
                     callbacks=[lgb.early_stopping(100, verbose=False)])
     X, y, g = _D[on]
-    return mcfadden(bst.predict(X[:, cols], raw_score=True), g, y), bst.best_iteration
+    return T.mcfadden_on(bst.predict(X[:, cols], raw_score=True), g, y), bst.best_iteration
 
 
 FULL = "__full__"

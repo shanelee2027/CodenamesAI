@@ -35,7 +35,6 @@ from __future__ import annotations
 import argparse
 import itertools
 import os
-import sys
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -43,11 +42,8 @@ from pathlib import Path
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-sys.argv = [sys.argv[0]]
-import scripts.pipeline.train_listener as T  # noqa: E402
+import codenames.listener_training as T
 from codenames.listener_features import FEATURE_NAMES  # noqa: E402
 
 # Second pass. The first sweep ran at 32 features and put every one of its top
@@ -65,16 +61,8 @@ _D: dict = {}  # filled in the parent, inherited by forked workers
 
 
 def mcfadden(preds: np.ndarray, groups: list[int], y: np.ndarray) -> tuple[float, float]:
-    """(pseudo-R², mean log loss) for group-softmax scores."""
-    b = np.concatenate([[0], np.cumsum(groups)])
-    ll = np.empty(len(groups))
-    null = np.empty(len(groups))
-    for i, (lo, hi) in enumerate(zip(b[:-1], b[1:])):
-        s = preds[lo:hi] - preds[lo:hi].max()
-        e = np.exp(s)
-        p = e / e.sum()
-        ll[i] = -np.log(max(float(p[int(np.argmax(y[lo:hi]))]), 1e-12))
-        null[i] = np.log(hi - lo)
+    """(pseudo-R2, mean log loss) for group-softmax scores."""
+    ll, null = T.group_log_loss(preds, groups, y)
     return 1.0 - ll.mean() / null.mean(), float(ll.mean())
 
 

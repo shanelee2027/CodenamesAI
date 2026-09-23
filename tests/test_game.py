@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from codenames.board import Board, Card, Role
 from codenames.spymasters.base import Spymaster
-from codenames.game import ROLE_REWARD, play_game, play_turn, play_two_team_game
+from codenames.game import ROLE_REWARD, play_turn, play_two_team_game
 from codenames.guessers.base import Guesser
 
 BOARD_WORDS = [f"Board{i}" for i in range(25)]
@@ -36,7 +36,7 @@ class ScriptedGuesser(Guesser):
     def score_candidates(self, clue, candidate_words, sims):
         return {w: -self.preferred_order.index(w) if w in self.preferred_order else float("-inf") for w in candidate_words}
 
-    def rank_candidates(self, clue, candidate_words, sims, number=None, history=None):
+    def rank_candidates(self, clue, candidate_words, sims, number=None):
         candidates = set(candidate_words)
         return [w for w in self.preferred_order if w in candidates]
 
@@ -89,95 +89,6 @@ class TestPlayTurn:
         assert turn.ended_reason == "no_guesses"
         assert turn.guesses == []
         assert turn.reward == 0.0
-
-
-class TestPlayGame:
-    def test_wins_when_all_own_words_revealed(self):
-        board = make_board()
-        cm = FixedSpymaster(number=8)
-        guesser = ScriptedGuesser(BOARD_WORDS[:9])  # all own words, in order
-        result = play_game(board, cm, guesser, sims=None, max_turns=5)
-        assert result.outcome == "win"
-        assert board.remaining(Role.OWN) == 0
-
-    def test_loses_on_assassin(self):
-        board = make_board()
-        cm = FixedSpymaster(number=1)
-        guesser = ScriptedGuesser(["Board0", "Board24"])
-        result = play_game(board, cm, guesser, sims=None, max_turns=5)
-        assert result.outcome == "loss"
-
-    def test_times_out_when_guesser_never_guesses(self):
-        board = make_board()
-        cm = FixedSpymaster(number=1)
-        guesser = ScriptedGuesser([])
-        result = play_game(board, cm, guesser, sims=None, max_turns=3)
-        assert result.outcome == "timeout"
-        assert len(result.turns) == 3
-
-
-class SequencedSpymaster(Spymaster):
-    """Gives a different (clue, number) each call, in order -- lets a
-    test simulate a real multi-turn game instead of FixedSpymaster's one
-    repeated clue."""
-
-    def __init__(self, plan: list[tuple[str, int]]):
-        self.plan = list(plan)
-        self.calls = 0
-
-    def top_clues(self, ctx, sims, k):
-        clue, number = self.plan[self.calls]
-        self.calls += 1
-        return [(clue, number, 0.0)]
-
-
-class AlwaysBonusGuesser(ScriptedGuesser):
-    """Claims the bonus guess whenever any backlog exists at all,
-    regardless of content -- isolates testing the game loop's history
-    threading (this class) from testing HistoryAwareGuesser's own
-    z-score-based decision of *whether* to claim it
-    (tests/test_guessers.py)."""
-
-    def bonus_guesses(self, clue, candidate_words, sims, number, history=None):
-        return 1 if history else 0
-
-
-class TestBonusGuessThreading:
-    """codenames/guessers/base.py's backlog/bonus-guess mechanism,
-    exercised through play_turn/play_game rather than through a specific
-    guesser's decision logic."""
-
-    def test_a_miss_creates_backlog_and_a_later_bonus_spends_it(self):
-        board = make_board()
-        # Turn 1: number=2, but the 2nd guess is a miss (Board9 is
-        # OPPONENT) -- ends after 1 correct guess, leaving 2-1=1 word
-        # believed owed by "c1".
-        cm = SequencedSpymaster([("c1", 2), ("c2", 1)])
-        guesser = AlwaysBonusGuesser(["Board0", "Board9", "Board1", "Board2"])
-        result = play_game(board, cm, guesser, sims=None, max_turns=2)
-
-        turn1 = result.turns[0]
-        assert turn1.ended_reason == "opponent"
-        assert [w for w, _ in turn1.guesses] == ["Board0", "Board9"]
-
-        # Turn 2 announces number=1, but AlwaysBonusGuesser claims the
-        # bonus since turn 1 left backlog -- should attempt 2 guesses,
-        # not 1.
-        turn2 = result.turns[1]
-        assert [w for w, _ in turn2.guesses] == ["Board1", "Board2"]
-
-    def test_no_backlog_means_no_bonus_even_for_a_bonus_claiming_guesser(self):
-        # Same guesser class, but the first clue's number is fully used
-        # up by correct guesses (no miss) -- no backlog, so turn 2 should
-        # still get exactly its announced number.
-        board = make_board()
-        cm = SequencedSpymaster([("c1", 2), ("c2", 1)])
-        guesser = AlwaysBonusGuesser(["Board0", "Board1", "Board2", "Board3"])
-        result = play_game(board, cm, guesser, sims=None, max_turns=2)
-
-        assert result.turns[0].ended_reason == "exhausted_guesses"
-        turn2 = result.turns[1]
-        assert [w for w, _ in turn2.guesses] == ["Board2"]
 
 
 class TestPlayTwoTeamGame:
@@ -235,25 +146,3 @@ class TestPlayTwoTeamGame:
         assert result.winner is None
         assert len(result.turns) == 6  # 3 turns each
 
-    def test_each_teams_backlog_history_is_independent(self):
-        # Team A's clue misses (number=2, only 1 correct) leaving backlog;
-        # team B's very next turn should NOT see it -- if history were
-        # accidentally shared, B's AlwaysBonusGuesser would claim a bonus
-        # it has no history of its own to justify.
-        board = make_board()
-        cm_a = SequencedSpymaster([("ca", 2)])
-        cm_b = SequencedSpymaster([("cb", 1)])
-        team_a = (cm_a, AlwaysBonusGuesser(["Board0", "Board9"]))  # Board9 is a miss (opponent, from A's view)
-        # Board10/11 (not Board9, which A's turn already revealed) --
-        # both B's own unrevealed words, so a wrongly-granted bonus would
-        # actually change the guess count here, not just be masked by
-        # having nothing left to guess.
-        team_b = (cm_b, AlwaysBonusGuesser(["Board10", "Board11"]))
-        result = play_two_team_game(board, team_a, team_b, sims=None, max_turns=1)
-
-        turn_a, turn_b = result.turns[0].turn, result.turns[1].turn
-        assert [w for w, _ in turn_a.guesses] == ["Board0", "Board9"]  # A's own miss creates A's backlog
-        # B's turn should get exactly its announced number=1 guess, not a
-        # bonus-extended 2, since B's own history starts empty regardless
-        # of what happened on A's turn.
-        assert len(turn_b.guesses) == 1

@@ -9,18 +9,9 @@ blind spots.
 Noise is a deterministic function of (seed, clue, word) -- one word's
 noisy misperception of one clue is fixed, not a fresh dice roll every
 time it's asked about -- rather than a draw from one continuously-
-advancing RNG stream. This isn't just a style choice: codenames/guessers/
-base.py's backlog/bonus-guess mechanism (see its module docstring) and
-HistoryAwareGuesser's z-score baseline cache both explicitly assume
-"re-scoring the same clue against the same candidates always reproduces
-the same answer" -- true for every other guesser in the pool, but was
-silently false here (a sequential RNG stream means the *n*-th call for a
-clue depends on how many unrelated calls happened before it, so the same
-clue scored twice -- once during real play, once retrospectively in
-update_history's "did this backlog get satisfied" check -- could
-disagree). That mismatch let an already-satisfied backlog entry look
-still-owed on a later turn, spending an unearned bonus guess (see
-docs/log.md's history-aware-determinism entry)."""
+advancing RNG stream, so re-scoring the same clue against the same
+candidates always reproduces the same answer, whatever was scored in
+between."""
 
 from __future__ import annotations
 

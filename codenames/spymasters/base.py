@@ -2,7 +2,8 @@
 step 1).
 
 A spymaster picks a (clue, number) pair for the current board state.
-Every spymaster implements this same interface so the arena can play any spymaster against any guesser without special-casing.
+Every spymaster implements this same interface so the arena can play any
+spymaster against any guesser without special-casing.
 
 `TurnContext` bundles the board state with a turn counter instead of
 passing loose (board, sims) arguments. Every model is board-state-only
@@ -23,34 +24,18 @@ Reward parameters (own/neutral/opponent/assassin) live on the model
 itself, not here -- the arena never reads them. Legality
 filtering stays in `codenames/clue_search.py`: it's a rule of Codenames,
 identical for every model, and must not be reimplemented per model.
-
-`BatchScoringSpymaster` (docs/iteration-architecture.md step 3) is the
-protocol a model opts into if it scores the whole clue vocabulary and can
-usefully batch that across many simultaneous boards -- currently only
-`ExpectedWordsSpymaster`. `codenames/two_team_gpu_arena.py` is written
-against this protocol only:
-they gather board views into `TurnContext`s, call `score_batch` for the
-per-clue (best_n, scores) arrays, hand those to `codenames.clue_search`
-for the best *legal* clue, and call `to_device` instead of reaching into
-model internals directly. A model that doesn't implement this (every
-baseline -- they each score a handful of candidates, not the whole
-vocabulary, so there's nothing to gain from batching) simply isn't usable
-with those two GPU-batched arenas; `codenames/arena.py`'s regular
-per-process path works for any `Spymaster`, this one included.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
-
-import numpy as np
+from pathlib import Path
 
 from codenames.board import MAX_CLUE_NUMBER, Board, OpponentBoardView
 from codenames.similarity import SimilarityTensor
 
-__all__ = ["Spymaster", "TurnContext", "BatchScoringSpymaster", "MAX_CLUE_NUMBER"]
+__all__ = ["Spymaster", "TurnContext", "MAX_CLUE_NUMBER"]
 
 
 @dataclass(frozen=True)
@@ -75,22 +60,10 @@ class Spymaster(ABC):
         clue, number, _ = self.top_clues(ctx, sims, 1)[0]
         return clue, number
 
-
-@runtime_checkable
-class BatchScoringSpymaster(Protocol):
-    """A model that scores the entire clue vocabulary and can batch that
-    scoring across many simultaneous boards -- see the module docstring.
-    `score_batch`'s per-context arrays are indexed by `sims.clue_words`,
-    exactly like the scores `Spymaster.top_clues` hands to
-    `codenames.clue_search`; picking the best *legal* clue from them stays
-    the arena's job (`codenames.clue_search.top_legal_clue`), not this
-    model's."""
-
-    def score_batch(self, sims: SimilarityTensor, contexts: list[TurnContext]) -> list[tuple[np.ndarray, np.ndarray]]:
-        """(best_n, scores) per context, indexed by sims.clue_words."""
-        ...
-
-    def to_device(self, device) -> None:
-        """Move the model (and every future score_batch call) onto
-        `device`."""
-        ...
+    @classmethod
+    def model_files(cls, params: dict) -> list[Path]:
+        """Files the model loads that its constructor params don't name
+        exhaustively -- hashed into its eval identity
+        (codenames/eval_suite.py::spymaster_identity), so retraining one in
+        place makes a different model. None for a model with no file."""
+        return []

@@ -7,8 +7,7 @@ server reads and nothing else -- notably NOT `cache/llm_store.db`, which is
 78 MB of paid LLM responses needed for training and evaluation but not for
 playing a game.
 
-No GPU anywhere: the listener is LightGBM and numpy, and
-`LearnedListenerSpymaster.to_device` is a documented no-op. Measured on the
+No GPU anywhere: the listener is LightGBM and numpy. Measured on the
 development machine, a turn costs 0.8 s and the process peaks at 1.7 GB, so
 the real requirement is ~2 GB of free RAM.
 
@@ -20,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import shutil
-import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -40,8 +38,8 @@ CACHE_FILES = [
 ]
 
 REQUIREMENTS = """\
-# The play path only. The full project also needs gensim, wikiextractor,
-# matplotlib and anthropic, none of which are imported to play a game.
+# The play path only. The full project also needs gensim, matplotlib,
+# anthropic and openai, none of which are imported to play a game.
 numpy
 scipy
 lightgbm

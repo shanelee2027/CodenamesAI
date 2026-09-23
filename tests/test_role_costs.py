@@ -13,7 +13,6 @@ them, since the question here is about the costs, not the metric.
 
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 from codenames.board import Role

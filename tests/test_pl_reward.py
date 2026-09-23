@@ -5,7 +5,6 @@ on boards small enough to brute-force and demands agreement."""
 
 from __future__ import annotations
 
-import itertools
 
 import numpy as np
 import pytest

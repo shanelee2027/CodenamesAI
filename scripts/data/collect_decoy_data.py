@@ -69,7 +69,6 @@ import importlib.util
 import json
 import os
 import random
-import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -78,12 +77,10 @@ from pathlib import Path
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from codenames.board import Board, Role, is_legal_clue, load_training_wordlist
 from codenames.clue_stats import ClueStats
-from codenames.guessers.registry import load_pool
+from codenames.guessers.registry import build_guesser
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 _spec = importlib.util.spec_from_file_location(
@@ -178,8 +175,8 @@ def main() -> None:
     ap.add_argument("--max-workers", type=int, default=12)
     ap.add_argument("--max-rarity", type=float, default=10.0)
     ap.add_argument("--space", default="numberbatch")
-    ap.add_argument("--pool-config", type=Path,
-                    default=PROJECT_ROOT / "configs" / "guesser_pool_oss120b.json")
+    ap.add_argument("--guesser", default="deepinfra:openai/gpt-oss-120b",
+                    help="guesser spec, see codenames/guessers/registry.py::build_guesser")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--nice", type=int, default=10)
     args = ap.parse_args()
@@ -216,7 +213,7 @@ def main() -> None:
         print(f"resuming: {len(done)} already written")
     positions = [p for p in positions if p["i"] not in done]
 
-    guesser = load_pool(args.pool_config)["llm"].guesser
+    guesser = build_guesser(args.guesser)
     lock = threading.Lock()
     fh = args.out.open("a")
     state = {"n": 0, "cuts": 0, "t0": time.time()}

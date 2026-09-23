@@ -235,9 +235,8 @@ class OpenAICompatGuesser(Guesser):
         positions a model half-answers are the awkward ones, and dropping
         them quietly restricts the measurement to boards it found easy.
 
-        `number + 2` rather than `number` leaves room for a bonus guess
-        (Guesser.bonus_guesses) and keeps a margin so the consumed prefix is
-        never the very last thing the model said. When `number` is None the
+        `number + 2` rather than `number` keeps a margin so the consumed
+        prefix is never the very last thing the model said. When `number` is None the
         caller wants a full ranking (score_candidates), so `min_coverage`
         applies instead."""
         n, total = len(named), len(candidate_words)
@@ -319,7 +318,6 @@ class OpenAICompatGuesser(Guesser):
         candidate_words: list[str],
         sims: SimilarityTensor,
         number: int | None = None,
-        history: list[tuple[str, int]] | None = None,
     ) -> list[str]:
         return self._ranked(clue, candidate_words, number)
 

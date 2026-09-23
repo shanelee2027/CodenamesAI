@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import random
 import sys
 from collections import Counter
@@ -43,6 +42,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from codenames.board import Role
 from codenames.game import ROLE_REWARD
 from codenames.similarity import DEFAULT_CACHE_DIR
+from codenames.stats import boot_diff, mean, n_for_power, perm_p, sd
 
 END_VALUE = {"opponent": ROLE_REWARD[Role.OPPONENT], "neutral": ROLE_REWARD[Role.NEUTRAL],
              "assassin": ROLE_REWARD[Role.ASSASSIN]}
@@ -58,40 +58,6 @@ METRICS = {
     "first own": (lambda r: float(r["first_pick_own"]), lambda r: r["first_pick_own"] is not None),
     "stopped": (lambda r: float(r["stopped"]), lambda r: True),
 }
-
-
-def mean(xs: list[float]) -> float:
-    return sum(xs) / len(xs) if xs else float("nan")
-
-
-def sd(xs: list[float]) -> float:
-    if len(xs) < 2:
-        return float("nan")
-    m = mean(xs)
-    return math.sqrt(sum((x - m) ** 2 for x in xs) / (len(xs) - 1))
-
-
-def boot_diff(a: list[float], b: list[float], reps: int, rng: random.Random) -> tuple[float, float]:
-    ds = sorted(mean([rng.choice(b) for _ in b]) - mean([rng.choice(a) for _ in a])
-                for _ in range(reps))
-    return ds[int(0.025 * reps)], ds[int(0.975 * reps)]
-
-
-def perm_p(a: list[float], b: list[float], reps: int, rng: random.Random) -> float:
-    obs = abs(mean(b) - mean(a))
-    pool, na = a + b, len(a)
-    hits = 0
-    for _ in range(reps):
-        rng.shuffle(pool)
-        hits += abs(mean(pool[na:]) - mean(pool[:na])) >= obs - 1e-12
-    return (hits + 1) / (reps + 1)
-
-
-def n_for_power(delta: float, s: float) -> float:
-    """Positions per arm for 80% power at alpha 0.05, two-sided: 2(z_a + z_b)^2 s^2 / d^2."""
-    if not delta or not s or math.isnan(s):
-        return float("inf")
-    return 2 * (1.96 + 0.8416) ** 2 * s ** 2 / delta ** 2
 
 
 def main() -> None:

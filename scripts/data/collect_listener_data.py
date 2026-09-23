@@ -46,7 +46,6 @@ from __future__ import annotations
 import argparse
 import os
 import random
-import sys
 import threading
 import time
 from collections import Counter
@@ -56,8 +55,6 @@ from pathlib import Path
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from codenames.board import Board, Role, is_legal_clue, load_training_wordlist
 from codenames.clue_stats import ClueStats

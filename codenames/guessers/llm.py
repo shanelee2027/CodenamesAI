@@ -224,7 +224,6 @@ class LLMGuesser(Guesser):
         candidate_words: list[str],
         sims: SimilarityTensor,
         number: int | None = None,
-        history: list[tuple[str, int]] | None = None,
     ) -> list[str]:
         return self._ranked(clue, candidate_words, number)
 

@@ -9,7 +9,7 @@ many seeded boards, in either of two modes.
 
     python scripts/pipeline/run_two_team_arena.py --n-boards 50 \\
         --spymaster centroid --vs expected_words \\
-        --guesser-pool-config configs/guesser_pool_llm_sonnet.json --guesser llm \\
+        --guesser anthropic:claude-sonnet-5:medium \\
         --record-games cache/llm_store.db --max-workers 48
 
 --vs plays every board twice with the sides swapped, because team A holds
@@ -37,22 +37,21 @@ from codenames.spymasters.registry import load_spymasters, spymaster_names
 from codenames.two_team_arena import run_two_team_matchup, run_two_team_self_play
 
 # Selected by role from configs/spymasters.json rather than by name, so a
-# new entry needs no edit here. This script offers the "exploration"
-# role (learned_listener) on top of the standard baselines; scripts/pipeline/run_arena.py
-# does not -- that difference is the only reason the two lists differ.
+# new entry needs no edit here.
 BASE_SPYMASTER_NAMES = spymaster_names("baseline", "exploration")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--n-boards", type=int, default=20, help="number of fixed seeded boards to play (seeds 0..n-1)")
-    parser.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG)
+    parser.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG,
+                        help="where synthetic guesser names are looked up")
     parser.add_argument(
         "--guesser",
         required=True,
-        help="name of one guesser in --guesser-pool-config to use on both sides, or 'mixed' -- each game "
-        "independently draws a guesser uniformly from the whole pool, matching the distribution the "
-        "spymaster was actually trained against (see codenames/two_team_arena.py::MIXED_GUESSER)",
+        help="the guesser on both sides: a spec such as anthropic:claude-sonnet-5:medium or "
+        "deepinfra:openai/gpt-oss-120b, a synthetic pool name, or (self-play only) 'mixed' -- each game "
+        "draws a guesser uniformly from the pool. See codenames/guessers/registry.py::build_guesser.",
     )
     parser.add_argument("--spymaster", choices=BASE_SPYMASTER_NAMES, required=True, help="the spymaster to play (team A's, with --vs)")
     parser.add_argument(
@@ -186,9 +185,9 @@ def main() -> None:
             spec_for(args.spymaster, side_a),
             spec_for(args.vs, side_b),
             (label_a, label_b),
-            args.guesser_pool_config,
             args.guesser,
             seeds,
+            guesser_pool_config=args.guesser_pool_config,
             max_workers=args.max_workers,
             progress=True,
             **kwargs,

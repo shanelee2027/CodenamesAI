@@ -337,8 +337,8 @@ class TestRarityFiltering:
         assert clue == "commonbutokay"
 
 
-class TestScoreBatchProtocol:
-    def test_score_batch_matches_top_clues_for_a_single_context(self, tmp_path):
+class TestPerClueScores:
+    def test_per_clue_arrays_match_top_clues(self, tmp_path):
         rows = {
             "cluea": make_row(own=[2.0, 1.8] + [-20.0] * 7),
             "clueb": make_row(own=[2.2, 1.6] + [-20.0] * 7),
@@ -346,15 +346,10 @@ class TestScoreBatchProtocol:
         sm, sims = build(tmp_path, rows)
         ctx = make_ctx(make_board())
         (clue, number, score) = sm.top_clues(ctx, sims, 1)[0]
-        best_n, scores = sm.score_batch(sims, [ctx])[0]
+        best_n, scores, _ = sm._score_all_clues(ctx.board, sims)
         idx = sims.clue_index[clue.lower()]
         assert int(best_n[idx]) == number
         assert float(scores[idx]) == pytest.approx(score)
-
-    def test_to_device_is_a_no_op(self, tmp_path):
-        sm, _ = build(tmp_path, {"clue": make_row()})
-        sm.to_device("cuda")  # must not raise even without a real device
-
 
 class TestEveryCandidateGetsAFiniteScore:
     """The whole point of dropping thresholds: there is no 'no valid
@@ -367,7 +362,7 @@ class TestEveryCandidateGetsAFiniteScore:
         neutral = [0.1] * 7
         assassin = [0.1]
         sm, sims = build(tmp_path, {"clue": make_row(own=own, opponent=opponent, neutral=neutral, assassin=assassin)})
-        best_n, scores = sm.score_batch(sims, [make_ctx(make_board())])[0]
+        best_n, scores, _ = sm._score_all_clues(make_board(), sims)
         idx = sims.clue_index["clue"]
         assert np.isfinite(scores[idx])
         assert best_n[idx] >= 1

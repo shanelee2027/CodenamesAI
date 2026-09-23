@@ -88,12 +88,6 @@ is the one real degenerate case, a team with zero unrevealed own words
 once it has none left) -- handled by returning the most common legal clue
 at number=1, matching every other baseline's "never raise, never return
 no clue" contract.
-
-Implements `BatchScoringSpymaster` for the same reason `z_threshold.py`
-did: `to_device` is a no-op (numpy/CPU only) and `score_batch` loops the
-same per-context scoring `top_clues` uses, so
-`codenames/two_team_gpu_arena.py` can drive this model without a special
-case.
 """
 
 from __future__ import annotations
@@ -250,11 +244,6 @@ class ExpectedWordsSpymaster(Spymaster):
         self.exclude_acronyms = exclude_acronyms
         self.acronym_mask = load_acronym_mask(cache_dir, self.clue_stats.clue_words) if exclude_acronyms else None
 
-    def to_device(self, device) -> None:
-        """No-op: this model is numpy/CPU only, see the module
-        docstring's `BatchScoringSpymaster` note."""
-        return None
-
     def _score_all_clues(
         self, board: Board | OpponentBoardView, sims: SimilarityTensor
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -263,7 +252,7 @@ class ExpectedWordsSpymaster(Spymaster):
         own best k (see the module docstring on why that loses nothing
         relative to a literal joint argmax). `margin` (`a_k -
         max_w b_w`, unweighted) exists only for the tie-break the spec
-        requires and is not part of the public `score_batch` contract."""
+        requires."""
         n_clues = len(sims.clue_words)
         best_n_full = np.ones(n_clues, dtype=np.int64)
         scores_full = np.full(n_clues, -np.inf, dtype=np.float32)
@@ -327,13 +316,6 @@ class ExpectedWordsSpymaster(Spymaster):
         margin_full[candidate_idx] = best_margin
 
         return best_n_full, scores_full, margin_full
-
-    def score_batch(self, sims: SimilarityTensor, contexts: list[TurnContext]) -> list[tuple[np.ndarray, np.ndarray]]:
-        """`(best_n, scores)` per context, indexed by `sims.clue_words` --
-        the `BatchScoringSpymaster` contract. No GPU batching happens
-        (see the module docstring); this loops the same per-context
-        scoring `top_clues` uses so there is exactly one implementation."""
-        return [self._score_all_clues(ctx.board, sims)[:2] for ctx in contexts]
 
     def _pick_top_clues(
         self,

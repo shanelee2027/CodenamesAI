@@ -1,31 +1,19 @@
 """Game loop.
 
-`play_game` is single-team: "opponent" and "neutral" words just sit on
-the board as pure distractors, nobody actively pursuing them -- most of
-the codebase (arena evaluations, training data generation) only ever
-uses this, since every spymaster/guesser is written against "own" as a
-fixed perspective (see board.py's module docstring). `play_two_team_game`
-is real two-team play, added later without changing any spymaster or
-guesser -- see its own docstring and `OpponentBoardView`
-in board.py for how. In both, a turn ends the moment a non-own word is
-revealed or the spymaster's attempts run out.
+`play_two_team_game` is a real two-team game: two teams alternate turns on
+one board, each spymaster and guesser playing its own side through
+`play_turn`. Neither is aware two teams exist -- team B sees the board
+through `OpponentBoardView` (board.py), where its words are the "own"
+ones. A turn ends the moment a non-own word is revealed or the announced
+number of guesses runs out.
 
-Reward for play-time scoring: +1 per own word, -0.2 and stop
-on neutral, -1 and stop on opponent, -10 and stop on assassin. Neutral
-being non-zero (rather than a true no-op) is deliberate: it still costs a
-turn and reveals no information toward winning, so it should be mildly
-penalized rather than treated as free -- see docs/log.md.
+Reward, the yardstick every result is measured in: +1 per own word, -0.2
+and stop on neutral, -1 and stop on opponent, -10 and stop on assassin.
+Neutral is non-zero because it still costs a turn and gains nothing.
 
-A clue announcing `n` gets exactly `n` guesses by default -- no automatic
-standard-Codenames "+1 bonus guess" (see docs/log.md's numbering-
-convention entries for why that was dropped). A guesser can still claim
-one extra guess this turn via `Guesser.bonus_guesses` (see
-codenames/guessers/base.py), but only if it has an actual, tracked reason
-to -- e.g. `HistoryAwareGuesser` believes a past clue's miss left a word
-unaccounted-for. A spymaster's reward math is unaware of this: it
-assumes exactly `n` attempts, so real play with a bonus-claiming
-guesser slightly outperforms what a spymaster's own expected-reward
-calculation predicts for it, never the other way around.
+A clue announcing `n` gets exactly `n` guesses -- no standard-Codenames
+"+1 bonus guess". A guesser has no notion of "still feels confident" to
+decide when to spend one.
 """
 
 from __future__ import annotations
@@ -48,7 +36,7 @@ if TYPE_CHECKING:
     # actually called, whatever constructed the `spymaster` argument has
     # already fully imported codenames.spymasters, so the cycle above
     # can't actually happen at that point.
-    from codenames.spymasters.base import Spymaster, TurnContext
+    from codenames.spymasters.base import Spymaster
 
 ROLE_REWARD: dict[Role, float] = {
     Role.OWN: 1.0,
@@ -83,11 +71,10 @@ def role_costs(
         for role, value in given.items()
     }
 
-# Real games don't have a fixed turn cap, but a guesser pool member (e.g. a
-# ConfidenceThresholdGuesser that declines every clue) could in principle
-# never finish a board. This bounds worst case to at most one word revealed
-# per turn -- BOARD_SIZE turns always suffices if any progress is made at
-# all -- plus slack for zero-progress turns that still end sensibly.
+# Real games don't have a fixed turn cap, but a guesser that returns no
+# ranking could in principle never finish a board. This bounds the worst
+# case: BOARD_SIZE turns always suffices if any progress is made at all,
+# plus slack for zero-progress turns.
 DEFAULT_MAX_TURNS = 40
 
 
@@ -100,49 +87,20 @@ class TurnResult:
     ended_reason: str = ""  # "own_words_complete" | "opponent" | "neutral" | "assassin" | "exhausted_guesses" | "no_guesses"
 
 
-@dataclass
-class GameResult:
-    seed: int
-    turns: list[TurnResult] = field(default_factory=list)
-    outcome: str = ""  # "win" | "loss" | "timeout"
-    total_reward: float = 0.0
-
-
 def play_turn(
     board: Board,
     spymaster: Spymaster,
     guesser: Guesser,
     sims: SimilarityTensor,
-    clue_and_number: tuple[str, int] | None = None,
-    history: list[tuple[str, int]] | None = None,
 ) -> TurnResult:
-    """`clue_and_number`, if given, skips calling `spymaster.give_clue()`
-    and uses that pair directly -- lets a caller compute the clue for many
-    boards at once (batched, off the hot path of this function) and still
-    reuse this exact tested attempt/reveal/stop logic per board. See
-    codenames/two_team_gpu_arena.py, which batches a
-    BatchScoringSpymaster's scoring across many simultaneous games on GPU
-    for a real throughput win, then drives each board's turn through this
-    same function unchanged.
+    # Local import: see the module-level TYPE_CHECKING comment above for
+    # why TurnContext can't be imported at module scope here.
+    from codenames.spymasters.base import TurnContext
 
-    `history`, if given, is the backlog state from `Guesser.update_history`
-    (see codenames/guessers/base.py) -- forwarded to the guesser so it can
-    claim a bonus guess beyond `number` if it has a real reason to
-    (default: 0, i.e. every guesser that doesn't override `bonus_guesses`
-    plays exactly as it always has)."""
-    if clue_and_number is not None:
-        clue, number = clue_and_number
-    else:
-        # Local import: see the module-level TYPE_CHECKING comment above
-        # for why TurnContext can't be imported at module scope here.
-        from codenames.spymasters.base import TurnContext
-
-        ctx = TurnContext(board=board, turn_index=len(board.revealed))
-        clue, number = spymaster.give_clue(ctx, sims)
+    ctx = TurnContext(board=board, turn_index=len(board.revealed))
+    clue, number = spymaster.give_clue(ctx, sims)
     candidates = [w for w in board.words if not board.is_revealed(w)]
-    bonus = guesser.bonus_guesses(clue, candidates, sims, number, history=history)
-    ranked = guesser.rank_candidates(clue, candidates, sims, number=number, history=history)
-    attempts = ranked[: number + bonus]
+    attempts = guesser.rank_candidates(clue, candidates, sims, number=number)[:number]
 
     if not attempts:
         return TurnResult(clue=clue, number=number, ended_reason="no_guesses")
@@ -164,43 +122,6 @@ def play_turn(
             return result
 
     result.ended_reason = "exhausted_guesses"
-    return result
-
-
-def play_game(
-    board: Board,
-    spymaster: Spymaster,
-    guesser: Guesser,
-    sims: SimilarityTensor,
-    max_turns: int = DEFAULT_MAX_TURNS,
-) -> GameResult:
-    result = GameResult(seed=board.seed)
-    history: list[tuple[str, int]] = []
-
-    for _ in range(max_turns):
-        if board.remaining(Role.OWN) == 0:
-            result.outcome = "win"
-            break
-
-        # Snapshotted before the turn runs (play_turn recomputes the same
-        # thing internally -- kept separate rather than having play_turn
-        # return it too, so its return type stays unchanged for every
-        # other caller).
-        candidates_before_turn = [w for w in board.words if not board.is_revealed(w)]
-        turn = play_turn(board, spymaster, guesser, sims, history=history)
-        result.turns.append(turn)
-        result.total_reward += turn.reward
-        history = guesser.update_history(history, turn.clue, turn.number, turn, candidates_before_turn, sims)
-
-        if turn.ended_reason == "assassin":
-            result.outcome = "loss"
-            break
-        if board.remaining(Role.OWN) == 0:
-            result.outcome = "win"
-            break
-    else:
-        result.outcome = "timeout"
-
     return result
 
 
@@ -233,10 +154,7 @@ def play_two_team_game(
     physical board through `OpponentBoardView` (their 8 words are
     Role.OWN from that view instead). Neither spymaster nor guesser is
     aware two teams exist -- both just play `play_turn` against whichever
-    view they're handed, identically to single-team play, each with
-    their own independent backlog `history` (see
-    codenames/guessers/base.py) so a HistoryAwareGuesser on one side
-    can't see or be confused by the other side's misses.
+    view they're handed.
 
     Per real Codenames rules: the 9-card team (A) always moves first
     (verified true of Board.generate -- see docs/log.md's game-setup-
@@ -246,21 +164,12 @@ def play_two_team_game(
     accidental reveal helps you in the real game -- or either team's
     guess hits the assassin (immediate loss for whoever revealed it, a
     win for the other team). `max_turns` caps each team's own turn count
-    (so up to `2 * max_turns` total half-turns) before a timeout,
-    mirroring play_game's guesser-that-never-guesses safety valve.
-
-    No board-setup workaround needed here (an earlier version of this
-    function pre-revealed one of team A's words to dodge a feature-vector
-    capacity limit -- see docs/log.md): codenames/features.py's OPPONENT
-    slot width is sized independently from the real board's OPPONENT card
-    count specifically so it can hold team B's OpponentBoardView-swapped
-    view of team A's real 9-word group without overflowing. Both teams'
-    true win conditions (A needs all 9, B needs all 8) are exactly the
-    real Codenames rules, unchanged."""
+    (so up to `2 * max_turns` total half-turns) before a timeout, a
+    safety valve for a guesser that never guesses."""
     view_b = OpponentBoardView(board)
     sides: dict[str, dict] = {
-        "A": {"view": board, "spymaster": team_a[0], "guesser": team_a[1], "history": []},
-        "B": {"view": view_b, "spymaster": team_b[0], "guesser": team_b[1], "history": []},
+        "A": {"view": board, "spymaster": team_a[0], "guesser": team_a[1]},
+        "B": {"view": view_b, "spymaster": team_b[0], "guesser": team_b[1]},
     }
 
     def _winner_if_any() -> str | None:
@@ -277,13 +186,9 @@ def play_two_team_game(
         side = sides[team]
         view = side["view"]
 
-        candidates_before_turn = [w for w in view.words if not view.is_revealed(w)]
-        turn = play_turn(view, side["spymaster"], side["guesser"], sims, history=side["history"])
+        turn = play_turn(view, side["spymaster"], side["guesser"], sims)
         result.turns.append(TwoTeamTurnResult(team=team, turn=turn))
         result.total_reward[team] += turn.reward
-        side["history"] = side["guesser"].update_history(
-            side["history"], turn.clue, turn.number, turn, candidates_before_turn, sims
-        )
 
         if turn.ended_reason == "assassin":
             result.outcome = "loss"

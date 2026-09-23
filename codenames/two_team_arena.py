@@ -1,29 +1,16 @@
-"""Two-team self-play arena: bulk-runs codenames.game.play_two_team_game
-with the SAME spymaster+guesser pair on both sides, across many seeded
-boards, in parallel worker processes -- mirrors codenames/arena.py's
-process-parallel structure, but for one symmetric pair rather than a
-spymaster x guesser cross-product.
+"""Two-team arenas: bulk-run codenames.game.play_two_team_game across many
+seeded boards, in parallel worker processes.
 
-With both teams running identical logic, *which* team wins isn't
-informative -- it's mostly just the 9-vs-8 first-move edge every game
-already has, not a signal about model quality (see docs/log.md). The
-question this answers instead is the same one the single-team arena
-already answers -- how often does this spymaster/guesser combination's
-own play end in an assassin hit, versus a clean finish -- just measured
-in a real two-team game where the board depletes from *both* sides'
-actual play, not the single-team framing's static distractors. Both
-teams' turns are pooled into one set of stats (they're the same model),
-mirroring codenames/arena.py's CrossPlayResult fields where the concepts
-carry over, but keyed by "clean finish vs. assassin ending" instead of
-"win vs. loss," since a genuine win rate here is a coin flip modulated by
-the first-move edge, not a quality signal.
+**Head-to-head** (`run_two_team_matchup`) is the comparison every sweep and
+the frozen eval suite make: two spymasters, one per side, sharing one
+guesser, every board played twice with the sides swapped.
 
-`guesser_name` can also be `MIXED_GUESSER` ("mixed"): instead of fixing
-one guesser for the whole run, each game independently draws one,
-uniformly, from every guesser in `guesser_pool_config` -- matching the
-distribution the spymaster was actually trained against, rather than
-the narrower test a single fixed
-guesser is.
+**Self-play** (`run_two_team_self_play`) puts the same spymaster+guesser
+pair on both sides. Which team wins then says little -- mostly the 9-vs-8
+first-move edge -- so it reports how often play ends on the assassin versus
+a clean finish, with both teams' turns pooled. `guesser_name` can be
+`MIXED_GUESSER` ("mixed"): each game draws one guesser uniformly from the
+pool config.
 """
 
 from __future__ import annotations
@@ -39,16 +26,12 @@ from pathlib import Path
 
 from codenames.board import Board, Role
 from codenames.game import DEFAULT_MAX_TURNS, TwoTeamGameResult, play_two_team_game
-from codenames.guessers.registry import load_pool, training_pool
+from codenames.guessers.registry import DEFAULT_POOL_CONFIG, build_guesser, training_pool
 from codenames.llm_store import GameRecordStore, board_by_role
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 # Passed as `guesser_name` to mean "don't fix one guesser -- each game
-# independently draws one, uniformly, from every guesser in
-# --guesser-pool-config" (drawing from configs/guesser_pool.json, the
-# source of truth for pool
-# composition -- evaluating against a single fixed guesser instead is a
-# narrower test than what the model was actually trained against).
+# independently draws one, uniformly, from every guesser in the pool config".
 MIXED_GUESSER = "mixed"
 
 
@@ -133,18 +116,15 @@ def _worker_init(
     game_record_db: Path | None,
     run_label: str,
 ) -> None:
-    # Constructs the spymaster fresh inside the worker (not by pickling
-    # an existing instance across the process boundary) -- same reason
-    # codenames/arena.py does this: avoids pickling issues and, combined
-    # with "spawn" below, sidesteps the CUDA-after-fork hazard documented
-    # there.
+    # Constructs the spymaster fresh inside the worker rather than pickling
+    # an existing instance across the process boundary.
     _WORKER_STATE["sims"] = SimilarityTensor.load(sims_cache_dir)
     _WORKER_STATE["spymaster"] = spymaster_cls(**spymaster_kwargs)
     _WORKER_STATE["guesser_name"] = guesser_name
     if guesser_name == MIXED_GUESSER:
         _WORKER_STATE["guesser_pool"] = list(training_pool(guesser_pool_config).values())
     else:
-        _WORKER_STATE["guesser"] = load_pool(guesser_pool_config)[guesser_name].guesser
+        _WORKER_STATE["guesser"] = build_guesser(guesser_name, guesser_pool_config)
     _WORKER_STATE["max_turns"] = max_turns
     # One WAL-mode SQLite connection per worker process (see
     # codenames/llm_store.py) -- concurrent writers to the same file are
@@ -314,17 +294,21 @@ def _matchup_worker_init(
     spec_x: tuple,
     spec_y: tuple,
     names: tuple[str, str],
+    guesser: str,
     guesser_pool_config: Path,
-    guesser_name: str,
     max_turns: int,
     game_record_db: Path | None,
     run_label: str,
+    vocabulary: list[str] | None = None,
+    suite_id: str | None = None,
 ) -> None:
     _WORKER_STATE["sims"] = SimilarityTensor.load(sims_cache_dir)
+    _WORKER_STATE["vocabulary"] = vocabulary
+    _WORKER_STATE["suite_id"] = suite_id
     _WORKER_STATE["x"] = spec_x[0](**spec_x[1])
     _WORKER_STATE["y"] = spec_y[0](**spec_y[1])
     _WORKER_STATE["names"] = names
-    _WORKER_STATE["guesser"] = load_pool(guesser_pool_config)[guesser_name].guesser
+    _WORKER_STATE["guesser"] = build_guesser(guesser, guesser_pool_config)
     _WORKER_STATE["max_turns"] = max_turns
     _WORKER_STATE["record_store"] = GameRecordStore(game_record_db) if game_record_db is not None else None
     _WORKER_STATE["run_label"] = run_label
@@ -420,7 +404,7 @@ def _matchup_pull(tasks, threads: int) -> list[tuple]:
 def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult | None, bool, int, str | None]:
     seed, swapped = task
     state = _WORKER_STATE
-    board = Board.generate(seed=seed)
+    board = Board.generate(seed=seed, vocabulary=state.get("vocabulary"))
     guesser = state["guesser"]
     # Same listener on both sides -- the matchup is between spymasters, so
     # varying the guesser too would confound the comparison.
@@ -453,7 +437,13 @@ def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult | None, boo
         # The side assignment is in the label because a recorded game
         # stores only "A"/"B" per turn -- without it a dumped transcript
         # can't say which spymaster gave which clue.
-        state["record_store"].add_game(by_role, result, label=f"{state['run_label']}|A={name_a},B={name_b}")
+        # Under a frozen suite the game is also keyed by its seating and the
+        # suite (codenames/eval_suite.py), so a rerun overwrites rather than
+        # duplicates and only missing boards are ever played.
+        suite_id = state.get("suite_id")
+        state["record_store"].add_game(
+            by_role, result, label=f"{state['run_label']}|A={name_a},B={name_b}",
+            spymaster_id=f"A={name_a},B={name_b}" if suite_id else None, suite_id=suite_id)
     return result, swapped, seed, None
 
 
@@ -461,9 +451,9 @@ def run_two_team_matchup(
     spec_x: tuple,
     spec_y: tuple,
     names: tuple[str, str],
-    guesser_pool_config: Path,
-    guesser_name: str,
+    guesser: str,
     seeds: list[int],
+    guesser_pool_config: Path = DEFAULT_POOL_CONFIG,
     sims_cache_dir: Path = DEFAULT_CACHE_DIR,
     max_turns: int = DEFAULT_MAX_TURNS,
     max_workers: int | None = None,
@@ -471,17 +461,25 @@ def run_two_team_matchup(
     run_label: str = "",
     progress: bool = False,
     threads_per_worker: int = 1,
+    vocabulary: list[str] | None = None,
+    suite_id: str | None = None,
 ) -> MatchupResult:
     """Plays each seed twice -- once with `names[0]` as team A, once with
     `names[1]` as team A -- so first-move advantage falls on both sides
-    equally. Returns 2 * len(seeds) games.
+    equally. Returns 2 * len(seeds) games. Both sides share one guesser,
+    `guesser` -- a spec or pool name, see
+    codenames/guessers/registry.py::build_guesser.
 
     `max_workers` is deliberately not defaulted to os.cpu_count(): with an
     LLM guesser the per-turn cost is network latency, not computation, so
     the useful worker count is bounded by how many games can be in flight
     at once, not by cores. A turn inside one game is strictly sequential
     (the board changes), so wall-clock is roughly
-    (games / workers) * (turns per game) * latency."""
+    (games / workers) * (turns per game) * latency.
+
+    `vocabulary` restricts the boards to a word list (the frozen suite uses
+    the held-out words); `suite_id` records every game under its suite and
+    seating -- see codenames/eval_suite.py."""
     tasks = [(seed, swapped) for seed in seeds for swapped in (False, True)]
     sides = {names[0]: SideStats(names[0]), names[1]: SideStats(names[1])}
     if game_record_db is not None:
@@ -524,8 +522,8 @@ def run_two_team_matchup(
     # every thread's predict opens its own OpenMP pool (838 threads observed at
     # 100). Native-crash isolation is kept at process granularity: a segfault
     # loses one chunk, not the run.
-    init_args = (sims_cache_dir, spec_x, spec_y, names, guesser_pool_config,
-                 guesser_name, max_turns, game_record_db, run_label)
+    init_args = (sims_cache_dir, spec_x, spec_y, names, guesser, guesser_pool_config,
+                 max_turns, game_record_db, run_label, vocabulary, suite_id)
     hybrid = threads_per_worker > 1
     saved_omp = os.environ.get("OMP_NUM_THREADS")
     manager = None

@@ -36,7 +36,9 @@ if TYPE_CHECKING:
     # needed by type checkers.
     from codenames.game import TwoTeamGameResult
 
-DEFAULT_DB_PATH = Path("cache/llm_store.db")
+# Anchored to the repo, not the working directory: a relative path run from
+# anywhere else would quietly start a second, empty store.
+DEFAULT_DB_PATH = Path(__file__).resolve().parent.parent / "cache" / "llm_store.db"
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:

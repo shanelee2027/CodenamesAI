@@ -54,10 +54,7 @@ class TestTieAwareAccuracy:
     actually happened; see docs/log.md."""
 
     def _acc(self, preds, groups, y):
-        import sys
-        from pathlib import Path
-        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "pipeline"))
-        from train_listener import accuracy_on
+        from codenames.listener_training import accuracy_on
         return accuracy_on(np.asarray(preds, dtype=float), groups, np.asarray(y, dtype=float))
 
     def test_constant_model_scores_chance_not_one(self):

@@ -10,8 +10,8 @@ pool should contain.
 
 Config format: {"guessers": [{"name", "type", "params", "held_out"}, ...]}.
 `type` selects a class from GUESSER_CLASSES. `params` are passed as
-keyword args to that class's constructor. A wrapper guesser (noisy,
-confidence_threshold) references its base either:
+keyword args to that class's constructor. A wrapper guesser (noisy)
+references its base either:
   - by name (a string) -- that name must appear *earlier* in the list,
     since entries are built in order and a wrapper's base must already
     exist as a separately-visible pool member; or
@@ -29,24 +29,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from codenames.guessers.base import Guesser
-from codenames.guessers.blend import BlendGuesser
-from codenames.guessers.confidence_threshold import ConfidenceThresholdGuesser
-from codenames.guessers.history_aware import HistoryAwareGuesser
 from codenames.guessers.llm import LLMGuesser
 from codenames.guessers.noisy import NoisyGuesser
-from codenames.guessers.openai_compat import OpenAICompatGuesser
-from codenames.guessers.rank_based import RankBasedGuesser
+from codenames.guessers.openai_compat import PROVIDERS, OpenAICompatGuesser
 from codenames.guessers.single_space import SingleSpaceGuesser
+from codenames.llm_store import DEFAULT_DB_PATH
 
 DEFAULT_POOL_CONFIG = Path(__file__).parent.parent.parent / "configs" / "guesser_pool.json"
 
 GUESSER_CLASSES: dict[str, type[Guesser]] = {
     "single_space": SingleSpaceGuesser,
-    "blend": BlendGuesser,
-    "rank_based": RankBasedGuesser,
     "noisy": NoisyGuesser,
-    "confidence_threshold": ConfidenceThresholdGuesser,
-    "history_aware": HistoryAwareGuesser,
     "llm": LLMGuesser,
     "openai_compat": OpenAICompatGuesser,
 }
@@ -114,6 +107,39 @@ def training_pool(config_path: Path = DEFAULT_POOL_CONFIG) -> dict[str, Guesser]
 
 
 def held_out_pool(config_path: Path = DEFAULT_POOL_CONFIG) -> dict[str, Guesser]:
-    """The evaluation-only guessers. Off-diagonal results against these
-    are what actually matter -- see codenames/arena.py's module docstring."""
+    """The evaluation-only guessers of a pool, if it marks any."""
     return {name: e.guesser for name, e in load_pool(config_path).items() if e.held_out}
+
+
+def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> Guesser:
+    """One guesser from a one-line spec, or by name from `pool_config`.
+
+        anthropic:<model>[:<effort>]    LLMGuesser, e.g. anthropic:claude-sonnet-5:medium
+        <provider>:<model>[:<effort>]   OpenAICompatGuesser, for any provider in
+                                        codenames/guessers/openai_compat.py::PROVIDERS,
+                                        e.g. deepinfra:openai/gpt-oss-120b:low
+        <name>                          an entry in `pool_config` (the synthetic guessers)
+
+    Every LLM guesser caches to cache/llm_store.db, keyed by model and
+    effort, so two specs never share an answer and the same spec never pays
+    twice.
+
+    Effort is part of the cache key, and its default differs by provider on
+    purpose. An Anthropic model left without one runs with thinking disabled
+    (see LLMGuesser.__init__). gpt-oss-120b left to its own default reasons at
+    medium: 8x the completion tokens for the same one-shot judgment, and on a
+    small budget an empty answer -- so OpenAICompatGuesser defaults to low.
+    """
+    provider, sep, rest = spec.partition(":")
+    if not sep:
+        return load_pool(pool_config)[spec].guesser
+    model, _, effort = rest.partition(":")
+    if not model:
+        raise ValueError(f"guesser spec {spec!r} names no model")
+    if provider == "anthropic":
+        return LLMGuesser(model=model, effort=effort or None, cache_path=DEFAULT_DB_PATH)
+    if provider in PROVIDERS:
+        kwargs = {"reasoning_effort": effort} if effort else {}
+        return OpenAICompatGuesser(model=model, provider=provider, cache_path=DEFAULT_DB_PATH, **kwargs)
+    raise ValueError(f"unknown guesser provider {provider!r} in {spec!r}; "
+                     f"use anthropic or one of {sorted(PROVIDERS)}")

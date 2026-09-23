@@ -24,14 +24,15 @@ Reported per model:
   score identically to another this turn and be one place away from
   losing the game.
 
-Rankings come through `LLMGuesser` with the shared disk cache, so a
-repeat run of the same positions costs nothing and every response stays
-available for later analysis.
+Rankings come through the shared disk cache, so a repeat run of the same
+positions costs nothing and every response stays available for later
+analysis. Any guesser spec works (codenames/guessers/registry.py::
+build_guesser), Anthropic or OpenAI-compatible.
 
 Usage:
     python scripts/tools/compare_guesser_models.py --dry-run
     python scripts/tools/compare_guesser_models.py -n 25 \
-        --model claude-opus-5:medium --model claude-sonnet-5:none
+        --model anthropic:claude-sonnet-5:medium --model deepinfra:openai/gpt-oss-120b
 """
 
 from __future__ import annotations
@@ -39,23 +40,18 @@ from __future__ import annotations
 import argparse
 import json
 import random
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from codenames.board import MAX_CLUE_NUMBER, Board, Role, load_holdout_wordlist
 from codenames.clue_stats import ClueStats
 from codenames.env import load_env
-from codenames.guessers.llm import LLMGuesser
+from codenames.guessers.registry import build_guesser
 from codenames.similarity import SimilarityTensor
 from codenames.spymasters.base import TurnContext
 from codenames.spymasters.registry import spymaster_spec
 
-CACHE_PATH = PROJECT_ROOT / "cache" / "llm_store.db"
 
 
 def _z_for(clue: str, words: list[str], sims: SimilarityTensor) -> dict[str, float]:
@@ -141,23 +137,17 @@ def score_turn(pos: Position, ranking: list[str]) -> dict:
     }
 
 
-def parse_model(spec: str) -> tuple[str, str | None]:
-    """`name` or `name:effort`; `none` means the thinking-disabled path."""
-    model, _, effort = spec.partition(":")
-    return model, (None if effort in ("", "none") else effort)
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-n", "--positions", type=int, default=25)
     ap.add_argument("--model", action="append",
-                    default=None, help="repeatable; `name` or `name:effort`")
+                    default=None, help="repeatable guesser spec, e.g. anthropic:claude-sonnet-5:medium")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--out", type=Path, default=None)
     args = ap.parse_args()
 
-    specs = args.model or ["claude-opus-5:medium", "claude-sonnet-5:none"]
+    specs = args.model or ["anthropic:claude-sonnet-5:medium", "deepinfra:openai/gpt-oss-120b"]
     sims = SimilarityTensor.load()
     positions = collect_positions(args.positions, sims)
 
@@ -173,8 +163,7 @@ def main() -> None:
     load_env()
     results: dict[str, list[dict]] = {}
     for spec in specs:
-        model, effort = parse_model(spec)
-        guesser = LLMGuesser(model=model, effort=effort, cache_path=CACHE_PATH)
+        guesser = build_guesser(spec)
         rows = []
         for p in positions:
             ranking = guesser.rank_candidates(p.clue, p.candidates, sims, number=p.number)

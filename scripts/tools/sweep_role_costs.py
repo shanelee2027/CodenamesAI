@@ -29,7 +29,7 @@ OOM killer, which takes the editor down with it. Budget
 Usage:
     # ~2-3 h, ~$5 on gpt-oss; 10 workers = 12 GB, leaving 6 cores free
     nice -n 10 python scripts/tools/sweep_role_costs.py --n-boards 150 \\
-        --guesser-pool-config configs/guesser_pool_oss120b.json \\
+        --guesser deepinfra:openai/gpt-oss-120b \\
         --record-games cache/llm_store.db --max-workers 10
 
     python scripts/tools/sweep_role_costs.py --axis opponent --n-boards 20 \\
@@ -41,27 +41,15 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
-import sys
 import time
-from collections import defaultdict
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
-from codenames.guessers.registry import DEFAULT_POOL_CONFIG
+from codenames.guessers.registry import build_guesser
+from codenames.headtohead import SideTurns, paired_summary, side_turn_stats
 from codenames.spymasters.registry import spymaster_spec
+from codenames.stats import binom_two_sided, wilson
 from codenames.two_team_arena import run_two_team_matchup
-
-# analyze_headtohead.py is a script, not a package module, so load it by path
-# rather than adding __init__.py files to scripts/ just for this import.
-import importlib.util as _ilu
-
-_spec = _ilu.spec_from_file_location("_h2h", Path(__file__).parent / "analyze_headtohead.py")
-_h2h = _ilu.module_from_spec(_spec)
-_spec.loader.exec_module(_h2h)
-binom_two_sided, wilson = _h2h.binom_two_sided, _h2h.wilson
 
 MODEL = "learned_listener"
 
@@ -117,8 +105,9 @@ def tag(overrides: dict) -> str:
     return "+".join(bits) if bits else "base-control"
 
 
-def per_board(db: Path, run: str) -> tuple[dict[str, int], dict[str, int], tuple[int, int, int]]:
-    """Read this run's games back out and pair them by board.
+def per_board(db: Path, run: str) -> tuple[dict[str, int], dict[str, int], tuple[dict[str, int], int, int]]:
+    """Read this run's games back out and pair them by board
+    (codenames/headtohead.py).
 
     Recomputed from the store rather than from MatchupResult because the
     paired sign test needs both side assignments of the *same* seed, which
@@ -129,41 +118,8 @@ def per_board(db: Path, run: str) -> tuple[dict[str, int], dict[str, int], tuple
         "select label, seed, winner, turns from game_records where label like ?", (run + "|%",)
     ).fetchall()
     con.close()
-    boards: dict[int, list[tuple[str, str | None]]] = defaultdict(list)
-    for label, seed, winner, turns in rows:
-        _, _, sides = label.partition("|")
-        a, _, b = sides.partition(",")
-        names = (a.split("=", 1)[1], b.split("=", 1)[1])
-        won = names[0] if str(winner).upper().endswith("A") else names[1]
-        killer = None
-        for t in json.loads(turns):
-            if t.get("ended_reason") == "assassin":
-                killer = names[0] if str(t.get("team", "")).upper() == "A" else names[1]
-        boards[seed].append((won, killer))
-
-    wins: dict[str, int] = defaultdict(int)
-    assassin: dict[str, int] = defaultdict(int)
-    swept: dict[str, int] = defaultdict(int)
-    split = 0
-    for gs in boards.values():
-        # Only boards played both ways count, anywhere. A board can be
-        # half-present because the guesser refused to rank on one assignment,
-        # and counting its surviving half toward win rate while it is absent
-        # from the sign test makes the two columns disagree about which games
-        # the row is describing -- with the first-move advantage landing
-        # entirely on whichever side happened to survive.
-        if len(gs) != 2:
-            continue
-        for w, killer in gs:
-            wins[w] += 1
-            if killer is not None:
-                assassin[killer] += 1
-        if gs[0][0] == gs[1][0]:
-            swept[gs[0][0]] += 1
-        else:
-            split += 1
-    paired = sum(1 for gs in boards.values() if len(gs) == 2)
-    return dict(wins), dict(assassin), (dict(swept), split, paired)
+    s = paired_summary(rows)
+    return dict(s.wins), dict(s.assassin), (dict(s.swept), s.split, s.boards)
 
 
 def progress_path(out: Path | None, label: str) -> Path:
@@ -237,19 +193,18 @@ def summarise(name: str, overrides: dict, db: Path, run: str) -> dict:
     lo, hi = wilson(wins.get(name, 0), n_games) if n_games else (0.0, 0.0)
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
-        turns = [json.loads(t) for (t,) in con.execute(
-            "select turns from game_records where label like ?", (run + "|%",))]
+        rows = con.execute("select label, seed, winner, turns from game_records where label like ?",
+                           (run + "|%",)).fetchall()
     finally:
         con.close()
-    clues = [t for g in turns for t in g if t.get("team")]
-    own = sum(sum(1 for w, r in t["guesses"] if r == "own") for t in clues)
+    chal = side_turn_stats(rows).get(name, SideTurns())
     return {
         "setting": name, "overrides": overrides, "games": n_games,
         "win_rate": wins.get(name, 0) / n_games if n_games else 0.0,
         "assassin_base": assassin.get("base", 0),
         "assassin_challenger": assassin.get(name, 0),
-        "own_per_clue": own / len(clues) if clues else 0.0,
-        "mean_k": sum(t["number"] for t in clues) / len(clues) if clues else 0.0,
+        "own_per_clue": chal.own_per_clue,
+        "mean_k": chal.mean_k,
         "seconds": 0.0, "resumed": True,
         "swept_base": swept.get("base", 0), "swept_challenger": swept.get(name, 0),
         "split": split, "decisive": decisive, "boards": n_boards,
@@ -265,8 +220,9 @@ def main() -> None:
                     help="seeds start here, clear of the training and eval-suite ranges")
     ap.add_argument("--axis", action="append", choices=sorted(AXES), default=None,
                     help="restrict to one axis (repeatable); default is all three")
-    ap.add_argument("--guesser-pool-config", type=Path, default=DEFAULT_POOL_CONFIG)
-    ap.add_argument("--guesser", default="llm")
+    ap.add_argument("--guesser", default="deepinfra:openai/gpt-oss-120b",
+                    help="a guesser spec or synthetic pool name -- see "
+                         "codenames/guessers/registry.py::build_guesser")
     ap.add_argument("--max-workers", type=int, default=None)
     ap.add_argument("--threads-per-worker", type=int, default=1,
                     help="threads inside each worker process. 1 is the old one-game-"
@@ -297,17 +253,13 @@ def main() -> None:
             settings.append({**BASE, key: v})
 
     seeds = list(range(args.first_seed, args.first_seed + args.n_boards))
-    # Fail before the pool starts. A missing guesser raises KeyError inside the
+    # Fail before the pool starts. A bad guesser raises inside the
     # ProcessPoolExecutor initializer, which surfaces only as BrokenProcessPool
-    # with no cause named -- the default config carries the synthetic guessers,
-    # so forgetting --guesser-pool-config looks exactly like a crash.
-    from codenames.guessers.registry import load_pool
-    available = load_pool(args.guesser_pool_config)
-    if args.guesser not in available:
-        raise SystemExit(
-            f"guesser {args.guesser!r} is not in {args.guesser_pool_config}; "
-            f"it has {sorted(available)}. The LLM guesser lives in "
-            f"configs/guesser_pool_oss120b.json.")
+    # with no cause named.
+    try:
+        build_guesser(args.guesser)
+    except (KeyError, ValueError) as exc:
+        raise SystemExit(f"bad --guesser {args.guesser!r}: {exc}")
 
     pins = dict(MODEL_PINS)
     if args.model_path is not None:
@@ -339,7 +291,7 @@ def main() -> None:
         t0 = time.time()
         result = run_two_team_matchup(
             base_spec, spymaster_spec(MODEL, **overrides, **pins), ("base", name),
-            guesser_pool_config=args.guesser_pool_config, guesser_name=args.guesser,
+            guesser=args.guesser,
             seeds=seeds, max_workers=args.max_workers,
             game_record_db=args.record_games, run_label=run,
             threads_per_worker=args.threads_per_worker,

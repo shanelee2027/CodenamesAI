@@ -47,15 +47,12 @@ import argparse
 import json
 import os
 import random
-import sys
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from codenames.board import Board, Card, OpponentBoardView, Role, load_holdout_wordlist
 from codenames.env import load_env
