@@ -36,6 +36,18 @@ the heading named in each entry.
 - ✅ Models the guesser as seeing similarity plus Gaussian noise, N(0, σ²),
   then chooses the clue and number that maximise expected reward. This is the
   model the paper is about: `clue-selection-theory.tex`.
+- ✅ **Checked that cosine similarity isn't distributed the same for every
+  clue word**, which is why the model works in per-clue z-scores
+  (`clue_stats.npz`) rather than raw cosines (`scratch/hub_effect.ipynb`,
+  2,000 sampled clues):
+  - A clue's average similarity to the 400 board words varies a lot. In GloVe
+    the middle 90% of clues span −0.10 to +0.06, about two standard
+    deviations of a typical clue's spread (0.08).
+  - So the same raw cosine means different things: 0.3 is z = 2.7 for one
+    clue and z = 5.4 for another in GloVe (1.5 to 3.4 in Wikipedia2Vec).
+  - The spread differs by clue too (GloVe standard deviation 0.064 to 0.096
+    across the middle 90% of clues), so the z-score needs each clue's own
+    mean *and* spread.
 - ✅ **σ sweep** (the assumed noise level):
   - ✅ Per-turn reward sweep (100 positions per σ, Sonnet): flat, with no
     significant optimum. It did not predict game results.
