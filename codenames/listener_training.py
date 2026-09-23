@@ -96,8 +96,35 @@ def resolve_seed(candidates: list[str], boards: list[tuple[int, frozenset[str]]]
     return hits[0] if len(hits) == 1 else None
 
 
+def load_soft_labels(path: Path, lm: str, temperature: float = 1.0) -> dict:
+    """Teacher distributions from scripts/data/collect_lm_distributions.py,
+    keyed by (clue, candidates, number) -> one {word: probability} per step.
+
+    `temperature` rescales the log-probabilities before renormalising: above 1
+    softens an overconfident teacher, and 0 keeps only its argmax, which is the
+    hard-label control -- same teacher, same positions, the distribution
+    thrown away.
+    """
+    from codenames.local_lm import DistributionStore
+
+    out = {}
+    for clue, cand, number, _path, steps in DistributionStore(path).all(lm):
+        dists = []
+        for st in steps:
+            lp = np.asarray(st["logprobs"], dtype=np.float64)
+            if temperature == 0:
+                p = (lp == lp.max()).astype(np.float64)
+            else:
+                z = lp / temperature
+                p = np.exp(z - np.logaddexp.reduce(z))
+            dists.append(dict(zip(st["remaining"], p / p.sum())))
+        out[(clue, tuple(cand), int(number))] = dists
+    return out
+
+
 def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
-                   refresh_features: bool = False, decoys: Path | None = None):
+                   refresh_features: bool = False, decoys: Path | None = None,
+                   soft_labels: dict | None = None, seed_filter=None):
     """Positions for training.
 
     `refresh_features` decides what a step-2+ row means. Off (the default and
@@ -107,6 +134,14 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     (`gaptop_*`, `peak_z`, `lead_margin`, `p_max_sigma2`, `cohesion`, the rank
     columns) describes a board that no longer exists. On, features are
     re-extracted for the words actually remaining at each step.
+
+    `soft_labels` (from `load_soft_labels`) replaces each step's one-hot label
+    -- the word the teacher happened to pick -- with a local model's full
+    distribution over the same remaining words. The groups do not change: the
+    distributions were computed conditioned on this teacher's own pick order,
+    so step j still removes the teacher's first j-1 picks. Positions with no
+    distribution are dropped. `seed_filter`, if given, keeps only positions
+    whose board seed it accepts.
 
     Frozen is what Plackett-Luce assumes and what codenames/pl_reward.py needs
     to be exact. Measured, the assumption does not hold for this model:
@@ -148,6 +183,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     conn.close()
 
     out, dropped = [], {"clue_oov": 0, "bad_ranking": 0, "no_seed": 0, "features": 0}
+    if soft_labels is not None:
+        dropped["no_soft"] = 0
     for clue, cand_j, number, rank_j in rows:
         cand, rank = json.loads(cand_j), json.loads(rank_j)
         if sorted(w.lower() for w in cand) != sorted(w.lower() for w in rank):
@@ -157,6 +194,14 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
         if seed is None:
             dropped["no_seed"] += 1
             continue
+        if seed_filter is not None and not seed_filter(seed):
+            continue
+        soft = None
+        if soft_labels is not None:
+            soft = soft_labels.get((clue, tuple(cand), int(number)))
+            if soft is None:
+                dropped["no_soft"] += 1
+                continue
         # Candidates are SHUFFLED before features are computed, and the
         # teacher's picks are tracked to their new rows. Feeding them in the
         # teacher's own order put the target at index 0 of every group, which
@@ -174,6 +219,10 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
             continue
         rec = {"seed": seed, "clue": clue, "k": int(number), "x": feats,
                "n": len(rank), "targets": targets}
+        if soft is not None:
+            # One label vector per step, over ALL rows in shuffled order; rows
+            # already taken carry 0 and are dropped by build_groups.
+            rec["soft"] = [np.array([d.get(w, 0.0) for w in shuffled]) for d in soft]
         if refresh_features:
             # One extraction per step on the words still standing. Cheap --
             # it is the observed path, not a tree over possible ones.
@@ -286,8 +335,12 @@ def build_groups(positions: list[dict]) -> tuple[np.ndarray, np.ndarray, list[in
         for j in range(min(k, n - 1)):
             keep = [r for r in range(n) if r not in taken]
             rows = p["x"][keep]
-            lab = np.zeros(len(rows))
-            lab[keep.index(p["targets"][j])] = 1.0
+            if "soft" in p and j < len(p["soft"]):
+                lab = p["soft"][j][keep]
+                lab = lab / lab.sum()
+            else:
+                lab = np.zeros(len(rows))
+                lab[keep.index(p["targets"][j])] = 1.0
             X.append(rows)
             y.append(lab)
             groups.append(len(rows))
@@ -387,16 +440,20 @@ def mcfadden_on(preds, groups, y, mask=None) -> float:
 
 
 def group_log_loss(preds, groups, y) -> tuple[np.ndarray, np.ndarray]:
-    """Per choice event: the model's negative log-likelihood of the teacher's
-    pick under a softmax over the group, and the uniform model's, log(n)."""
+    """Per choice event: the model's cross-entropy against the label under a
+    softmax over the group, and the uniform model's, log(n).
+
+    With a one-hot label that is the negative log-likelihood of the teacher's
+    pick; with a soft label (a local model's distribution) it is the expected
+    one under that distribution, which is the quantity soft-label training
+    minimises."""
     bounds = np.concatenate([[0], np.cumsum(groups)])
     ll = np.empty(len(groups))
     null = np.empty(len(groups))
     for i, (a, b) in enumerate(zip(bounds[:-1], bounds[1:])):
         s_ = preds[a:b] - preds[a:b].max()
-        e = np.exp(s_)
-        p = e / e.sum()
-        ll[i] = -np.log(max(float(p[int(np.argmax(y[a:b]))]), 1e-12))
+        logp = s_ - np.log(np.exp(s_).sum())
+        ll[i] = -float(np.dot(y[a:b], np.maximum(logp, np.log(1e-12))))
         null[i] = np.log(b - a)
     return ll, null
 

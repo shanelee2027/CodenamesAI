@@ -32,9 +32,10 @@ import numpy as np
 from codenames.listener_features import FEATURE_NAMES, N_FEATURES
 from codenames.listener_training import (
     CACHE, DB, DEFAULT_MODEL, FEATURE_BLOCKS,
-    accuracy_on, build_groups, decoy_group_mask, first_step_mask, load_positions, mcfadden_on,
-    step_weights, train,
+    accuracy_on, build_groups, decoy_group_mask, first_step_mask, load_positions, load_soft_labels,
+    mcfadden_on, step_weights, train,
 )
+from codenames.local_lm import DEFAULT_LM
 
 
 def main() -> None:
@@ -67,14 +68,23 @@ def main() -> None:
                          "so the numbers across fractions describe one fixed test set -- "
                          "subsampling the whole decoy file instead shrinks val too, and "
                          "then R2 falls as data GROWS purely because the test got bigger.")
+    ap.add_argument("--soft-labels", type=Path, default=None,
+                    help="cache/lm_distributions.db: train on a local model's full distribution "
+                         "at every step instead of the teacher's one sampled pick (see "
+                         "scripts/data/collect_lm_distributions.py). Positions and groups are "
+                         "unchanged; only the labels are replaced")
+    ap.add_argument("--lm", default=DEFAULT_LM, help="which local model's distributions")
+    ap.add_argument("--temperature", type=float, default=1.0,
+                    help="applied to the soft labels; 0 keeps only their argmax (hard-label control)")
     ap.add_argument("--out", type=Path, default=CACHE / "listener_gbt.txt")
     args = ap.parse_args()
 
     t0 = time.time()
+    soft = load_soft_labels(args.soft_labels, args.lm, args.temperature) if args.soft_labels else None
     positions, dropped = load_positions(args.db, args.model, args.max_seed, args.collected,
                                         refresh_features=args.refresh_features,
-                                        decoys=args.decoys)
-    print(f"teacher: {args.model}")
+                                        decoys=args.decoys, soft_labels=soft)
+    print(f"teacher: {args.model}" + (f"   labels: {args.lm} at T={args.temperature:g}" if soft else ""))
     print(f"usable positions: {len(positions)}   dropped: {dropped}")
     if not positions:
         raise SystemExit("no usable positions")

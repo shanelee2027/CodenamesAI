@@ -20,6 +20,13 @@ dependencies = [
 dev = [
     "pytest",
 ]
+# A local teacher (codenames/local_lm.py). Qwen3-8B-FP8 needs all three:
+# accelerate to load an FP8 checkpoint, and `kernels` for the FP8 matmul.
+lm = [
+    "transformers",
+    "accelerate",
+    "kernels>=0.16,<0.17",
+]
 
 [build-system]
 requires = ["setuptools>=68"]
