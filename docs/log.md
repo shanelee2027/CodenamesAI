@@ -3132,3 +3132,91 @@ computation and a plain full forward pass give slightly different logits
 (0.75 on one token here). Over 40 positions, stored step-1 distributions vs
 full-pass ones: median total variation 0.000, mean 0.004, max 0.124, argmax
 agreement 39/40. Negligible for training.
+
+## Does the prompt change the teacher's picks? Four ways of asking gpt-oss
+
+**Question (from the professor).** Every listener is trained on one prompt:
+clue and number, "rank ALL the words", with the ranking's j-th entry taken as
+the step-j pick. Entry 2 is an exact sample of "what the model names second,
+having already named entry 1" -- but that need not equal "what it guesses when
+entry 1 is gone", which is what play asks. The hope is that it does not
+matter.
+
+**Set-up** (`scripts/data/collect_prompt_variants.py`, analysis
+`scripts/tools/compare_prompt_methods.py`). 300 gpt-oss holdout positions,
+8 samples per prompt at temperature 1.0:
+
+- `ranked`: the training prompt.
+- `ranked_nonumber`: the same without the number.
+- `single`: name ONE word; step 2 re-asks with the first word silently removed.
+- `single_feedback`: step 2 only; the first word removed and the prompt says it
+  was guessed and was correct.
+
+Step 2 is conditioned on the stored ranking's first word. For the ranked
+prompts, only samples that began with it are kept (79%).
+
+10,583 calls, none failed, 1.88M tokens in / 2.30M out. Stored in
+`cache/prompt_variants.db`, never in `llm_store.db`.
+
+**Found on the way: the training data is near-greedy.** With no temperature
+in the request -- how all 88k gpt-oss rankings in the store were bought --
+DeepInfra answers an identical prompt identically in runs (four sequential
+calls: two identical pairs, same text, same token count). With
+`temperature=1.0` every call differed. So the stored rankings are close to
+the model's mode, not samples from its distribution. The listener is
+therefore fitted to a sharper teacher than gpt-oss at T=1. It is also why
+these samples set the temperature explicitly: otherwise 8 "samples" would be
+far fewer independent draws, and the self-agreement noise floor would be
+inflated.
+
+**The measure.** Per position, `D = within(X) + within(Y) - 2 cross(X,Y)`,
+built from the unbiased agreement estimators. It is an unbiased estimate of
+||p_X - p_Y||^2, zero in expectation when two prompts share a distribution
+however noisy the samples. For scale, disjoint distributions have D = 2.
+
+| step | pair | agree | D | 95% CI |
+|---|---|---|---|---|
+| 1 | ranked vs ranked_nonumber | 0.770 | 0.011 | [-0.001, 0.023] |
+| 1 | ranked vs single | 0.762 | 0.034 | [0.019, 0.052] |
+| 1 | ranked_nonumber vs single | 0.759 | 0.038 | [0.022, 0.055] |
+| 2 | ranked vs ranked_nonumber | 0.636 | 0.012 | [-0.011, 0.038] |
+| 2 | ranked vs single | 0.542 | 0.127 | [0.088, 0.168] |
+| 2 | ranked vs single_feedback | 0.545 | 0.121 | [0.084, 0.163] |
+| 2 | single vs single_feedback | 0.543 | 0.061 | [0.038, 0.087] |
+
+Self-agreement: step 1 is 0.78 for all three prompts. Step 2 is 0.63
+(ranked), 0.65 (ranked_nonumber), 0.58 (single), 0.57 (single_feedback).
+
+The incumbent listener's McFadden R^2 on each prompt's picks:
+
+| step | ranked | ranked_nonumber | single | single_feedback |
+|---|---|---|---|---|
+| 1 | 0.613 | 0.603 | 0.607 | -- |
+| 2 | 0.301 | 0.298 | 0.305 | 0.278 |
+
+**Conclusions.**
+- **Step 1 does not depend on the prompt.** The number changes nothing
+  measurable. Asking for one word instead of a ranking moves the distribution
+  by a small, significant D = 0.03, and the listener scores all three within
+  0.01. Step 1 is 65% of what play reads.
+- **Step 2 does.** Continuing a list and re-asking with the word removed
+  differ by D ~0.12, about 5 points of agreement below self-agreement. Being
+  told the first guess was correct moves it again (D = 0.06).
+- **The re-ask is the more Plackett-Luce-like of the two.** With step 1's top
+  word removed, the re-asked step-2 pick is step 1's runner-up 62% of the time
+  (60% with feedback); the list continuation, only 51%. A list drifts toward
+  words that go with the one it just wrote; a fresh question falls back to the
+  next-best answer, which is what "remove it and renormalise" assumes.
+- **For the listener it is roughly a wash.** Its R^2 on step-2 picks is 0.301
+  (ranked, what it trained on) against 0.305 (single) and 0.278
+  (single_feedback). The latter is 0.02 lower, the one hint that the most
+  realistic step 2 is predicted slightly worse; no interval was computed.
+- **Which step 2 is "right" depends on the guesser.** The arena's LLM guesser
+  asks once per turn and reads its ranking top-down, so for arena evaluation
+  the ranked continuation is exactly the matching data. A human guesser sees
+  the first card turned over before guessing again, which `single_feedback`
+  imitates.
+
+**Caveat.** The kept ranked step-2 samples are selected: they are the 79% that
+agreed with the stored first word, which may make them more concentrated
+(self-agreement 0.63 vs 0.58).
