@@ -6272,3 +6272,22 @@ is distilled from gpt-oss-120b, so for it Sonnet is still a transfer test.
 
 `scripts/tools/compare_guesser_models.py` still defaults to comparing Opus
 and Sonnet. It is a diagnostic tool, not the suite, and was left alone.
+
+## Cleanup: the pre-centroid spymasters are gone
+
+Removed `random`, `linear_scorer` and `oracle` (code, registry entries,
+config entries, tests), per Shane: nothing current compares against them,
+and the worklog now starts at `centroid`. `centroid` is the only remaining
+spymaster that used `spymasters/_util.py`, so its two helpers moved into
+`centroid.py` and the module is gone. Arena tests that used
+`RandomSpymaster` as a stand-in now use `CentroidSpymaster`.
+
+This drops one argument `docs/design-decisions.md` used to make: that
+`random` catches harness bugs that would make every model look equally
+good. `centroid` now plays that role, less sharply, since a harness bug
+could plausibly flatter a real strategy more than a random one.
+
+References to the retired `v1`/`v1.1` MLP models were removed from every
+current-facing doc (README, CLAUDE.md, design-decisions, iteration-
+architecture, versions/README) and from code docstrings. Entries above
+this one in this log are left as written.

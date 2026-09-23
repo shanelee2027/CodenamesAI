@@ -9,7 +9,6 @@ import pytest
 from codenames.arena import run_arena
 from codenames.board import load_wordlist
 from codenames.spymasters.centroid import CentroidSpymaster
-from codenames.spymasters.random_clue import RandomSpymaster
 
 CLUE_WORDS = ["clueone", "cluetwo", "cluethree"]
 SPACES = ["a"]
@@ -42,8 +41,8 @@ def guesser_pool_config(tmp_path):
 class TestRunArena:
     def test_plays_every_spymaster_against_every_guesser(self, sims_cache_dir, guesser_pool_config, tmp_path):
         spymaster_specs = {
-            "random": (RandomSpymaster, {"seed": 0}),
-            "centroid": (CentroidSpymaster, {"seed": 0}),
+            "centroid_a": (CentroidSpymaster, {"seed": 0}),
+            "centroid_b": (CentroidSpymaster, {"seed": 1}),
         }
         db_path = tmp_path / "arena.db"
 
@@ -58,10 +57,10 @@ class TestRunArena:
         )
 
         assert set(results.keys()) == {
-            ("random", "space_a"),
-            ("random", "space_a_holdout"),
-            ("centroid", "space_a"),
-            ("centroid", "space_a_holdout"),
+            ("centroid_a", "space_a"),
+            ("centroid_a", "space_a_holdout"),
+            ("centroid_b", "space_a"),
+            ("centroid_b", "space_a_holdout"),
         }
         for key, r in results.items():
             assert r.n_games == 2
@@ -74,14 +73,14 @@ class TestRunArena:
             assert all(0.0 <= rate <= 1.0 for rate in rates)
             assert sum(rates) == pytest.approx(1.0)  # every guess lands on exactly one role
 
-        assert results[("random", "space_a_holdout")].held_out is True
-        assert results[("random", "space_a")].held_out is False
+        assert results[("centroid_a", "space_a_holdout")].held_out is True
+        assert results[("centroid_a", "space_a")].held_out is False
         assert len(worker_rss) >= 1
 
     def test_mean_turns_on_win_is_none_when_nothing_won(self, sims_cache_dir, guesser_pool_config, tmp_path):
         # max_turns=0 forces every game to time out (play_game's loop body
         # never runs) -- zero wins, so there's nothing to average.
-        spymaster_specs = {"random": (RandomSpymaster, {"seed": 0})}
+        spymaster_specs = {"centroid": (CentroidSpymaster, {"seed": 0})}
         db_path = tmp_path / "arena.db"
 
         results, _ = run_arena(
@@ -99,7 +98,7 @@ class TestRunArena:
             assert r.mean_turns_on_win is None
 
     def test_logs_one_row_per_turn_to_sqlite(self, sims_cache_dir, guesser_pool_config, tmp_path):
-        spymaster_specs = {"random": (RandomSpymaster, {"seed": 0})}
+        spymaster_specs = {"centroid": (CentroidSpymaster, {"seed": 0})}
         db_path = tmp_path / "arena.db"
 
         run_arena(
@@ -118,7 +117,7 @@ class TestRunArena:
 
         assert len(rows) > 0
         for cm, guesser, seed, turn_index, clue, ended_reason, outcome in rows:
-            assert cm == "random"
+            assert cm == "centroid"
             assert guesser in ("space_a", "space_a_holdout")
             assert seed == 1
             assert isinstance(turn_index, int)

@@ -5,8 +5,8 @@ the board as pure distractors, nobody actively pursuing them -- most of
 the codebase (arena evaluations, training data generation) only ever
 uses this, since every spymaster/guesser is written against "own" as a
 fixed perspective (see board.py's module docstring). `play_two_team_game`
-is real two-team play, added later without changing any spymaster,
-guesser, or the scorer -- see its own docstring and `OpponentBoardView`
+is real two-team play, added later without changing any spymaster or
+guesser -- see its own docstring and `OpponentBoardView`
 in board.py for how. In both, a turn ends the moment a non-own word is
 revealed or the spymaster's attempts run out.
 

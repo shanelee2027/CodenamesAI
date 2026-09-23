@@ -23,17 +23,11 @@ before changing the training or evaluation pipeline.
 ## Naming models
 
 **Models get descriptive names, not version numbers.** A name should say
-what makes the model different (`k_cause_mlp`, not `v2`), because a number
+what makes the model different (`decoy_listener`, not `v2`), because a number
 carries no information about what changed and forces a lookup every time.
 One file under `codenames/spymasters/`, one entry in
 `configs/spymasters.json`, one doc under `docs/versions/` named for the
 model, and nothing else edited.
-
-`v1` and `v1.1` predate this convention and keep their names for now; they
-will be renamed or removed rather than grandfathered permanently. Note
-that they were also trained against the old 60-word holdout, so their
-numbers are **not** comparable with models trained under the current
-150-word split — see `docs/iteration-architecture.md` step 5.
 
 ## Cache layout
 

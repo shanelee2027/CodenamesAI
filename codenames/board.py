@@ -73,10 +73,8 @@ ROLE_COUNTS: dict[Role, int] = {
 }
 BOARD_SIZE = sum(ROLE_COUNTS.values())
 
-# The learned scorer outputs a distribution over k in 0..4 -- the
-# number of own-words the guesser will reveal before stopping.
-# Baseline spymasters cap their chosen number at the same bound so
-# every spymaster's outputs stay comparable in the arena. Lives here (not
+# The largest clue number any spymaster announces, so every spymaster's
+# outputs stay comparable in the arena. Lives here (not
 # in spymasters/base.py, where it conceptually belongs) so anything that
 # needs it can import it without a circular dependency back through
 # spymasters/.
@@ -187,7 +185,7 @@ class OpponentBoardView:
     def revealed(self) -> set[str]:
         # Which words are revealed doesn't depend on perspective, only
         # what role they turn out to be -- some spymaster code reads
-        # this set directly (codenames/spymasters/_util.py::state_rng)
+        # this set directly (codenames/spymasters/centroid.py::state_rng)
         # rather than going through
         # is_revealed()/reveal(), so it needs to exist here too.
         return self._board.revealed

@@ -38,7 +38,7 @@ from codenames.two_team_arena import run_two_team_matchup, run_two_team_self_pla
 
 # Selected by role from configs/spymasters.json rather than by name, so a
 # new entry needs no edit here. This script offers the "exploration"
-# role (oracle) on top of the standard baselines; scripts/pipeline/run_arena.py
+# role (learned_listener) on top of the standard baselines; scripts/pipeline/run_arena.py
 # does not -- that difference is the only reason the two lists differ.
 BASE_SPYMASTER_NAMES = spymaster_names("baseline", "exploration")
 

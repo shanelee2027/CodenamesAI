@@ -94,8 +94,7 @@ def checkpoint_content_hash(checkpoint_path: Path) -> str:
 
 def spymaster_identity(name: str, checkpoint_path: Path | None = None) -> str:
     """A spymaster's identity for the eval store. Baselines (no
-    checkpoint -- `centroid`, `linear_scorer`, the planned non-deep-
-    learning baseline) are identified by their registry name alone: there
+    checkpoint -- `centroid`, `expected_words`) are identified by their registry name alone: there
     is nothing to hash and no path to collide on. A trained model's
     identity is its name plus its checkpoint's content hash, so retraining
     a checkpoint at the same path never collides with the old results."""

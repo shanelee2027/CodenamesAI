@@ -2,7 +2,7 @@
 human inconsistency -- the pool's guesser with Gaussian noise on
 similarities. Deliberately just one guesser among several structurally
 different ones: a pool built as one base guesser plus several noise
-levels would defeat its own purpose, since a knowledge-blind scorer
+levels would defeat its own purpose, since a model trained against the pool
 can't learn to trust rare/niche clues if every guesser shares GloVe's
 blind spots.
 

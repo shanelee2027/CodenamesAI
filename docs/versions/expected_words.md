@@ -1,8 +1,7 @@
 # expected_words
 
-Replaces `z_threshold` as the fifth baseline registered alongside
-`random`/`centroid`/`linear_scorer`/`oracle` in `configs/spymasters.json`
-with `"roles": ["baseline"]`. `z_threshold` itself is deleted (code, test,
+Replaces `z_threshold` as a baseline registered alongside `centroid` in
+`configs/spymasters.json` with `"roles": ["baseline"]`. `z_threshold` itself is deleted (code, test,
 config entry, registry entry, doc) rather than kept side by side.
 
 ## Why replace it, not tune it

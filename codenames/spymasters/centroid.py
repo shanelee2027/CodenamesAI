@@ -1,4 +1,4 @@
-"""Baseline 2: clue nearest the "centroid" of a random
+"""Baseline: clue nearest the "centroid" of a random
 own-word subset.
 
 There's no raw embedding vector available to average -- only the
@@ -15,12 +15,43 @@ is not what we want here).
 
 from __future__ import annotations
 
+import random
+
+import numpy as np
+
 from codenames.board import Board, Role
 from codenames.clue_search import mean_similarity_to_words, top_k_legal_clues
 from codenames.similarity import SimilarityTensor
 
-from ._util import natural_number, state_rng
 from .base import MAX_CLUE_NUMBER, Spymaster, TurnContext
+
+
+def natural_number(sims: SimilarityTensor, board: Board, clue: str, max_number: int) -> int:
+    """How many own-words this clue's similarity profile ranks above every
+    other unrevealed word -- the standard Codenames convention that the
+    number signals how many words are safely covered. Capped at
+    max_number (see spymasters.base.MAX_CLUE_NUMBER)."""
+    unrevealed = [w for w in board.words if not board.is_revealed(w)]
+    values = sims.similarities_for_board(clue, unrevealed)  # (n, n_spaces)
+    with np.errstate(invalid="ignore"):
+        mean_values = np.nanmean(values, axis=1)
+    order = np.argsort(-np.nan_to_num(mean_values, nan=-np.inf))
+    count = 0
+    for i in order:
+        if board.role_of(unrevealed[i]) == Role.OWN:
+            count += 1
+        else:
+            break
+    return max(1, min(count, max_number)) if unrevealed else 1
+
+
+def state_rng(seed: int | None, board: Board) -> random.Random:
+    """A Random seeded deterministically from (instance seed, board seed,
+    revealed-set) so results are reproducible regardless of process or call
+    order -- important once the arena runs spymasters across worker
+    processes."""
+    key = repr((seed, board.seed, tuple(sorted(board.revealed))))
+    return random.Random(key)
 
 
 class CentroidSpymaster(Spymaster):

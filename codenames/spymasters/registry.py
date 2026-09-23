@@ -13,18 +13,14 @@ Config format: {"spymasters": [{"name", "type", "params", "trained",
 `type` selects a class from SPYMASTER_CLASSES. `params` are passed as
 keyword args to that class's constructor. `trained` marks whether this
 entry expects a trained artifact (a checkpoint) to exist before it can be
-built -- not every spymaster trains (`centroid` and `linear_scorer` don't,
-and neither does the planned non-deep-learning baseline), so no code path
-may assume every entry has one. `configs/spymasters.json` only lists the
-baselines, which need no checkpoint; a `learned` entry's `params` would
-need a real `checkpoint_path` (produced by a specific training run, not a
-fixed config value) filled in by the caller -- see `spec()`'s `overrides`.
+built. No entry in `configs/spymasters.json` does: the learned listener
+loads its booster from a fixed cache path, so every entry is constructible
+straight from its params.
 
 `roles` is how a script says *which kind* of spymaster it wants without
 naming names: `scripts/pipeline/run_arena.py` takes the "baseline" role, and
-`scripts/pipeline/run_two_team_arena.py` additionally takes "exploration" (its
-`oracle` entry -- an upper-bound exploration tool, not a realistic
-baseline, per the README). Adding a spymaster is then a config entry and
+`scripts/pipeline/run_two_team_arena.py` additionally takes "exploration".
+Adding a spymaster is then a config entry and
 nothing else: it appears everywhere its roles say it belongs, with no
 script edited. `roles` defaults to ("baseline",) precisely so a new entry
 shows up by default rather than being silently invisible.
@@ -47,17 +43,11 @@ from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
 from codenames.spymasters.learned_listener import LearnedListenerSpymaster
-from codenames.spymasters.linear_scorer import LinearScorerSpymaster
-from codenames.spymasters.oracle import OracleSpymaster
-from codenames.spymasters.random_clue import RandomSpymaster
 
 DEFAULT_SPYMASTER_CONFIG = Path(__file__).parent.parent.parent / "configs" / "spymasters.json"
 
 SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
-    "random": RandomSpymaster,
     "centroid": CentroidSpymaster,
-    "linear_scorer": LinearScorerSpymaster,
-    "oracle": OracleSpymaster,
     "expected_words": ExpectedWordsSpymaster,
     "learned_listener": LearnedListenerSpymaster,
 }

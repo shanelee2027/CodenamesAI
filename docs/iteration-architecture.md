@@ -90,9 +90,8 @@ worker processes, so the registry must be able to hand out a picklable
 config satisfies this more cleanly than a class reference does.
 
 A model also declares whether it has a trained artifact. Not every
-spymaster trains -- `centroid` and `linear_scorer` don't, and neither
-does the planned non-deep-learning baseline -- so no code path may assume
-a checkpoint exists.
+spymaster trains -- `centroid` and `expected_words` don't -- so no code
+path may assume a checkpoint exists.
 
 ## Step 3: A batched-scoring protocol
 
@@ -157,11 +156,6 @@ for multi-turn play would need a different one.
   drops 340 -> 250. The mechanism is free (`board.py:208` is a set
   difference; the similarity tensor covers all 400 regardless).
 - **The LLM model id is part of the suite identity.**
-
-**Contamination warning.** `v1` and `v1.1` were trained with only 60
-words held out, so they trained on 90 words that are now in the eval set.
-They must not appear in the same table as a model trained under the new
-split without being retrained, or the comparison flatters them.
 
 ## Step 6: An eval store
 

@@ -84,14 +84,8 @@ suite (`codenames/eval_suite.py`).
 Fixed reference points, not iteration targets — a new model should be
 compared against these, and should clearly beat them.
 
-1. **Random** — a random legal clue.
-2. **Centroid** — the clue nearest the mean of a random own-word subset.
-3. **Oracle** — zero-noise, single-space, deterministic "longest run of own
-   words at the top of the ranking." An exploration tool for an upper
-   bound, not a realistic baseline.
-4. **Linear scorer** (`linear_scorer`) — an 8-constant hand-coded formula,
-   weighted average across spaces then weighted sum across roles.
-5. **Expected words** (`expected_words`) — see
+1. **Centroid** — the clue nearest the mean of a random own-word subset.
+2. **Expected words** (`expected_words`) — see
    [`docs/versions/expected_words.md`](docs/versions/expected_words.md).
    Threshold-free: z-scores each candidate clue against every unrevealed
    board word (`cache/clue_stats.npz`, built by
@@ -166,14 +160,8 @@ against play results. Full derivation and measurements are in
 order-statistics background is in
 [`docs/clue-selection-theory.pdf`](docs/clue-selection-theory.pdf).
 
-**Results.** None published. The two models that had measured results
-(`v1` and the `v1.1` blend subversion) were retired: they were trained
-against the old 60-word board holdout, so their numbers are not comparable
-with anything under the current 150-word split, and reporting them beside
-a new model would flatter them. Their measurements remain in
-[`docs/log.md`](docs/log.md).
-
-The evaluation that replaces them is defined in
+**Results.** None published against the frozen suite yet. The evaluation is
+defined in
 [`docs/iteration-architecture.md`](docs/iteration-architecture.md): a frozen
 suite of board seeds built entirely from held-out words, played against a
 single fixed LLM guesser (Claude Sonnet 5 at medium effort), with every game
@@ -203,8 +191,8 @@ See [`docs/log.md`](docs/log.md) for the numbers behind each.
 ```
 data/          raw dumps and embeddings (gitignored)
 cache/         similarity tensor, rollouts, datasets, checkpoints (gitignored)
-codenames/     library code (board, similarity, features, guessers, spymasters,
-               scorer, rollouts, eval_suite, game, arena)
+codenames/     library code (board, similarity, guessers, spymasters,
+               listener features, eval_suite, game, arenas)
 scripts/
   data/        build time, run once: downloads, similarity tensor
   pipeline/    the iteration loop: generate, featurize, train, arenas

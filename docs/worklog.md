@@ -9,7 +9,7 @@ the heading named in each entry.
 - ✅ done · 🔄 in progress · ⬜ not started
 - **[in use]** part of the current system · **[kept]** kept as a baseline or
   tool · **[built, unused]** built, but not in the deployed configuration ·
-  **[rejected]** tried and dropped · **[retired]** superseded
+  **[rejected]** tried and dropped
 - The **guesser** is named for every game result, because results against
   different guessers are not comparable: *Sonnet* is Claude Sonnet 5 at medium
   effort; *gpt-oss* is gpt-oss-120b at low effort, the cheap bulk listener.
@@ -18,20 +18,6 @@ the heading named in each entry.
   −1 opponent, −10 assassin), and **assassin%** (games lost to the assassin).
 
 ---
-
-## 0. Before the current models: a trained scorer on synthetic guessers — **[retired]**
-
-- ✅ MLP scorer (`v1`, `v1.1`): predicts how many own words a guesser reveals,
-  trained on simulated turns from noisy-embedding guessers.
-  - ✅ (k, cause) label redesign, so it can tell an assassin miss from an
-    opponent miss.
-  - ✅ Blend guesser, a history-aware guesser (a negative result), and a
-    noise-level sweep.
-  - Retired: it was trained against the old 60-word holdout, so its numbers
-    are not comparable with anything since, and synthetic guessers turned out
-    to be weak evidence next to an LLM guesser.
-- ✅ Simple baselines `random` and `linear_scorer` — **[kept]**, not used in
-  recent comparisons.
 
 ## 1. Centroid — **[kept]** as the reference opponent
 
@@ -50,14 +36,9 @@ the heading named in each entry.
 - ✅ Models the guesser as seeing similarity plus Gaussian noise, N(0, σ²),
   then chooses the clue and number that maximise expected reward. This is the
   model the paper is about: `clue-selection-theory.tex`.
-- ✅ `z_threshold`, the threshold-based predecessor — **[retired]**, replaced
-  by this model.
 - ✅ **σ sweep** (the assumed noise level):
-  - ✅ The first sweep scored single turns and picked σ=2.5. It was **flawed**:
-    its positions were easier than real play, because random reveals clear
-    distractors faster than real play does.
-  - ✅ A re-sweep on realistic positions was flat, with no significant optimum.
-    The per-turn score turned out to rank σ backwards against game results.
+  - ✅ Per-turn reward sweep (100 positions per σ, Sonnet): flat, with no
+    significant optimum. It did not predict game results.
   - ✅ **Full games against centroid**, 100 each, Sonnet:
 
     | σ | win% | k | own% | own/turn | reward/turn | assassin% |
@@ -75,10 +56,8 @@ the heading named in each entry.
   - ✅ **Descriptive σ**, fitted to cached rankings at no cost: Sonnet 2.06,
     gpt-oss 2.20. The σ that best *describes* the guesser is not the σ that
     *plays* best.
-- ✅ Clue legality fix: near-identical clues such as `centre`/Center and
-  `canadian`/Canada were getting through on 10% of boards. **[in use]**
-- ✅ Found that the model repeats a clue right after it failed (8.6% of clues
-  at σ=1.5). ⬜ Fix not built: exclude or penalise clues already given.
+- ⬜ Idea: exclude or penalise clues already given this game. The model
+  re-gives a clue right after it failed (8.6% of clues at σ=1.5).
 - ⬜ Idea: let σ grow with k (the fitted σ rises from 1.97 at k=1 to 2.63 at
   k=4).
 
@@ -120,8 +99,6 @@ the heading named in each entry.
     | Concreteness + WordNet | small |
 
   - **Marginal:** entity vectors.
-  - Two leaks were caught and retracted along the way, including the +23.7-point
-    SWOW claim.
 - ✅ Training tweaks:
   - **Adopted:** down-weighting later choices, learning rate 0.01, and
     averaging PMI across templates.
@@ -198,7 +175,7 @@ the heading named in each entry.
   - **Sonnet is now the evaluation guesser**; Opus is kept for final numbers
     only.
 - ✅ gpt-oss as the cheap bulk guesser, 47× cheaper than Sonnet per call —
-  **[in use]** for sweeps. Two bugs were fixed before any data was collected.
+  **[in use]** for sweeps.
 - ⬜ **Frozen benchmark `holdout_v1`**: 100 fixed boards built only from the
   150 held-out words, with a Sonnet guesser. It is designed but **has never
   been run**. Recent results use gpt-oss on ad-hoc seeds, so they are only

@@ -14,9 +14,8 @@ opens its own read-only mmap over the same similarity_tensor.npy via
 SimilarityTensor.load() -- the OS page cache shares the underlying physical
 pages across processes, so the ~1-2GB tensor itself is not duplicated per
 worker. Spymasters/guessers must not defeat this by materializing their own
-private copy of the full tensor as an instance cache -- see
-codenames/spymasters/linear_scorer.py's docstring for a case where an
-earlier version did exactly that and pushed worker RSS past 9GB.
+private copy of the full tensor as an instance cache -- an earlier
+spymaster did exactly that and pushed worker RSS past 9GB.
 
 **Worker start method is "spawn," not the Linux default "fork."** Forking
 after CUDA has been initialized in the parent process hangs or crashes the

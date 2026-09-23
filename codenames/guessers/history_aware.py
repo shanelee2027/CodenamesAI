@@ -1,7 +1,6 @@
 """Wraps a base guesser and lets it spend the backlog/bonus-guess
 mechanism described in codenames/guessers/base.py's module docstring --
-the guesser this project's cross-turn-clue-memory open question
-(docs/versions/v1.md) pointed at as the cheap first thing to try.
+the cheap first thing to try for cross-turn clue memory.
 
 **The comparability problem, checked empirically before building this**
 (see docs/log.md): comparing two different clues' raw similarity scores

@@ -1,7 +1,7 @@
 [project]
 name = "codenamesai"
 version = "0.1.0"
-description = "Codenames clue-giving agent built around a learned clue scorer over multiple word embedding spaces."
+description = "A non-LLM Codenames spymaster that chooses clues against a listener model distilled from LLM guessers."
 requires-python = ">=3.11"
 dependencies = [
     "numpy",

@@ -1,9 +1,8 @@
 """Spymaster interface (docs/iteration-architecture.md
 step 1).
 
-A spymaster picks a (clue, number) pair for the current board state. The
-learned scorer and every baseline implement this same interface so
-the arena can play any spymaster against any guesser without special-casing.
+A spymaster picks a (clue, number) pair for the current board state.
+Every spymaster implements this same interface so the arena can play any spymaster against any guesser without special-casing.
 
 `TurnContext` bundles the board state with a turn counter instead of
 passing loose (board, sims) arguments. Every model is board-state-only

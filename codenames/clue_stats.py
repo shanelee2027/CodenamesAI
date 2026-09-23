@@ -27,8 +27,8 @@ which contradicts the exact memory discipline
 across workers, never re-derive a private full-size copy per process).
 `z_for_board` computes the z-score on demand for only the board words a
 given turn actually needs (at most 25), the same "read only the columns
-you need off the mmap" discipline `codenames/spymasters/linear_scorer.py`
-and `codenames/clue_search.py` already follow.
+you need off the mmap" discipline `codenames/clue_search.py` already
+follows.
 """
 
 from __future__ import annotations

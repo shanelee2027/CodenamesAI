@@ -26,9 +26,8 @@ from codenames.guessers.registry import DEFAULT_POOL_CONFIG
 from codenames.spymasters.registry import load_spymasters, spymaster_names
 
 # This script's spymasters, selected by role from configs/spymasters.json
-# rather than by name, so a new entry needs no edit here. "oracle" is
-# role "exploration" (a scripts/pipeline/run_two_team_arena.py-only upper-bound
-# tool) and so stays out of this cross-play diagnostic, exactly as before.
+# rather than by name, so a new entry needs no edit here. Entries with the
+# "exploration" role are offered only by scripts/pipeline/run_two_team_arena.py.
 BASE_SPYMASTER_NAMES = spymaster_names("baseline")
 
 

@@ -20,16 +20,14 @@ including the rationale for approaches since retired.
 
 ## Every model is reported against a baseline ladder
 
-`configs/spymasters.json` registers four non-learned spymasters with
-`"roles": ["baseline"]` — `random`, `centroid`, `linear_scorer`, and the
-current `expected_words` — and any new model picks all of them up
-without naming them (`codenames/spymasters/registry.py`).
+`configs/spymasters.json` registers two spymasters with
+`"roles": ["baseline"]` — `centroid` and `expected_words` — and any new
+model picks both up without naming them
+(`codenames/spymasters/registry.py`).
 
 The overhead is deliberate. A win rate with nothing beside it is not a
 result, and the cheapest way to find out that an elaborate model is
-doing nothing is to see it tied with `centroid`. `random` earns its slot
-separately: it catches harness bugs that would otherwise make every
-model look equally good.
+doing nothing is to see it tied with `centroid`.
 
 A baseline is retired by replacement, not by accumulation — when
 `expected_words` superseded `z_threshold`, the older model's code, test,
@@ -48,8 +46,7 @@ entirely (`codenames/board.py::load_training_wordlist()`), so evaluation
 builds boards from words no model has seen. This tests generalization to
 unseen board *content*, which is a different axis from generalizing to an
 unseen listener. See `docs/iteration-architecture.md` step 5 for why 150
-rather than the original 60 — the change is what retired `v1`/`v1.1`,
-whose numbers are not comparable with anything trained since.
+rather than the original 60.
 
 **The LLM guesser never appears in training.** Evaluation uses only LLM
 guessers; every other guesser exists only for training. Training against
@@ -94,17 +91,14 @@ can't be cited in a results table, swept over, or diffed between runs.
 ## Method decisions
 
 **Nothing here trains.** Every model is a scoring function written down
-in closed form and evaluated against the frozen LLM suite. An earlier
-direction — an MLP over a multi-space feature vector, trained on
-simulated guesser rollouts — was built, measured, and removed; see
-`docs/log.md` for what it was and what it scored.
+in closed form and evaluated against the frozen LLM suite.
 
 If a future model does need fitting, the outcome of a (board, clue,
 guesser) triple is directly simulable — full feedback on every action,
 for free, unlimited times — so it is a supervised problem, not an RL
 one. RL would deliver the same information through policy gradients over
 a ~111k-action space, with high variance and no clean validation metric.
-Two consequences of that earlier pass are worth not rediscovering: split
+Two rules worth not rediscovering: split
 train/val by board seed rather than by row, since one board appears in
 many examples and a row-wise split leaks it across the split; and keep
 the reward values out of whatever gets fitted, per the section above.
@@ -114,20 +108,15 @@ words remain, and a clue only has to be distinguishable from the clues
 already given. Both argue for lookahead or a value function on top of a
 working single-turn scorer, not instead of one.
 
-**Optimization of any small, fixed parameter set** — `linear_scorer`'s
-weights, `expected_words`'s `sigma` — should use CMA-ES, Bayesian
-optimization, or grid search, not policy gradients. Neither has been
-done. `linear_scorer`'s weights are still their original illustrative
-constants, and `sigma` was picked from the announced-number distribution
-on fresh boards rather than optimized against any play outcome.
+**Optimization of any small, fixed parameter set** — such as
+`expected_words`'s `sigma` — should use CMA-ES, Bayesian optimization, or
+grid search, not policy gradients.
 
 **Linear scoring is a baseline, not a candidate.** A weighted sum over
 roles composes to a single linear function, which cannot represent
 threshold effects (0.75 to three words beats 0.45 to five, because
 guessing is greedy and ranking is what matters) or the margin between
 the weakest intended word and the strongest distractor.
-`spymasters/linear_scorer.py` is kept to demonstrate that, not as a
-serious contender.
 
 ## The clue vocabulary is an intersection
 

@@ -1,17 +1,6 @@
 {
- "_comment": "Spymaster registry config (docs/iteration-architecture.md step 2, codenames/spymasters/registry.py). Each entry names a Spymaster subclass (see SPYMASTER_CLASSES) and its constructor params. 'trained' marks whether this entry expects a trained artifact before it can be built -- false for every entry here, since none of them train. 'roles' says which scripts pick an entry up without naming it: 'baseline' is the standard comparison set (both arenas), 'exploration' is an upper-bound tool that only scripts/pipeline/run_two_team_arena.py offers, A new entry omitting 'roles' defaults to ['baseline'], so it appears in the arenas automatically.",
+ "_comment": "Spymaster registry config (docs/iteration-architecture.md step 2, codenames/spymasters/registry.py). Each entry names a Spymaster subclass (see SPYMASTER_CLASSES) and its constructor params. 'trained' marks whether this entry expects a trained artifact before it can be built -- false for every entry here, since none of them train. 'roles' says which scripts pick an entry up without naming it: 'baseline' is the standard comparison set (both arenas), 'exploration' is only offered by scripts/pipeline/run_two_team_arena.py. A new entry omitting 'roles' defaults to ['baseline'], so it appears in the arenas automatically.",
  "spymasters": [
-  {
-   "name": "random",
-   "type": "random",
-   "params": {
-    "seed": 0
-   },
-   "trained": false,
-   "roles": [
-    "baseline"
-   ]
-  },
   {
    "name": "centroid",
    "type": "centroid",
@@ -21,24 +10,6 @@
    "trained": false,
    "roles": [
     "baseline"
-   ]
-  },
-  {
-   "name": "linear_scorer",
-   "type": "linear_scorer",
-   "params": {},
-   "trained": false,
-   "roles": [
-    "baseline"
-   ]
-  },
-  {
-   "name": "oracle",
-   "type": "oracle",
-   "params": {},
-   "trained": false,
-   "roles": [
-    "exploration"
    ]
   },
   {

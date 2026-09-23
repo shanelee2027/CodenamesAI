@@ -9,9 +9,6 @@ from codenames.board import Board, Card, Role
 from codenames.spymasters.base import MAX_CLUE_NUMBER, Spymaster, TurnContext
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
-from codenames.spymasters.linear_scorer import DEFAULT_WEIGHTS, LinearScorerSpymaster
-from codenames.spymasters.oracle import OracleSpymaster
-from codenames.spymasters.random_clue import RandomSpymaster
 from codenames.similarity import SimilarityTensor
 
 BOARD_WORDS = [f"Board{i}" for i in range(25)]
@@ -75,17 +72,14 @@ class TestRegistry:
         from codenames.spymasters.registry import DEFAULT_SPYMASTER_CONFIG, load_spymasters
 
         entries = load_spymasters(DEFAULT_SPYMASTER_CONFIG)
-        assert set(entries) == {"random", "centroid", "linear_scorer", "oracle",
-                                "expected_words", "learned_listener"}
+        assert set(entries) == {"centroid", "expected_words", "learned_listener"}
 
     def test_entries_build_the_expected_classes(self):
         from codenames.spymasters.registry import load_spymasters
 
         entries = load_spymasters()
-        assert isinstance(entries["random"].build(), RandomSpymaster)
         assert isinstance(entries["centroid"].build(), CentroidSpymaster)
-        assert isinstance(entries["linear_scorer"].build(), LinearScorerSpymaster)
-        assert isinstance(entries["oracle"].build(), OracleSpymaster)
+        assert isinstance(entries["expected_words"].build(), ExpectedWordsSpymaster)
 
     def test_no_entry_is_marked_trained(self):
         """Nothing in the project trains any more -- every registered
@@ -94,11 +88,7 @@ class TestRegistry:
         from codenames.spymasters.registry import load_spymasters
 
         entries = load_spymasters()
-        assert entries["random"].trained is False
-        assert entries["centroid"].trained is False
-        assert entries["linear_scorer"].trained is False
-        assert entries["oracle"].trained is False
-        assert entries["expected_words"].trained is False
+        assert all(not e.trained for e in entries.values())
 
     def test_spec_is_a_class_and_kwargs_tuple(self):
         from codenames.spymasters.registry import load_spymasters
@@ -121,7 +111,7 @@ class TestRegistry:
     def test_accepts_an_already_parsed_config_dict_not_just_a_path(self):
         from codenames.spymasters.registry import load_spymasters
 
-        config = {"spymasters": [{"name": "r", "type": "random", "params": {"seed": 9}}]}
+        config = {"spymasters": [{"name": "r", "type": "centroid", "params": {"seed": 9}}]}
         entries = load_spymasters(config)
         assert list(entries) == ["r"]
         assert entries["r"].params == {"seed": 9}
@@ -131,7 +121,7 @@ class TestRegistry:
 
         config = {
             "spymasters": [
-                {"name": "dup", "type": "random", "params": {}},
+                {"name": "dup", "type": "centroid", "params": {}},
                 {"name": "dup", "type": "centroid", "params": {}},
             ]
         }
@@ -154,55 +144,6 @@ class TestRegistry:
 
         with pytest.raises(KeyError, match="nonexistent"):
             spymaster_spec("nonexistent")
-
-
-class TestRandomSpymaster:
-    def test_returns_legal_clue_and_valid_number(self, tmp_path):
-        sims = make_sims(tmp_path, base_tensor())
-        board = make_board()
-        cm = RandomSpymaster(seed=0)
-        clue, number = cm.give_clue(make_ctx(board), sims)
-        assert clue in sims.clue_words
-        assert 1 <= number <= MAX_CLUE_NUMBER
-
-    def test_deterministic_given_same_state(self, tmp_path):
-        sims = make_sims(tmp_path, base_tensor())
-        board = make_board()
-        a = RandomSpymaster(seed=7).give_clue(make_ctx(board), sims)
-        b = RandomSpymaster(seed=7).give_clue(make_ctx(board), sims)
-        assert a == b
-
-    def test_number_capped_by_own_remaining(self, tmp_path):
-        sims = make_sims(tmp_path, base_tensor())
-        # Reveal all but one own word -- number must be forced to 1.
-        board = make_board(revealed=BOARD_WORDS[:8])
-        cm = RandomSpymaster(seed=3)
-        _, number = cm.give_clue(make_ctx(board), sims)
-        assert number == 1
-
-    def test_top_clues_returns_k_distinct_legal_clues(self, tmp_path):
-        # No real ranking exists for a random pick (see
-        # spymasters/random_clue.py) -- top_clues just returns k
-        # independent, distinct, legal random draws.
-        sims = make_sims(tmp_path, base_tensor())
-        board = make_board()
-        cm = RandomSpymaster(seed=1)
-        top3 = cm.top_clues(make_ctx(board), sims, k=3)
-        assert len(top3) == 3
-        clues = [c for c, _, _ in top3]
-        assert len(set(clues)) == 3  # distinct
-        for clue, number, score in top3:
-            assert clue in sims.clue_words
-            assert 1 <= number <= MAX_CLUE_NUMBER
-            assert score == 0.0
-
-    def test_top_clues_k_1_matches_give_clue(self, tmp_path):
-        sims = make_sims(tmp_path, base_tensor())
-        board = make_board()
-        cm = RandomSpymaster(seed=11)
-        top1 = cm.top_clues(make_ctx(board), sims, k=1)
-        clue, number = RandomSpymaster(seed=11).give_clue(make_ctx(board), sims)
-        assert (clue, number) == top1[0][:2]
 
 
 class TestCentroidSpymaster:
@@ -229,126 +170,3 @@ class TestCentroidSpymaster:
         a = CentroidSpymaster(seed=5).give_clue(make_ctx(board), sims)
         b = CentroidSpymaster(seed=5).give_clue(make_ctx(board), sims)
         assert a == b
-
-
-class TestLinearScorerSpymaster:
-    def test_prefers_own_favored_over_assassin_favored(self, tmp_path):
-        tensor = base_tensor()
-        own_idxs = [BOARD_WORDS.index(f"Board{i}") for i in range(9)]
-        opp_idxs = [BOARD_WORDS.index(f"Board{i}") for i in range(9, 17)]
-        neutral_idxs = [BOARD_WORDS.index(f"Board{i}") for i in range(17, 24)]
-        assassin_idx = BOARD_WORDS.index("Board24")
-
-        tensor[CLUE_WORDS.index("ownfavored"), own_idxs, :] = 0.9
-        tensor[CLUE_WORDS.index("assassinfavored"), assassin_idx, :] = 0.9
-        tensor[CLUE_WORDS.index("opponentfavored"), opp_idxs, :] = 0.9
-        tensor[CLUE_WORDS.index("neutralfavored"), neutral_idxs, :] = 0.9
-        sims = make_sims(tmp_path, tensor)
-
-        board = make_board()
-        cm = LinearScorerSpymaster()
-        clue, number = cm.give_clue(make_ctx(board), sims)
-        assert clue == "ownfavored"
-        assert 1 <= number <= MAX_CLUE_NUMBER
-
-    def test_top_k_clues_ranked_best_first_and_agrees_with_give_clue(self, tmp_path):
-        tensor = base_tensor()
-        own_idxs = [BOARD_WORDS.index(f"Board{i}") for i in range(9)]
-        assassin_idx = BOARD_WORDS.index("Board24")
-        tensor[CLUE_WORDS.index("ownfavored"), own_idxs, :] = 0.9
-        tensor[CLUE_WORDS.index("mixedclue"), own_idxs, :] = 0.5
-        tensor[CLUE_WORDS.index("assassinfavored"), assassin_idx, :] = 0.9
-        sims = make_sims(tmp_path, tensor)
-
-        board = make_board()
-        cm = LinearScorerSpymaster()
-        top3 = cm.top_clues(make_ctx(board), sims, k=3)
-        assert len(top3) == 3
-        assert [c for c, _, _ in top3] == ["ownfavored", "mixedclue", "neutralfavored"]
-        # scores strictly decreasing
-        assert top3[0][2] > top3[1][2] > top3[2][2]
-
-        clue, number = cm.give_clue(make_ctx(board), sims)
-        assert (clue, number) == top3[0][:2]
-
-    def test_default_weights_match_scope_baseline_3(self):
-        assert DEFAULT_WEIGHTS[Role.OWN] == 1.0
-        assert DEFAULT_WEIGHTS[Role.OPPONENT] == -1.0
-        assert DEFAULT_WEIGHTS[Role.NEUTRAL] == -0.3
-        assert DEFAULT_WEIGHTS[Role.ASSASSIN] == -10.0
-
-    def test_gives_a_valid_clue_across_repeated_calls(self, tmp_path):
-        # No per-instance tensor cache (see linear_scorer.py's docstring on
-        # why) -- just check repeated calls keep working correctly.
-        sims = make_sims(tmp_path, base_tensor())
-        board = make_board()
-        cm = LinearScorerSpymaster()
-        first = cm.give_clue(make_ctx(board), sims)
-        second = cm.give_clue(make_ctx(board), sims)
-        assert first == second
-        assert first[0] in sims.clue_words
-
-
-def _suppress_unused_clues(tensor: np.ndarray, used: list[str]) -> None:
-    # Every other clue in the fixture defaults to a uniform 0.05
-    # everywhere; a flat tie's stable sort happens to favor own words
-    # (they're listed first in BOARD_WORDS' role order), which would
-    # accidentally give unused clues a large run length. Rank an
-    # opponent word first for every unused clue so it can never compete.
-    for clue in CLUE_WORDS:
-        if clue not in used:
-            tensor[CLUE_WORDS.index(clue), BOARD_WORDS.index("Board9"), :] = 0.99
-
-
-class TestOracleSpymaster:
-    def test_picks_the_clue_with_the_longest_consecutive_own_run(self, tmp_path):
-        tensor = base_tensor()
-        clue_idx = CLUE_WORDS.index("ownfavored")
-        # Top 5 by similarity are own words (descending, no ties), 6th is
-        # an opponent word ranked just below them -- run length exactly 5.
-        for i, value in enumerate([0.95, 0.90, 0.85, 0.80, 0.75]):
-            tensor[clue_idx, BOARD_WORDS.index(f"Board{i}"), :] = value
-        tensor[clue_idx, BOARD_WORDS.index("Board9"), :] = 0.70  # opponent, blocks the run
-        _suppress_unused_clues(tensor, ["ownfavored"])
-        sims = make_sims(tmp_path, tensor)
-
-        board = make_board()
-        cm = OracleSpymaster(space="a")
-        clue, number = cm.give_clue(make_ctx(board), sims)
-        assert clue == "ownfavored"
-        assert number == 5  # number = the intended word count directly
-
-    def test_top_k_reports_run_length_as_score_and_agrees_with_give_clue(self, tmp_path):
-        tensor = base_tensor()
-        # "ownfavored": run of 3. "mixedclue": run of 1.
-        tensor[CLUE_WORDS.index("ownfavored"), BOARD_WORDS.index("Board0"), :] = 0.95
-        tensor[CLUE_WORDS.index("ownfavored"), BOARD_WORDS.index("Board1"), :] = 0.90
-        tensor[CLUE_WORDS.index("ownfavored"), BOARD_WORDS.index("Board2"), :] = 0.85
-        tensor[CLUE_WORDS.index("ownfavored"), BOARD_WORDS.index("Board9"), :] = 0.10  # opponent, blocks
-        tensor[CLUE_WORDS.index("mixedclue"), BOARD_WORDS.index("Board3"), :] = 0.95
-        tensor[CLUE_WORDS.index("mixedclue"), BOARD_WORDS.index("Board9"), :] = 0.50  # opponent, blocks
-        _suppress_unused_clues(tensor, ["ownfavored", "mixedclue"])
-        sims = make_sims(tmp_path, tensor)
-
-        board = make_board()
-        cm = OracleSpymaster(space="a")
-        top2 = cm.top_clues(make_ctx(board), sims, k=2)
-        assert [c for c, _, _ in top2] == ["ownfavored", "mixedclue"]
-        assert top2[0][1:] == (3, 3.0)  # number=run=3, score=run=3.0
-        assert top2[1][1:] == (1, 1.0)
-
-        clue, number = cm.give_clue(make_ctx(board), sims)
-        assert (clue, number) == top2[0][:2]
-
-    def test_zero_run_length_floors_number_at_one(self, tmp_path):
-        # Every clue's single highest-similarity word is an opponent word
-        # -- the best achievable run length is 0 for all of them, but
-        # number is floored at 1 like every other spymaster here.
-        tensor = base_tensor()
-        for clue in CLUE_WORDS:
-            tensor[CLUE_WORDS.index(clue), BOARD_WORDS.index("Board9"), :] = 0.99
-        sims = make_sims(tmp_path, tensor)
-        board = make_board()
-        cm = OracleSpymaster(space="a")
-        _, number = cm.give_clue(make_ctx(board), sims)
-        assert number == 1
