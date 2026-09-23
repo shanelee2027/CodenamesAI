@@ -171,7 +171,7 @@ the heading named in each entry.
     **`outside_n` stays 0.**
   - The case for it now rests on human guessers, who do stop.
 
-### 3c. Local LLM log-probs as the teacher (Qwen3-8B-FP8) — 🔄 in progress
+### 3c. Local LLM log-probs as the teacher (Qwen3-8B-FP8) — ✅ done, not adopted
 - ✅ Checked DeepInfra: no usable logprobs. gpt-oss and Qwen2.5-72B return
   none, and Llama-3.1-8B returns only the chosen token's.
 - ✅ Qwen3-8B-FP8 runs locally on the RTX 5080 (9.4 GB). It is given the same
@@ -185,20 +185,30 @@ the heading named in each entry.
   disagree, Qwen gave gpt-oss's pick a median probability of 0.002. So it is
   overconfident as a model of *another* guesser, which is why the raw
   distribution is not used directly as the listener.
-- 🔄 Qwen is the whole teacher. Every position gpt-oss was asked about is
+- ✅ Qwen is the whole teacher. Every position gpt-oss was asked about is
   rescored by Qwen, with step 2+ conditioned on **Qwen's own** earlier
   picks, at T=1 with nothing fitted to any other guesser. gpt-oss
   contributes only which boards and clues were asked (which our sampler
-  chose). ~26k positions, 5.7 positions/s.
-- 🔄 Train two listeners on exactly the incumbent's positions and features:
-  Qwen soft (full distributions, T=1) and Qwen hard (its argmax only), so the
-  value of the distributions is separable from the change of teacher.
-- 🔄 Compare them with the incumbent on **Sonnet's** observed picks (the
-  evaluation guesser, which no listener saw), and secondarily on held-out
-  gpt-oss picks (`scripts/tools/compare_listeners.py`). Raw Qwen is scored
-  too, conditioned on Sonnet's actual earlier picks.
-- ⬜ If a Qwen listener holds up, play it head to head against the incumbent on
-  the frozen suite (Sonnet, costs money).
+  chose). 26k positions at ~6 positions/s, about 70 minutes.
+- ✅ Trained two listeners on exactly the incumbent's positions and features:
+  Qwen soft (full distributions) and Qwen hard (argmax only).
+- ✅ Compared against observed picks, McFadden R^2 (pooled / step 1):
+
+  | Model | Sonnet | gpt-oss holdout |
+  |---|---|---|
+  | incumbent (gpt-oss labels) | **0.553 / 0.735** | **0.342 / 0.553** |
+  | Qwen soft | 0.476 / 0.653 | 0.229 / 0.426 |
+  | Qwen hard | 0.476 / 0.654 | 0.226 / 0.427 |
+  | Qwen raw | -0.262 / -0.016 | step 1: -0.582 |
+
+  - The Qwen-taught listener is ~0.08 worse on Sonnet, the guesser neither
+    teacher is. **Not adopted.**
+  - Soft = hard: Qwen is so peaked that its distributions add nothing over
+    its argmax.
+  - Raw Qwen is worse than guessing uniformly (confidently wrong);
+    distilling it through the features is what makes it usable.
+- ⬜ Head-to-head games against the incumbent on the frozen suite: not
+  worth the money unless something changes, since it lost on prediction.
 - ⬜ Idea: decoys become exact. The decoy level would come straight from
   Qwen's probability mass on off-board words, with no sampling.
 

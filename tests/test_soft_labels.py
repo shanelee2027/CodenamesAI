@@ -74,6 +74,16 @@ class TestLoadSoftLabels:
         d = load_soft_labels(self._store(tmp_path), "lm", 0)[("clue", ("a", "b", "c"), 2)]
         assert d[0] == {"a": 1.0, "b": 0.0, "c": 0.0}
 
+    def test_hard_label_follows_the_scored_path_through_a_tie(self, tmp_path):
+        """bf16 logits tie. The scorer took "b" at a tie with "a"; the hard label
+        must be "b" too, or step 2's label would sit on a word already removed."""
+        st = DistributionStore(tmp_path / "d.db")
+        tie = np.log(np.array([0.45, 0.45, 0.1]))
+        st.put_many("lm", "own", [("clue", ["a", "b", "c"], 2,
+                    [StepDistribution(["a", "b", "c"], tie), StepDistribution(["a", "c"], np.log([0.9, 0.1]))])])
+        d = load_soft_labels(tmp_path / "d.db", "lm", 0)[("clue", ("a", "b", "c"), 2)]
+        assert d[0] == {"a": 0.0, "b": 1.0, "c": 0.0} and d[1] == {"a": 1.0, "c": 0.0}
+
 
 def test_answer_prefix_matches_the_prompts_json_format():
     assert answer_prefix([]) == '["'

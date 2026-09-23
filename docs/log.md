@@ -3066,7 +3066,8 @@ mask, and the mask switches PyTorch to a different attention kernel. On this
 FP8 checkpoint that moved candidate log-probs by ~1 nat, even for the
 unpadded row. vLLM, with its own kernels, differed from HF by up to 0.6 in
 probability. The HF backend now batches only prefixes of identical token
-length (bit-identical to scoring one at a time, and 2× faster than before);
+length (bit-identical to the same computation run one request at a time, and
+2× faster than before);
 vLLM works but is not used, since one dataset must come from one set of
 kernels.
 
@@ -3075,3 +3076,59 @@ the prompt's key/value cache. At 80: 5.6 positions/s. At 120: 1.3/s, peak
 15.9 of 16 GB -- under WSL the driver spills GPU memory into system RAM
 instead of failing, so too large a batch is silently 4× slower rather than
 an out-of-memory error. 80 it is.
+
+## Qwen as the teacher: the distilled listener is worse, and the distributions add nothing
+
+**Expected:** a listener trained on Qwen3-8B's full distributions would at
+least match one trained on its argmax, and might approach the gpt-oss-taught
+incumbent on Sonnet's picks, since neither teacher is Sonnet.
+
+**Set-up.** Same 24,915 positions, same features, same split, same training
+recipe as the incumbent (`cache/listener_gbt_oss_recipe.txt`, gpt-oss
+one-hot). Only the labels change: `qwen_soft` learns Qwen's full distribution
+at T=1, `qwen_hard` only Qwen's argmax, both along Qwen's own pick path.
+Scored against **observed** picks (`scripts/tools/compare_listeners.py`),
+McFadden R^2:
+
+| Model | Sonnet pooled | Sonnet step 1 | Sonnet steps 2+ | gpt-oss holdout pooled | gpt-oss step 1 |
+|---|---|---|---|---|---|
+| incumbent (gpt-oss labels) | **0.553** | **0.735** | **0.300** | **0.342** | **0.553** |
+| Qwen soft | 0.476 | 0.653 | 0.230 | 0.229 | 0.426 |
+| Qwen hard | 0.476 | 0.654 | 0.231 | 0.226 | 0.427 |
+| Qwen raw, T=1 | -0.262 | -0.016 | -0.601 | -- | -0.582 |
+
+Sonnet: 6,318 positions, 10,771 choice events. gpt-oss holdout: 1,837
+positions, 4,671 events (raw Qwen at step 1 only there: only own-path
+distributions exist for it).
+
+**What it says.**
+- The Qwen-taught listener loses to the gpt-oss-taught one by ~0.08 R^2 on
+  Sonnet, the guesser neither was trained on. A bigger teacher transfers
+  better; the free local teacher is not a substitute.
+- Soft and hard are indistinguishable (0.4755 vs 0.4761 on Sonnet; 0.3778 vs
+  0.3757 on their own validation labels). Qwen's distributions are so peaked
+  (mean top probability 0.86) that they carry almost nothing beyond the
+  argmax, so the "we get the full distribution for free" advantage does not
+  materialise with this model at T=1.
+- Distillation is what makes Qwen usable at all: raw, it is worse than
+  uniform against either guesser, because it is confidently wrong; the
+  booster, which can only reach the answer through the 44 features, is
+  smoothed into a reasonable predictor.
+- Aside: the incumbent predicts Sonnet (0.553) better than it predicts its
+  own teacher's held-out picks (0.342). Sonnet's picks are the more
+  predictable of the two.
+
+**A bug found on the way (fixed before the numbers above).** The first
+`qwen_hard` scored R^2 0.01: 102 of 62,301 steps had a label that summed to
+zero. Cause: Qwen's logits are bf16, which near 40 resolve only 0.25, so exact
+ties happen (Horse vs Horseshoe, both -0.7334). The scorer broke a tie one
+way, and the loader recomputed "the argmax" and broke it the other, so later
+steps' labels sat on a word training had already removed. Targets and the T=0
+label now follow the path read off the stored data (`scored_path`), with a
+test. The soft run moved by 0.0003.
+
+**Numerical noise, checked while chasing it.** FP8 Qwen's cached-prefix
+computation and a plain full forward pass give slightly different logits
+(0.75 on one token here). Over 40 positions, stored step-1 distributions vs
+full-pass ones: median total variation 0.000, mean 0.004, max 0.124, argmax
+agreement 39/40. Negligible for training.

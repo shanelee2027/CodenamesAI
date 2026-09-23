@@ -148,16 +148,36 @@ def load_soft_labels(path: Path, lm: str, temperature: float = 1.0, source: str 
 
     out = {}
     for clue, cand, number, steps in DistributionStore(path).all(lm, source):
+        path_words = scored_path(steps)
         dists = []
-        for st in steps:
+        for st, pick in zip(steps, path_words):
             lp = np.asarray(st["logprobs"], dtype=np.float64)
             if temperature == 0:
-                p = (lp == lp.max()).astype(np.float64)
+                # One-hot on the word the scorer actually took, not on every
+                # word at the maximum: bf16 logits tie often enough (~0.25
+                # resolution near 40) that "all maxima" split the label and
+                # disagreed with the path the later steps were scored along.
+                p = np.array([w == pick for w in st["remaining"]], dtype=np.float64)
             else:
                 z = lp / temperature
                 p = np.exp(z - np.logaddexp.reduce(z))
             dists.append(dict(zip(st["remaining"], p / p.sum())))
         out[(clue, tuple(cand), int(number))] = dists
+    return out
+
+
+def scored_path(steps: list[dict]) -> list[str]:
+    """The word taken at each step of a stored position: the one missing from
+    the next step's remaining words, and the argmax at the last step. Read off
+    the data rather than recomputed, so a tie can never be broken differently
+    from how the scorer broke it."""
+    out = []
+    for j, st in enumerate(steps):
+        if j + 1 < len(steps):
+            gone = set(st["remaining"]) - set(steps[j + 1]["remaining"])
+            out.append(next(iter(gone)) if len(gone) == 1 else st["remaining"][int(np.argmax(st["logprobs"]))])
+        else:
+            out.append(st["remaining"][int(np.argmax(st["logprobs"]))])
     return out
 
 
@@ -276,7 +296,9 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
             # argmax had not yet taken.
             rec["soft"] = [np.array([d.get(w, 0.0) for w in shuffled]) for d in soft]
             where_w = {w: r for r, w in enumerate(shuffled)}
-            rec["targets"] = [where_w[max(d, key=d.get)] for d in soft]
+            path_words = [next(iter(set(a) - set(b))) for a, b in zip(soft, soft[1:])]
+            path_words.append(max(soft[-1], key=soft[-1].get))
+            rec["targets"] = [where_w[w] for w in path_words]
             rec["k"] = len(soft)
         if refresh_features:
             # One extraction per step on the words still standing. Cheap --
