@@ -33,6 +33,9 @@ CACHE_FILES = [
     # Optional: the decoy-trained booster, so the game's spymaster menu can
     # offer the decoy variants. 25 MB; absent, those entries are just hidden.
     "listener_gbt_decoy.txt",
+    # Optional: the association-trained booster and its rate link, for the
+    # assoc / assoc_pass / assoc_pass_strong entries. Both or neither.
+    "listener_gbt_assoc_w0.3.txt", "listener_gbt_assoc_w0.3.assoc.json",
     "swow.npz", "entity_sims.npz", "lm_pmi.npz", "extra_sims.npz",
     "word_norms.npz", "wordnet_sims.npz", "lexical_sims.npz",
 ]
@@ -119,6 +122,13 @@ connection — that is the behaviour being measured. Every turn is appended to
     ./.venv/bin/python analyze_human_eval.py
 
 Choose what is compared with `./start.sh --eval-arms incumbent,decoy_out25`.
+
+## Comparing two spymasters
+
+Open http://127.0.0.1:8000/compare. Pick two models and deal: it finds a
+position where their clues differ and shows both, with the words each clue is
+meant for marked on the board. Vote which is better (keys 1-4, N to deal).
+Votes are appended to `cache/compare_votes.jsonl`; send that file back.
 
 ## What it needs
 
