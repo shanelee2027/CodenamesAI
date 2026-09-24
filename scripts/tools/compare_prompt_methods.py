@@ -97,6 +97,87 @@ def boot(x: np.ndarray, reps: int = 2000, seed: int = 0) -> tuple[float, float]:
     return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
 
+def tv(a: list[str], b: list[str]) -> float:
+    """Total variation between two samples' empirical distributions: the share
+    of probability that has to move to turn one into the other (0 same, 1
+    disjoint)."""
+    ca, cb = Counter(a), Counter(b)
+    return 0.5 * sum(abs(ca[w] / len(a) - cb[w] / len(b)) for w in set(ca) | set(cb))
+
+
+def tv_with_null(a: list[str], b: list[str], rng, perms: int = 200) -> tuple[float, float, float]:
+    """(observed TV, TV expected from sampling noise alone, permutation p).
+
+    With 8 draws a side, two samples from the SAME distribution still differ
+    -- plug-in TV is biased upward. The null is that bias measured: pool the
+    draws, reshuffle them into groups of the same sizes, and recompute. What
+    exceeds it is the part of the difference that belongs to the prompts."""
+    obs = tv(a, b)
+    pool = np.array(a + b, dtype=object)
+    null = []
+    for _ in range(perms):
+        rng.shuffle(pool)
+        null.append(tv(list(pool[:len(a)]), list(pool[len(a):])))
+    null = np.array(null)
+    return obs, float(null.mean()), float((1 + (null >= obs - 1e-12).sum()) / (1 + perms))
+
+
+def direct_report(pos: dict, examples: int) -> None:
+    """The distributions themselves, compared without any model."""
+    rng = np.random.default_rng(0)
+    print("\n\n######## Direct comparison of the pick distributions (no listener involved)")
+    for step in (1, 2):
+        ms = METHODS[step]
+        print(f"\n== step {step}: shape of each prompt's distribution (mean over positions)")
+        print(f"   {'prompt':17s} {'modal share':>12s} {'distinct words':>15s} {'entropy (bits)':>15s}")
+        for m in ms:
+            share, distinct, ent = [], [], []
+            for p in pos.values():
+                v = p.get((m, step), [])
+                if len(v) < 2:
+                    continue
+                c = np.array(list(Counter(v).values()), dtype=float) / len(v)
+                share.append(c.max())
+                distinct.append(len(c))
+                ent.append(float(-(c * np.log2(c)).sum()))
+            print(f"   {m:17s} {np.mean(share):12.3f} {np.mean(distinct):15.2f} {np.mean(ent):15.3f}")
+        print(f"\n== step {step}: total variation between prompts")
+        print(f"   {'pair':34s} {'TV':>6s} {'noise':>6s} {'excess':>7s} {'95% CI':>17s} "
+              f"{'same mode':>10s} {'p<0.05':>7s}  positions")
+        for i, a in enumerate(ms):
+            for b in ms[i + 1:]:
+                obs, null, sig, mode = [], [], [], []
+                for p in pos.values():
+                    va, vb = p.get((a, step), []), p.get((b, step), [])
+                    if len(va) < 2 or len(vb) < 2:
+                        continue
+                    o, n, pv = tv_with_null(va, vb, rng)
+                    obs.append(o); null.append(n); sig.append(pv < 0.05)
+                    mode.append(Counter(va).most_common(1)[0][0] == Counter(vb).most_common(1)[0][0])
+                ex = np.array(obs) - np.array(null)
+                lo, hi = boot(ex)
+                print(f"   {a + ' vs ' + b:34s} {np.mean(obs):6.3f} {np.mean(null):6.3f} {ex.mean():+7.3f} "
+                      f"  [{lo:+.3f}, {hi:+.3f}] {np.mean(mode):10.3f} {np.mean(sig):7.3f}  {len(obs)}")
+    print("\n   TV: share of probability that must move to turn one distribution into the other.")
+    print("   noise: the TV two samples of the SAME distribution would show at these sample sizes.")
+    print("   p<0.05: share of positions where the difference beats a permutation test; 0.05 if none differ.")
+
+    if examples:
+        print(f"\n== the {examples} step-2 positions where the list continuation and the re-ask differ most")
+        scored = []
+        for (seed, clue, number), p in pos.items():
+            va, vb = p.get(("ranked", 2), []), p.get(("single", 2), [])
+            if len(va) >= 4 and len(vb) >= 4:
+                scored.append((tv(va, vb), clue, number, p))
+        for d, clue, number, p in sorted(scored, key=lambda t: -t[0])[:examples]:
+            fmt = lambda v: ", ".join(f"{w} {c}" for w, c in Counter(v).most_common())
+            print(f"\n   clue '{clue}' for {number}, first word '{p['first']}' removed   (TV {d:.2f})")
+            print(f"      step 1  ranked:          {fmt(p[('ranked', 1)])}")
+            print(f"      step 2  ranked (cont.):  {fmt(p[('ranked', 2)])}")
+            print(f"      step 2  single (re-ask): {fmt(p[('single', 2)])}")
+            print(f"      step 2  single_feedback: {fmt(p[('single_feedback', 2)])}")
+
+
 def listener_r2(pos: dict, booster_path: Path) -> None:
     import lightgbm as lgb
 
@@ -136,6 +217,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", type=Path, default=VARIANTS)
     ap.add_argument("--booster", type=Path, default=None)
+    ap.add_argument("--examples", type=int, default=5, help="step-2 positions to print side by side")
     args = ap.parse_args()
 
     pos = load(args.db)
@@ -173,6 +255,7 @@ def main() -> None:
                         for p in pos.values() if p.get((m, 1)) and "first" in p]
                 if hits:
                     print(f"      {m:17s} {np.mean(hits):.3f}  ({len(hits)})")
+    direct_report(pos, args.examples)
     if args.booster:
         listener_r2(pos, args.booster)
 

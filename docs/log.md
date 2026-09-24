@@ -3221,6 +3221,50 @@ The incumbent listener's McFadden R^2 on each prompt's picks:
 agreed with the stored first word, which may make them more concentrated
 (self-agreement 0.63 vs 0.58).
 
+**The distributions compared directly, with no listener involved.** Total
+variation (TV) is the share of probability that has to move to turn one
+distribution into the other. With 8 draws a side, two samples of the SAME
+distribution already differ, so each pair's TV is set against a permutation
+null (pool both prompts' draws, reshuffle, recompute). "Excess" is the part
+that belongs to the prompts.
+
+| step | pair | TV | noise | excess [95% CI] | same modal word |
+|---|---|---|---|---|---|
+| 1 | ranked vs ranked_nonumber | 0.129 | 0.120 | +0.009 [-0.002, +0.020] | 89% |
+| 1 | ranked vs single | 0.148 | 0.123 | +0.025 [+0.013, +0.038] | 87% |
+| 2 | ranked vs ranked_nonumber | 0.214 | 0.208 | +0.007 [-0.010, +0.024] | 78% |
+| 2 | ranked vs single | 0.329 | 0.242 | +0.087 [+0.065, +0.110] | 66% |
+| 2 | ranked vs single_feedback | 0.327 | 0.239 | +0.089 [+0.065, +0.112] | 67% |
+| 2 | single vs single_feedback | 0.286 | 0.236 | +0.050 [+0.033, +0.069] | 70% |
+
+Shape at step 2: the re-ask is flatter than the list continuation (entropy
+0.93 vs 0.73 bits, 2.5 vs 2.1 distinct words in 8 draws, modal share 0.72 vs
+0.76). At step 1 all three prompts share one shape (modal share 0.85,
+0.46-0.47 bits).
+
+Per position, the test has little power at 8 draws. The share of positions
+individually significant at p < 0.05 is 1-3% at step 1, below the 5% a
+permutation test gives when nothing differs (it is conservative on discrete
+data), and 9-14% for the step-2 list-vs-re-ask pairs. The differences are
+real in aggregate; per position, 8 draws cannot pin most of them down.
+
+The largest step-2 gaps are sense changes, not reshuffles. For "exploring",
+with Himalayas removed:
+- list continuation: Africa 8/8;
+- re-ask: Mercury 5, Saturn 2;
+- told Himalayas was correct: Saturn 6, Mercury 2.
+
+For "plaza", with London removed:
+- list continuation: Embassy 5;
+- re-ask: Stadium 8;
+- told London was correct: Embassy 5, Stadium 3.
+
+A list stays on the reading its first word committed to. A fresh question
+can switch reading, and being told the first word was right sometimes pulls
+it back (plaza, atlanta) and sometimes not (exploring). In aggregate the
+feedback prompt is as far from the continuation as the silent re-ask is
+(excess 0.089 vs 0.087).
+
 ## Association counts: an unnormalised target for the per-clue level
 
 **Problem.** The board softmax is invariant to adding a constant to every
