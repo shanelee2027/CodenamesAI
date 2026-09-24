@@ -20,6 +20,7 @@ paired comparison. Game win rate is reported beside it for reference.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import time
 from pathlib import Path
 
@@ -63,9 +64,14 @@ def main() -> None:
     ap.add_argument("--threads-per-worker", type=int, default=16,
                     help="see codenames/two_team_arena.py::run_two_team_matchup")
     ap.add_argument("--dry-run", action="store_true", help="say what would be played, then stop")
+    ap.add_argument("--boards", type=int, default=None,
+                    help="play only the suite's first N boards -- a pilot. suite_id does not "
+                         "depend on the board list, so a later full run plays just the rest")
     args = ap.parse_args()
 
     suite = load_eval_suite(args.suite)
+    if args.boards is not None:
+        suite = dataclasses.replace(suite, board_seeds=tuple(suite.board_seeds[:args.boards]))
     spec_x, id_x = resolve(args.challenger, args.challenger_param)
     spec_y, id_y = resolve(args.opponent, args.opponent_param)
     if id_x == id_y:

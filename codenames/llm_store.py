@@ -150,6 +150,57 @@ class LLMResponseCache:
         self._conn.close()
 
 
+class SpymasterResponseCache:
+    """Write-through cache for an LLM *spymaster's* answers
+    (codenames/spymasters/llm_spymaster.py), in its own table so nothing
+    that reads `responses` -- every one of those rows is a guesser ranking
+    -- ever sees a clue. Keyed by (model, exact prompt): the prompt holds
+    the whole board state, so a replayed position gets the clue it got
+    before, the same consistency the guesser cache gives. The raw response
+    and token usage are kept, so a clue can be audited and a run's cost is
+    measured rather than estimated."""
+
+    def __init__(self, db_path: Path = DEFAULT_DB_PATH):
+        self._conn = _connect(db_path)
+        self._conn.execute(
+            """CREATE TABLE IF NOT EXISTS spymaster_responses (
+                cache_key TEXT PRIMARY KEY,
+                model TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                text TEXT NOT NULL,
+                clue TEXT NOT NULL,
+                number INTEGER NOT NULL,
+                input_tokens INTEGER,
+                output_tokens INTEGER,
+                attempts INTEGER
+            )"""
+        )
+        self._conn.commit()
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _key(model: str, prompt: str) -> str:
+        import hashlib
+
+        return hashlib.sha256(json.dumps([model, prompt]).encode()).hexdigest()
+
+    def get(self, model: str, prompt: str) -> tuple[str, int] | None:
+        with self._lock:
+            row = self._conn.execute("SELECT clue, number FROM spymaster_responses WHERE cache_key = ?",
+                                     (self._key(model, prompt),)).fetchone()
+        return (row[0], int(row[1])) if row else None
+
+    def put(self, model: str, prompt: str, text: str, clue: str, number: int,
+            input_tokens: int, output_tokens: int, attempts: int) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO spymaster_responses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (self._key(model, prompt), model, prompt, text, clue, number,
+                 input_tokens, output_tokens, attempts),
+            )
+            self._conn.commit()
+
+
 class GameRecordStore:
     """Durable, human-inspectable record of a real two-team game: the
     board layout by role (captured before any reveals, from team A's

@@ -38,6 +38,19 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "Reference opponent, not a model of ours: Claude Sonnet 5 shown the board with roles and asked for a clue (codenames/spymasters/llm_spymaster.py). Role 'reference' is picked up by no script automatically -- every game it plays costs money, so it is only ever run by name (scripts/pipeline/run_eval_suite.py learned_listener sonnet_spymaster).",
+   "name": "sonnet_spymaster",
+   "type": "llm",
+   "params": {
+    "model": "claude-sonnet-5",
+    "effort": "medium"
+   },
+   "trained": false,
+   "roles": [
+    "reference"
+   ]
   }
  ]
 }

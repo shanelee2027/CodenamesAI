@@ -72,7 +72,14 @@ class TestRegistry:
         from codenames.spymasters.registry import DEFAULT_SPYMASTER_CONFIG, load_spymasters
 
         entries = load_spymasters(DEFAULT_SPYMASTER_CONFIG)
-        assert set(entries) == {"centroid", "expected_words", "learned_listener"}
+        assert set(entries) == {"centroid", "expected_words", "learned_listener", "sonnet_spymaster"}
+
+    def test_the_paid_spymaster_is_never_picked_up_by_role(self):
+        """Every game sonnet_spymaster plays costs money, so no arena may
+        include it without naming it."""
+        from codenames.spymasters.registry import spymaster_names
+
+        assert "sonnet_spymaster" not in spymaster_names("baseline", "exploration")
 
     def test_entries_build_the_expected_classes(self):
         from codenames.spymasters.registry import load_spymasters

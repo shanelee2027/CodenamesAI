@@ -43,6 +43,7 @@ from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
 from codenames.spymasters.learned_listener import LearnedListenerSpymaster
+from codenames.spymasters.llm_spymaster import LLMSpymaster
 
 DEFAULT_SPYMASTER_CONFIG = Path(__file__).parent.parent.parent / "configs" / "spymasters.json"
 
@@ -50,6 +51,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "centroid": CentroidSpymaster,
     "expected_words": ExpectedWordsSpymaster,
     "learned_listener": LearnedListenerSpymaster,
+    "llm": LLMSpymaster,
 }
 
 
