@@ -3337,3 +3337,62 @@ split; Sonnet and the gpt-oss holdout come from `compare_listeners.py`.
 - **Not yet shown:** that a better level makes better clues. That needs the
   level in the reward, e.g. a fixed pass rate against exp(a·s + b) in place of
   the decoy-based outside option, and then games.
+
+## The learned listener beats a Sonnet spymaster on the frozen suite
+
+**Question (Shane's).** Can the learned listener beat Sonnet at the
+spymaster's job, with Sonnet guessing for both sides?
+
+**Set-up.**
+- `sonnet_spymaster` (`codenames/spymasters/llm_spymaster.py`) is Claude
+  Sonnet 5 at medium effort. It is shown the board with every card's team
+  and asked for a one-word clue and a number from 1 to 4.
+- It is told this arena's rules, not the tabletop ones: the guesser takes
+  exactly N guesses, stops at the first miss, and cannot pass. The learned
+  listener's reward assumes exactly that, so leaving Sonnet to assume the
+  tabletop rules would handicap it.
+- It uses the same legality rule as every spymaster, and an illegal answer
+  is re-asked with the reason. None were needed: all 755 clues were legal
+  on the first attempt.
+- It may use any English word; the learned listener searches its ~11k-word
+  clue pool.
+- Played on `holdout_v1`: 100 held-out-vocabulary boards, each in both
+  seatings, with the suite's Sonnet guesser (`anthropic:claude-sonnet-5:medium`).
+- A 5-board pilot measured the cost first. Total: $7.75 for 200 games
+  ($5.06 spymaster at 458 in / 635 out tokens per clue; about $2.69 guesser
+  at 195 / 142 per ranking).
+
+**Result.**
+
+|  | win% | 95% CI | boards swept | assassin losses | mean k | own/clue | own% |
+|---|---|---|---|---|---|---|---|
+| learned_listener | **58.0%** | [0.51, 0.65] | **28** | **13** | 2.20 | 1.67 | 83.5% |
+| sonnet_spymaster | 42.0% | [0.35, 0.49] | 12 | 31 | 2.24 | 1.60 | 80.2% |
+
+Sign test on the 40 decisive boards (60 split): **p = 0.017**. Assassin losses:
+Fisher p = 0.006.
+
+**Where the margin comes from.**
+
+| How the game ended | listener won | Sonnet won |
+|---|---|---|
+| other side's guesser hit the assassin | 31 | 13 |
+| otherwise | 85 | 71 |
+
+In the 156 games without an assassin, the listener wins 54.5%, an edge too
+small to be significant on its own. Most of the difference is that Sonnet's
+clues sent its own guesser into the assassin 31 times, against 13. That is
+the thing the listener's reward prices explicitly (the assassin cost in
+`pl_reward.py`) and a spymaster clueing by intuition does not. Per clue,
+the two are close: 1.67 vs 1.60 own words, similar mean k.
+
+**Why this is a strong result.** The setup favours Sonnet. It writes clues
+for a copy of itself, while the listener was distilled from gpt-oss, so
+predicting Sonnet is a transfer test for it.
+
+**Caveats.**
+- One effort level for Sonnet (medium); a higher-effort spymaster might
+  weigh the assassin better.
+- The 95% CI on the game win rate treats games as independent, but they are
+  paired by board. The sign test is the paired comparison and the one to
+  quote.

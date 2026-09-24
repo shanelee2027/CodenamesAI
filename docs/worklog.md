@@ -273,15 +273,28 @@ the heading named in each entry.
     only.
 - ✅ gpt-oss as the cheap bulk guesser, 47× cheaper than Sonnet per call —
   **[in use]** for sweeps.
-- 🔄 **Frozen benchmark `holdout_v1`**: 100 fixed boards built only from the
-  150 held-out words, Sonnet guesser, played head to head in both seatings.
-  Runnable (`scripts/pipeline/run_eval_suite.py`) but **not yet run**. Recent
-  results use gpt-oss on ad-hoc seeds, so they are only comparable within one
-  sweep.
+- ✅ **Frozen benchmark `holdout_v1`**: 100 fixed boards built only from the
+  150 held-out words, Sonnet guesser, played head to head in both seatings
+  (`scripts/pipeline/run_eval_suite.py`, `--boards N` for a pilot).
   - ⬜ Pin the incumbent's config for it, including whether the k=1 tiebreak
     is on.
-- ⬜ Teacher benchmark: fixed positions, scoring Qwen3-8B, gpt-oss and Sonnet
-  on how often they agree and on how well each one guesses.
+- ✅ **Learned listener vs a Sonnet spymaster** on `holdout_v1`, Sonnet
+  guessing for both sides (`sonnet_spymaster`: Sonnet 5 shown the board with
+  roles and this arena's rules). **The learned listener wins.**
+
+  | | win% | boards swept | assassin losses | mean k | own/clue |
+  |---|---|---|---|---|---|
+  | learned_listener | **58.0%** [51, 65] | **28** | **13** | 2.20 | 1.67 |
+  | sonnet_spymaster | 42.0% | 12 | 31 | 2.24 | 1.60 |
+
+  - Sign test on the 40 boards swept 2-0 (60 split): p = 0.017. Assassin
+    losses 13 vs 31: Fisher p = 0.006.
+  - Most of the margin is assassin avoidance. In the 156 games with no
+    assassin, the listener wins 54.5%, which is not significant alone.
+  - Sonnet is clueing for its own model, so the setup favours it. $7.75
+    for 200 games.
+- ⬜ Teacher benchmark: fixed positions, scoring gpt-oss and Sonnet on how
+  often they agree and on how well each one guesses.
 - ✅ **Blind human study** (`/eval`): one clue per position, spymaster hidden,
   stopping recorded. Analysis script included.
   - ⬜ Play the ~100-position pilot, then fix the sample size *before*
