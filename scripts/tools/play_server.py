@@ -8,7 +8,7 @@ cost of a fixed board pool. Here there is no such constraint: this serves the
 pages and calls `LearnedListenerSpymaster` directly, so every board is freshly
 generated and the clue is the same one the arena would see.
 
-Two pages:
+Three pages:
 
     /       a full game. Pick the spymaster from a menu (SPYMASTERS below);
             the choice applies from the next clue.
@@ -16,6 +16,10 @@ Two pages:
             clue comes from one of `--eval-arms`, assigned here and never sent
             to the browser. Every turn is appended to `cache/human_eval.jsonl`;
             scripts/tools/analyze_human_eval.py reads it.
+    /compare  two spymasters side by side, on positions where their clues
+            differ: the board in spymaster view, each clue with the own words
+            it is meant for, and each model's predicted first guesses. You
+            vote which is better; votes go to `cache/compare_votes.jsonl`.
 
 **Why the eval is built the way it is**, since each choice protects the data:
 
@@ -63,6 +67,8 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import numpy as np
+
 # Two layouts: in the repo this file sits at scripts/tools/, and in a demo
 # bundle (scripts/tools/make_demo_bundle.py) it sits beside `codenames/` at the
 # top level. Pick whichever actually contains the package rather than assuming
@@ -74,14 +80,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from codenames.board import Board, OpponentBoardView, Role
 from codenames.clue_stats import ClueStats
+from codenames.pl_reward import gain_and_penalty
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
-from codenames.spymasters.base import TurnContext
+from codenames.spymasters.base import MAX_CLUE_NUMBER, TurnContext
+from codenames.spymasters.association_listener import AssociationListenerSpymaster
 from codenames.spymasters.learned_listener import ListenerBundle, LearnedListenerSpymaster
 
-PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html"}
+PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
+         "/compare": "compare.html"}
 WEB = Path(__file__).parent / "webplay"
 ROLE_CODE = {Role.OWN: "a", Role.OPPONENT: "b", Role.NEUTRAL: "n", Role.ASSASSIN: "x"}
 DEFAULT_EVAL_LOG = DEFAULT_CACHE_DIR / "human_eval.jsonl"
+DEFAULT_COMPARE_LOG = DEFAULT_CACHE_DIR / "compare_votes.jsonl"
 
 # Every spymaster the pages can use. The decoy variants share ONE loaded
 # booster: they differ only in `outside_n`, which is read at scoring time, so
@@ -99,6 +109,21 @@ SPYMASTERS: dict[str, dict] = {
         "about": f"Prices 'the guesser picks something the clue never meant' as {n} "
                  f"random vocabulary words ending the turn at zero."}
        for n in (5, 10, 25, 50)},
+    # The association-count listener (codenames/spymasters/association_listener.py).
+    # Its scores carry an absolute level, so its pass is a FIXED score: the one
+    # a word needs to be named in `pass_rate` of free-association lists.
+    **{key: {
+        "label": label, "model": "listener_gbt_assoc_w0.3.txt", "outside_n": 0,
+        "cls": AssociationListenerSpymaster, "kwargs": {"pass_rate": rate},
+        "needs": ["listener_gbt_assoc_w0.3.assoc.json"], "about": about}
+       for key, label, rate, about in (
+           ("assoc", "Association-trained, no pass", None,
+            "Retrained with free-association counts as a second target; outside option off."),
+           ("assoc_pass", "Association-trained, pass 0.05", 0.05,
+            "Association-trained, and a pass priced at a word named in 5% of "
+            "free-association lists."),
+           ("assoc_pass_strong", "Association-trained, pass 0.2", 0.2,
+            "As above with the pass at 20%: vague clues are punished hard."))},
 }
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
@@ -116,7 +141,8 @@ class Engine:
         self._spymasters: dict[str, LearnedListenerSpymaster] = {}
 
     def available(self) -> list[str]:
-        return [k for k, v in SPYMASTERS.items() if (self.cache_dir / v["model"]).exists()]
+        return [k for k, v in SPYMASTERS.items()
+                if all((self.cache_dir / f).exists() for f in [v["model"], *v.get("needs", [])])]
 
     def spymaster(self, key: str) -> LearnedListenerSpymaster:
         """Built on first use and kept. Call under _LOCK."""
@@ -127,8 +153,10 @@ class Engine:
             if spec["model"] not in self._bundles:
                 self._bundles[spec["model"]] = ListenerBundle.load(
                     self.cache_dir, self.cache_dir / spec["model"])
-            self._spymasters[key] = LearnedListenerSpymaster(
-                outside_n=spec["outside_n"], k1_tiebreak=self.k1,
+            cls = spec.get("cls", LearnedListenerSpymaster)
+            kwargs = spec.get("kwargs") or {"outside_n": spec["outside_n"]}
+            self._spymasters[key] = cls(
+                **kwargs, k1_tiebreak=self.k1, model_path=self.cache_dir / spec["model"],
                 bundle=self._bundles[spec["model"]], clue_stats=self.clue_stats,
                 cache_dir=self.cache_dir)
         return self._spymasters[key]
@@ -150,6 +178,44 @@ class Engine:
         word, number, score = picks[0]
         return word, int(number), float(score)
 
+    SHOW = 6
+
+    def explain(self, board, key: str, clue: str, number: int) -> dict:
+        """How spymaster `key` reads its own clue: the `number` own words it
+        rates highest (its intended targets), and its listener's first-guess
+        distribution over the board -- plus the pass, when it has one. From
+        `LearnedListenerSpymaster.listen`, i.e. the numbers the clue was
+        chosen on."""
+        with _LOCK:
+            sm = self.spymaster(key)
+            got = sm.listen(board, clue, self.sims)
+        if got is None:
+            return {"targets": [], "order": [], "value": None}
+        words, roles, s = got["words"], got["roles"], got["scores"]
+        # Expected net words at the clue's number, recomputed rather than taken
+        # from the search: with the k=1 tiebreak on, a swapped clue's search
+        # score is an artificial "best + 1" that only makes it win.
+        n_own = sum(1 for r in roles if r is Role.OWN)
+        s_out = None if got["outside"] is None else np.array([got["outside"]])
+        gain, penalty = gain_and_penalty(
+            s[None, :n_own], s[None, n_own:], np.array([sm.costs[r] for r in roles[n_own:]]),
+            min(n_own, MAX_CLUE_NUMBER), s_out=s_out)
+        value = float((gain - penalty)[0, number - 1])
+        entries = [(w, ROLE_CODE[r], float(x)) for w, r, x in zip(words, roles, s)]
+        if got["outside"] is not None:
+            entries.append(("PASS", "pass", got["outside"]))
+        z = np.array([e[2] for e in entries])
+        p = np.exp(z - z.max())
+        p /= p.sum()
+        rate = getattr(sm, "rate", None)            # association models only
+        order = sorted(range(len(entries)), key=lambda i: -entries[i][2])
+        out = [{"word": entries[i][0], "role": entries[i][1], "p": round(float(p[i]), 4),
+                **({"rate": round(float(min(rate(entries[i][2]), 1.0)), 3)} if rate else {})}
+               for i in order[:self.SHOW]]
+        own = sorted((i for i, e in enumerate(entries) if e[1] == "a"), key=lambda i: -entries[i][2])
+        return {"targets": [entries[i][0] for i in own[:number]], "order": out,
+                "value": round(value, 3)}
+
     def clue(self, seed: int, revealed: list[str], turn: str, key: str) -> dict:
         board = Board.generate(seed=seed)
         on_board = {w.lower(): w for w in board.words}
@@ -164,6 +230,25 @@ class Engine:
             return {"clue": None}
         return {"clue": got[0], "number": got[1], "score": got[2], "spymaster": key,
                 "ms": int((time.time() - t0) * 1000)}
+
+
+MAX_PREREVEAL = 8
+
+
+def deal_position() -> tuple[int, Board, set[int]]:
+    """A random mid-game position: a fresh board with 0-8 non-assassin cards
+    pre-revealed, as the listener's training positions were, and at least two
+    own words left. Returns (seed, board with `revealed` set, revealed indices)."""
+    while True:
+        seed = random.randrange(1, 2**31)
+        board = Board.generate(seed=seed)
+        rng = random.Random(seed ^ 0x5EED)
+        roles = [ROLE_CODE[c.role] for c in board.cards]
+        pool = [i for i, r in enumerate(roles) if r != "x"]
+        pre = set(rng.sample(pool, rng.randint(0, MAX_PREREVEAL)))
+        if sum(1 for i, r in enumerate(roles) if r == "a" and i not in pre) >= 2:
+            board.revealed = {board.words[i] for i in pre}
+            return seed, board, pre
 
 
 class EvalTurn:
@@ -216,7 +301,7 @@ class EvalTurn:
 class EvalStudy:
     """Serves positions, assigns arms blind, records outcomes."""
 
-    MAX_PREREVEAL = 8
+    MAX_PREREVEAL = MAX_PREREVEAL
 
     def __init__(self, engine: Engine, arms: list[str], log_path: Path):
         self.engine, self.arms, self.log_path = engine, arms, log_path
@@ -237,18 +322,11 @@ class EvalStudy:
     def next(self, player: str) -> dict:
         arm = self._next_arm()
         while True:                      # redraw the rare position with nothing to clue
-            seed = random.randrange(1, 2**31)
-            board = Board.generate(seed=seed)
-            rng = random.Random(seed ^ 0x5EED)
-            roles = [ROLE_CODE[c.role] for c in board.cards]
-            pool = [i for i, r in enumerate(roles) if r != "x"]
-            pre = set(rng.sample(pool, rng.randint(0, self.MAX_PREREVEAL)))
-            if sum(1 for i, r in enumerate(roles) if r == "a" and i not in pre) < 2:
-                continue
-            board.revealed = {board.words[i] for i in pre}
+            seed, board, pre = deal_position()
             got = self.engine.best_clue(board, arm, turn_index=len(pre))
             if got is not None:
                 break
+        roles = [ROLE_CODE[c.role] for c in board.cards]
         clue, number, score = got
         token = secrets.token_hex(8)
         revealed = [i in pre for i in range(len(roles))]
@@ -318,7 +396,93 @@ class EvalStudy:
         return self._recorded
 
 
-def make_handler(engine: Engine, study: EvalStudy | None, default_key: str):
+class CompareStudy:
+    """Side-by-side clues from two spymasters on positions where they differ.
+
+    Positions come from `deal_position`, the same as /eval. Boards on which
+    the two give the same clue AND number are dealt past and counted, since
+    how often two models agree is itself worth knowing. A different number
+    on the same word counts as different.
+
+    Blind mode shuffles the sides and keeps the names and each model's own
+    probabilities on the server until the vote: before it the page shows only
+    the clue and its intended targets, so the judgement is of the clue and not
+    of a model's confidence in it (the association models' pass would give
+    them away anyway). Every vote is appended to `log_path`.
+    """
+
+    MAX_TRIES = 40
+    VOTES = ("left", "right", "tie", "both_bad")
+
+    def __init__(self, engine: Engine, log_path: Path):
+        self.engine, self.log_path = engine, log_path
+        self.session = secrets.token_hex(4)
+        self._lock = threading.Lock()
+        self._pending: dict[str, dict] = {}
+
+    def next(self, left: str, right: str, blind: bool) -> dict:
+        if left == right:
+            raise ValueError("pick two different spymasters")
+        agreed = 0
+        for _ in range(self.MAX_TRIES):
+            seed, board, pre = deal_position()
+            got = {k: self.engine.best_clue(board, k, turn_index=len(pre)) for k in (left, right)}
+            if None in got.values():
+                continue
+            if got[left][:2] != got[right][:2]:
+                break
+            agreed += 1
+        else:
+            raise ValueError(f"no differing clue in {self.MAX_TRIES} boards "
+                             f"({agreed} gave the same clue)")
+        keys = [left, right]
+        if blind:
+            random.shuffle(keys)
+        sides = []
+        for k in keys:
+            clue, number, _ = got[k]
+            sides.append({"key": k, "label": SPYMASTERS[k]["label"], "clue": clue,
+                          "number": number,
+                          **self.engine.explain(board, k, clue, number)})
+        token = secrets.token_hex(8)
+        with self._lock:
+            self._pending[token] = {"seed": seed, "words": list(board.words), "blind": blind,
+                                    "pre": sorted(pre), "sides": sides, "agreed": agreed,
+                                    "t_shown": time.time()}
+        public = ("clue", "number", "targets")
+        return {"token": token, "seed": seed, "words": list(board.words),
+                "roles": [ROLE_CODE[c.role] for c in board.cards],
+                "revealed": [i in pre for i in range(len(board.words))],
+                "agreed": agreed, "blind": blind,
+                "sides": [{f: sd[f] for f in public} if blind else sd for sd in sides]}
+
+    def vote(self, token: str, choice: str, note: str) -> dict:
+        if choice not in self.VOTES:
+            raise ValueError(f"vote must be one of {self.VOTES}")
+        with self._lock:
+            p = self._pending.pop(token, None)
+        if p is None:
+            raise ValueError("unknown or already-voted board -- deal a new one")
+        sides = p["sides"]
+        winner = {"left": sides[0]["key"], "right": sides[1]["key"]}.get(choice)
+        row = {
+            "ts": _dt.datetime.now().isoformat(timespec="seconds"), "session": self.session,
+            "seed": p["seed"], "pre_revealed": [p["words"][i] for i in p["pre"]],
+            "blind": p["blind"], "agreed_before": p["agreed"], "k1_tiebreak": self.engine.k1,
+            "left": sides[0]["key"], "right": sides[1]["key"],
+            "vote": choice, "winner": winner, "note": note,
+            "clues": {sd["key"]: {f: sd[f] for f in ("clue", "number", "value", "targets")}
+                      for sd in sides},
+            "ms": int((time.time() - p["t_shown"]) * 1000),
+        }
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock, self.log_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row) + "\n")
+        return {"sides": sides, "winner": winner}
+
+
+def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
+                 compare: CompareStudy | None = None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -365,6 +529,12 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str):
                                                   list(req.get("revealed") or []),
                                                   req.get("turn", "a"),
                                                   req.get("spymaster") or default_key))
+                if self.path == "/api/compare/next" and compare is not None:
+                    return self._json(compare.next(str(req["left"]), str(req["right"]),
+                                                   bool(req.get("blind", True))))
+                if self.path == "/api/compare/vote" and compare is not None:
+                    return self._json(compare.vote(str(req["token"]), str(req["vote"]),
+                                                   str(req.get("note") or "")[:500]))
                 if self.path.startswith("/api/eval/"):
                     if study is None:
                         return self._json({"error": "the eval study is not enabled -- "
@@ -400,6 +570,7 @@ def main() -> None:
                          "differs ONLY in the outside option -- same booster -- which is the "
                          "comparison the arena sweep made and gpt-oss could not settle.")
     ap.add_argument("--eval-log", type=Path, default=DEFAULT_EVAL_LOG)
+    ap.add_argument("--compare-log", type=Path, default=DEFAULT_COMPARE_LOG)
     ap.add_argument("--no-open", dest="open_browser", action="store_false")
     ap.set_defaults(k1=True)
     args = ap.parse_args()
@@ -418,10 +589,13 @@ def main() -> None:
         print(f"study: {url}eval   arms {' vs '.join(arms)} (blind)   -> {args.eval_log}")
     else:
         print(f"study: disabled -- arms {arms} need {missing or 'at least two entries'}")
+    compare = CompareStudy(engine, args.compare_log)
+    print(f"compare: {url}compare   -> {args.compare_log}")
     print("Ctrl-C to stop.")
     if args.open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(engine, study, default_key))
+    server = ThreadingHTTPServer((args.host, args.port),
+                                 make_handler(engine, study, default_key, compare))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

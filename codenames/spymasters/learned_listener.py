@@ -308,17 +308,7 @@ class LearnedListenerSpymaster(Spymaster):
         n_scored = rows[0].shape[0]
         flat = self.bundle.booster.predict(np.vstack(rows), raw_score=True)
         S = np.asarray(flat, dtype=np.float64).reshape(len(keep), n_scored)
-        if outside:
-            # Total rate of the outside option, on the same scale as the board
-            # scores: the whole point of the anchor is that this comparison is
-            # meaningful, which a board-normalised softmax cannot make.
-            out_block = S[:, n_board:]
-            s_out = out_block.max(axis=1) + np.log(
-                np.exp(out_block - out_block.max(axis=1, keepdims=True)).sum(axis=1))
-            S = S[:, :n_board]
-        else:
-            fixed = self._fixed_outside_score()
-            s_out = None if fixed is None else np.full(len(keep), fixed)
+        S, s_out = self._split_outside(S, n_board)
         gain, penalty = gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max, s_out=s_out)
         net = gain - penalty                                 # (n_keep, K_max)
         best_m = np.argmax(net, axis=1)
@@ -335,6 +325,47 @@ class LearnedListenerSpymaster(Spymaster):
         # which is on a stable scale and is not part of the ranking here.
         margin[idx] = g_margin[idx]
         return best_n, scores, margin
+
+    def _split_outside(self, S: np.ndarray, n_board: int) -> tuple[np.ndarray, np.ndarray | None]:
+        """(board scores, outside-option score per row) from a (clues x scored)
+        matrix whose first n_board columns are the board words."""
+        if S.shape[1] > n_board:
+            # Total rate of the outside option, on the same scale as the board
+            # scores: the whole point of the anchor is that this comparison is
+            # meaningful, which a board-normalised softmax cannot make.
+            out_block = S[:, n_board:]
+            s_out = out_block.max(axis=1) + np.log(
+                np.exp(out_block - out_block.max(axis=1, keepdims=True)).sum(axis=1))
+            return S[:, :n_board], s_out
+        fixed = self._fixed_outside_score()
+        return S, (None if fixed is None else np.full(S.shape[0], fixed))
+
+    def listen(self, board: Board | OpponentBoardView, clue: str,
+               sims: SimilarityTensor) -> dict | None:
+        """How this model's listener reads ONE clue on this board -- the
+        search's own view of it, for display (scripts/tools/play_server.py's
+        /compare page). Same candidate order, same features at K_max, same
+        outside option as `_score_all_clues`, so what is shown is what the
+        clue was chosen on.
+
+        Returns {"words", "roles", "scores", "outside"} over the unrevealed
+        board words (own words first), or None if the clue has no features.
+        "outside" is the outside option's score, or None when there is none.
+        """
+        own = board.words_by_role(Role.OWN, unrevealed_only=True)
+        others = {r: board.words_by_role(r, unrevealed_only=True)
+                  for r in (Role.NEUTRAL, Role.OPPONENT, Role.ASSASSIN)}
+        candidates = own + [w for ws in others.values() for w in ws]
+        roles = [Role.OWN] * len(own) + [r for r, ws in others.items() for _ in ws]
+        outside = self._outside_words(board, sims)
+        f = self._listener_features(clue, candidates + outside, min(len(own), MAX_CLUE_NUMBER),
+                                    sims, n_board=len(candidates) if outside else None)
+        if f is None:
+            return None
+        S = np.asarray(self.bundle.booster.predict(f, raw_score=True), dtype=np.float64)[None, :]
+        S, s_out = self._split_outside(S, len(candidates))
+        return {"words": candidates, "roles": roles, "scores": S[0],
+                "outside": None if s_out is None else float(s_out[0])}
 
     def _swap_k1(self, sims, board, words, own_n, scores, best_n, S, keep):
         """When the best clue is a k=1 clue, break the tie among near-optimal

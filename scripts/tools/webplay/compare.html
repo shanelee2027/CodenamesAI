@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Clue Compare</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#EFE9DD; --surface:#FBF8F2; --line:#D8CFBE;
+  --ink:#241F19; --muted:#6E6558;
+  --blue:#3A6EA5; --red:#B4504D; --tan:#C9B693; --black:#26282D;
+  --gold:#B4842A; --teal:#2F7F78; --spent:0.30;
+  --shadow:0 1px 2px rgba(36,31,25,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#15171B; --surface:#1E2127; --line:#30343C;
+    --ink:#ECE7DE; --muted:#9A948A;
+    --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
+    --gold:#D4A33C; --teal:#46A39B; --spent:0.22; --shadow:0 1px 2px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#15171B; --surface:#1E2127; --line:#30343C;
+  --ink:#ECE7DE; --muted:#9A948A;
+  --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
+  --gold:#D4A33C; --teal:#46A39B; --spent:0.22; --shadow:0 1px 2px rgba(0,0,0,.5);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:14px 16px calc(18px + env(safe-area-inset-bottom));
+  max-width:980px;margin:0 auto;min-height:100vh}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+h1{font-family:Oswald,sans-serif;font-weight:600;font-size:15px;letter-spacing:.14em;
+   text-transform:uppercase;margin:0;color:var(--muted)}
+.count{font-size:12px;color:var(--muted)} .count b{color:var(--ink)}
+.controls{display:grid;grid-template-columns:1fr 1fr auto auto;gap:8px;align-items:end;margin-bottom:10px}
+.controls label{display:block;letter-spacing:.1em;text-transform:uppercase;font-size:10.5px;
+  color:var(--muted);margin-bottom:3px}
+select,input[type=text]{width:100%;min-width:0;font-family:Inter,sans-serif;font-size:13px;font-weight:500;
+  padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.check{display:flex;align-items:center;gap:6px;font-size:13px;padding:8px 2px;white-space:nowrap}
+button.act{font-family:Inter,sans-serif;font-weight:600;font-size:14px;
+  padding:10px 14px;border-radius:11px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);cursor:pointer}
+button.act:active{transform:scale(.985)}
+button.act.primary{background:var(--gold);border-color:transparent;color:#1A1509}
+button.act:disabled{opacity:.5;cursor:default}
+.status{font-size:12px;color:var(--muted);margin-bottom:10px;min-height:16px}
+.status.err{color:var(--red);font-weight:600}
+.layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
+.board{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
+.card{position:relative;aspect-ratio:1/.8;border-radius:7px;padding:3px 2px;
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-family:Oswald,sans-serif;font-weight:600;letter-spacing:.01em;
+  font-size:clamp(9px,1.5vw,14px);line-height:1.08;text-transform:uppercase;
+  overflow:hidden;word-break:break-word;hyphens:auto;box-shadow:var(--shadow);
+  border:2px solid transparent}
+.card.r-a{background:var(--blue);color:#fff}
+.card.r-b{background:var(--red);color:#fff}
+.card.r-n{background:var(--tan);color:#241F19}
+.card.r-x{background:var(--black);color:#F3EFE7}
+.card.spent{opacity:var(--spent);box-shadow:none}
+.card.spent span{text-decoration:line-through}
+.badges{position:absolute;top:2px;right:3px;display:flex;gap:2px}
+.badge{font-family:Inter,sans-serif;font-size:9.5px;font-weight:700;line-height:1;
+  padding:2px 4px;border-radius:4px;color:#fff}
+.badge.L{background:var(--gold);color:#1A1509} .badge.R{background:var(--teal)}
+.legend{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5}
+.sides{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.side{background:var(--surface);border:1px solid var(--line);border-radius:12px;
+  padding:10px 12px;box-shadow:var(--shadow);border-top:4px solid var(--gold)}
+.side.R{border-top-color:var(--teal)}
+.side.won{box-shadow:0 0 0 2px var(--ink)}
+.who{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);min-height:14px}
+.who b{color:var(--ink);letter-spacing:.04em;text-transform:none;font-size:12px}
+.word{font-family:Oswald,sans-serif;font-weight:600;font-size:clamp(20px,3.4vw,28px);
+  letter-spacing:.05em;text-transform:uppercase;line-height:1.1;margin:4px 0 2px;
+  overflow-wrap:anywhere}
+.num{color:var(--gold)} .side.R .num{color:var(--teal)}
+.targets{font-size:12.5px;margin-bottom:6px} .targets b{font-weight:600}
+.value{font-size:11.5px;color:var(--muted);margin-bottom:4px}
+table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+td{padding:2px 0;vertical-align:middle}
+td.w{max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:42%}
+td.pc{text-align:right;width:44px} td.rt{text-align:right;width:52px;color:var(--muted)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.dot.a{background:var(--blue)} .dot.b{background:var(--red)} .dot.n{background:var(--tan)}
+.dot.x{background:var(--black);outline:1px solid var(--muted)} .dot.pass{background:transparent;outline:1px dashed var(--muted)}
+.barw{width:100%;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar{height:100%;background:var(--muted)}
+.hidden-note{font-size:11.5px;color:var(--muted);font-style:italic}
+.vote{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.vote button.L{border-color:var(--gold)} .vote button.R{border-color:var(--teal)}
+.note{margin-top:8px}
+.foot{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5}
+.foot a{color:inherit}
+@media (max-width:760px){
+  .layout{grid-template-columns:1fr}
+  .card{font-size:clamp(9px,3vw,14px)}
+}
+@media (max-width:480px){
+  .controls{grid-template-columns:1fr 1fr}
+  .sides{grid-template-columns:1fr}
+  .vote{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Clue Compare <span id="seed" style="opacity:.65;letter-spacing:.06em"></span></h1>
+  <div class="count"><b id="nvotes">0</b> votes this session</div>
+</header>
+
+<div class="controls">
+  <div><label for="ma">Model A</label><select id="ma"></select></div>
+  <div><label for="mb">Model B</label><select id="mb"></select></div>
+  <label class="check"><input type="checkbox" id="blind" checked> Blind</label>
+  <button class="act primary" id="deal">Deal</button>
+</div>
+<div class="status" id="status">Pick two models and deal.</div>
+
+<div class="layout">
+  <div>
+    <div class="board" id="board"></div>
+    <div class="legend">Spymaster view: every card's team is shown. Faded cards were
+      already revealed. <b>L</b>/<b>R</b> badges mark the own words each clue is meant for.</div>
+  </div>
+  <div>
+    <div class="sides" id="sides"></div>
+    <div class="vote" id="vote">
+      <button class="act L" data-v="left">Left better</button>
+      <button class="act R" data-v="right">Right better</button>
+      <button class="act" data-v="tie">Tie</button>
+      <button class="act" data-v="both_bad">Both bad</button>
+    </div>
+    <div class="note"><input type="text" id="note" maxlength="500"
+      placeholder="Why? (optional, saved with the vote)"></div>
+  </div>
+</div>
+
+<div class="foot">
+  Boards are dealt at random with 0–8 cards already revealed, and dealt past when the
+  two models give the same clue and number. <b>Meant for</b> is the clue's number of own
+  words, taken from that model's own listener: the ones it scores highest for the clue.
+  <b>First guess</b> is that listener's probability that a guesser's first pick is each
+  word. <i>Pass</i> is the model's outside option, when it has one. <i>Named</i> is the
+  association models' predicted share of free-association lists that name the word.
+  <b>Expected</b> is that model's expected net words for the clue.
+  In blind mode, names and probabilities stay on the server until you vote.
+  Votes are appended to <code>cache/compare_votes.jsonl</code>. k=1 tiebreak: <b>__K1__</b>.
+  Game: <a href="/">/</a> · Blind study: <a href="/eval">/eval</a>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const post = (path, body) => fetch(path, {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+  .then(r => r.json());
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ROLE = {a:'Blue (own)', b:'Red', n:'Neutral', x:'Assassin', pass:'Pass'};
+let cur = null, busy = false, votes = 0;
+
+function store(k, v){ try { localStorage.setItem('cmp.'+k, v); } catch(e){} }
+function load(k){ try { return localStorage.getItem('cmp.'+k); } catch(e){ return null; } }
+
+async function init(){
+  const r = await fetch('/api/spymasters').then(r => r.json());
+  const opts = r.spymasters.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
+  $('ma').innerHTML = opts; $('mb').innerHTML = opts;
+  const ids = r.spymasters.map(s => s.id);
+  const pick = (saved, pref) => ids.includes(saved) ? saved : (ids.find(i => pref.includes(i)) || ids[0]);
+  $('ma').value = pick(load('a'), ['incumbent']);
+  $('mb').value = pick(load('b'), ['assoc_pass', 'assoc']);
+  const b = load('blind'); if (b !== null) $('blind').checked = b === '1';
+  $('ma').onchange = () => store('a', $('ma').value);
+  $('mb').onchange = () => store('b', $('mb').value);
+  $('blind').onchange = () => store('blind', $('blind').checked ? '1' : '0');
+  renderEmpty();
+}
+
+function renderEmpty(){
+  $('board').innerHTML = Array.from({length:25}, () =>
+    '<div class="card r-n" style="opacity:.25"></div>').join('');
+  $('sides').innerHTML = '';
+  setVote(false);
+}
+
+function setVote(on){
+  document.querySelectorAll('#vote button').forEach(b => b.disabled = !on);
+  $('note').disabled = !on;
+}
+
+function renderBoard(){
+  const marks = {};
+  cur.sides.forEach((s, i) => (s.targets || []).forEach(w =>
+    (marks[w] = marks[w] || []).push(i ? 'R' : 'L')));
+  $('board').innerHTML = cur.words.map((w, i) => {
+    const b = (marks[w] || []).map(m => `<span class="badge ${m}">${m}</span>`).join('');
+    return `<div class="card r-${cur.roles[i]}${cur.revealed[i] ? ' spent' : ''}">
+      <div class="badges">${b}</div><span>${esc(w)}</span></div>`;
+  }).join('');
+}
+
+function renderSides(revealed, winner){
+  $('sides').innerHTML = cur.sides.map((s, i) => {
+    const side = i ? 'R' : 'L';
+    const who = revealed || !cur.blind
+      ? `${side === 'L' ? 'Left' : 'Right'} · <b>${esc(s.label)}</b>`
+      : (side === 'L' ? 'Left' : 'Right');
+    const hasRate = (s.order || []).some(o => o.rate !== undefined);
+    const rows = (s.order || []).map(o => `<tr>
+        <td class="w"><span class="dot ${o.role}" title="${ROLE[o.role]}"></span>${o.word === 'PASS' ? '<i>pass</i>' : esc(o.word)}</td>
+        <td><div class="barw"><div class="bar" style="width:${(100*o.p).toFixed(1)}%"></div></div></td>
+        <td class="pc">${(100*o.p).toFixed(0)}%</td>
+        ${hasRate ? `<td class="rt">${o.rate !== undefined ? (100*o.rate).toFixed(0)+'%' : ''}</td>` : ''}
+      </tr>`).join('');
+    const detail = s.order
+      ? `<div class="value">Expected ${s.value !== null ? s.value.toFixed(2) : '—'} net words</div>
+         <table><tr><td class="w" style="color:var(--muted)">First guess</td><td></td><td></td>
+           ${hasRate ? '<td class="rt">named</td>' : ''}</tr>${rows}</table>`
+      : `<div class="hidden-note">Model and probabilities shown after you vote.</div>`;
+    return `<div class="side ${side}${winner === side ? ' won' : ''}">
+      <div class="who">${who}</div>
+      <div class="word">${esc(s.clue)} <span class="num">${s.number}</span></div>
+      <div class="targets">Meant for: <b>${(s.targets || []).map(esc).join(', ') || '—'}</b></div>
+      ${detail}
+    </div>`;
+  }).join('');
+}
+
+async function deal(){
+  if (busy) return;
+  if ($('ma').value === $('mb').value){ return status('Pick two different models.', true); }
+  busy = true; $('deal').disabled = true; setVote(false);
+  status('Dealing boards until the two clues differ…');
+  try {
+    const r = await post('/api/compare/next',
+      {left: $('ma').value, right: $('mb').value, blind: $('blind').checked});
+    if (r.error) throw new Error(r.error);
+    cur = r; $('note').value = '';
+    $('seed').textContent = '#' + r.seed;
+    renderBoard(); renderSides(false, null);
+    const n = r.revealed.filter(Boolean).length;
+    status(`${n} card${n === 1 ? '' : 's'} already revealed.` +
+      (r.agreed ? ` Dealt past ${r.agreed} board${r.agreed === 1 ? '' : 's'} where both gave the same clue.`
+                : ' The first board dealt already differed.'));
+    setVote(true);
+  } catch (e) { status(e.message, true); }
+  busy = false; $('deal').disabled = false;
+}
+
+async function vote(v){
+  if (busy || !cur) return;
+  busy = true; setVote(false);
+  try {
+    const r = await post('/api/compare/vote', {token: cur.token, vote: v, note: $('note').value});
+    if (r.error) throw new Error(r.error);
+    cur.sides = r.sides;
+    const w = r.winner ? (r.winner === r.sides[0].key ? 'L' : 'R') : null;
+    renderBoard(); renderSides(true, w);
+    $('nvotes').textContent = ++votes;
+    status('Recorded. Deal again for the next board.');
+  } catch (e) { status(e.message, true); setVote(true); }
+  busy = false;
+}
+
+function status(msg, err){ $('status').textContent = msg; $('status').className = 'status' + (err ? ' err' : ''); }
+
+$('deal').onclick = deal;
+document.querySelectorAll('#vote button').forEach(b => b.onclick = () => vote(b.dataset.v));
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+  if (e.key === 'n' || e.key === 'Enter') deal();
+  const k = {'1':'left', '2':'right', '3':'tie', '4':'both_bad'}[e.key];
+  if (k && !$('vote').querySelector('button').disabled) vote(k);
+});
+init();
+</script>
+</body>
+</html>

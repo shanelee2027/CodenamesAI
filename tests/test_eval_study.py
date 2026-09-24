@@ -150,3 +150,51 @@ class TestRecording:
         study.stop(out["token"])
         with pytest.raises(ValueError):
             study.stop(out["token"])
+
+
+class FakeCompareEngine:
+    """Two spymasters that agree on the first `agree` boards, then differ."""
+    k1 = True
+
+    def __init__(self, agree=0):
+        self.agree, self.boards = agree, 0
+
+    def best_clue(self, board, key, turn_index):
+        if key == "incumbent":
+            self.boards += 1
+        same = self.boards <= self.agree
+        return ("clue" if same or key == "incumbent" else "other"), 2, 1.0
+
+    def explain(self, board, key, clue, number):
+        return {"targets": ["T1", "T2"], "value": 1.5,
+                "order": [{"word": "T1", "role": "a", "p": 0.9}]}
+
+
+class TestCompare:
+    def test_agreeing_boards_are_dealt_past_and_counted(self, tmp_path):
+        study = ps.CompareStudy(FakeCompareEngine(agree=3), tmp_path / "v.jsonl")
+        out = study.next("incumbent", "assoc_pass", blind=False)
+        assert out["agreed"] == 3
+        assert {s["clue"] for s in out["sides"]} == {"clue", "other"}
+
+    def test_blind_sends_only_clue_and_targets_until_the_vote(self, tmp_path):
+        study = ps.CompareStudy(FakeCompareEngine(), tmp_path / "v.jsonl")
+        out = study.next("incumbent", "assoc_pass", blind=True)
+        assert all(set(s) == {"clue", "number", "targets"} for s in out["sides"])
+        blob = json.dumps(out)
+        assert "incumbent" not in blob and "assoc" not in blob
+        res = study.vote(out["token"], "right", "why")
+        assert {s["key"] for s in res["sides"]} == {"incumbent", "assoc_pass"}
+        row = json.loads((tmp_path / "v.jsonl").read_text())
+        assert row["winner"] == row["right"] and row["note"] == "why"
+
+    def test_a_board_takes_one_vote(self, tmp_path):
+        study = ps.CompareStudy(FakeCompareEngine(), tmp_path / "v.jsonl")
+        out = study.next("incumbent", "assoc_pass", blind=False)
+        study.vote(out["token"], "tie", "")
+        with pytest.raises(ValueError):
+            study.vote(out["token"], "left", "")
+
+    def test_same_model_twice_is_refused(self, tmp_path):
+        with pytest.raises(ValueError):
+            ps.CompareStudy(FakeCompareEngine(), tmp_path / "v.jsonl").next("decoy", "decoy", False)

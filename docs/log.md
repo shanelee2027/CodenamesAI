@@ -3396,3 +3396,52 @@ predicting Sonnet is a transfer test for it.
 - The 95% CI on the game win rate treats games as independent, but they are
   paired by board. The sign test is the paired comparison and the one to
   quote.
+
+## The association listener as a spymaster, and a side-by-side compare page
+
+**What was built.** `association_listener` (codenames/spymasters/
+association_listener.py; docs/versions/association_listener.md) plays the
+weight-0.3 association GBT. Its pass is a *fixed* outside score: the score at
+which a word would be named in `pass_rate` of free-association lists,
+s_out = (log(pass_rate) − b)/a, with (a, b) = (1.097, −4.636) refit on
+training rows. `pass_rate=None` is the scores-only control. The decoy outside
+option priced "a random word under this clue", which moves with the clue; this
+one is a constant, so it can see a clue-wide level.
+
+**Expected vs. observed on two smoke boards.** Expected: with the pass off,
+clues drift toward high-k vague ones, since the retrained scores alone don't
+punish vagueness. Observed: seed 11 incumbent BIBLE 3 → association MARRYING 4,
+and seed 13 FUEL 2 → INFRASTRUCTURE 4. With the pass at 0.05 both went back to
+the incumbent's clue. Two boards is anecdote, not evidence. Pass rate 0.05 is
+not swept. It was picked because 58% of positions have no board word named in
+any of five lists, while named targets sit at 0.6–1.0.
+
+**`/compare` (scripts/tools/play_server.py).** Pick two spymasters. The page
+deals mid-game positions (the same dealer as /eval: 0–8 cards pre-revealed)
+until the two give a different clue or number, and says how many boards it
+dealt past. It shows the board in spymaster view, and for each clue:
+- the own words it is meant for: the top-`number` own words by that model's
+  own listener;
+- the listener's first-guess distribution, including the pass;
+- for association models, the predicted share of lists naming each word;
+- expected net words.
+
+Votes (left / right / tie / both bad, plus a note) go to
+`cache/compare_votes.jsonl`.
+
+Choices worth knowing:
+- **Blind by default.** Sides are shuffled. Names and probabilities stay on the
+  server until the vote, so before it you judge the clue and its targets, not
+  the model's confidence. The pass row would give an association model away in
+  any case.
+- **Displayed values come from `LearnedListenerSpymaster.listen`.** It rebuilds
+  the search's view of one clue: same features at K_max, same outside option.
+  tests/test_listen.py pins it to the search's score. The expected-words
+  figure is recomputed from those scores rather than taken from the search,
+  because with the k=1 tiebreak on, a swapped clue's search score is an
+  artificial "best + 1".
+- **"Meant for" is our reading, not something the model states.** The
+  reward has no explicit targets. It prices every guess order. The top-`number`
+  own words are the most likely correct run, and a target can still sit at 3%
+  first-guess probability: in the first test deal, the incumbent's STORY 3 was
+  meant for Plot (92%), Tail (4%) and Skyscraper (3%).

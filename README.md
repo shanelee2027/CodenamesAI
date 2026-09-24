@@ -71,7 +71,8 @@ by registry name, never by import.
    python scripts/pipeline/train_listener.py --decoys cache/training_data/decoys.jsonl
    ```
 4. **Play.** `scripts/tools/play_server.py` serves a local game against any
-   registered spymaster, and `/eval` runs the blind one-clue human study.
+   registered spymaster, `/eval` runs the blind one-clue human study, and
+   `/compare` shows two spymasters' differing clues side by side for a vote.
 5. **Evaluate** head to head (below).
 
 ## Guessers
