@@ -106,8 +106,8 @@ class TestBlindness:
     def test_arms_stay_balanced_within_one(self, study):
         counts = {"decoy": 0, "decoy_out25": 0}
         for n in range(1, 41):
-            study.next("t")
-            counts[study.engine.calls[-1][0]] += 1
+            out = study.next("t")
+            counts[study._pending[out["token"]]["arm"]] += 1
             assert abs(counts["decoy"] - counts["decoy_out25"]) <= 1, n
 
     def test_the_assassin_is_never_pre_revealed(self, study):
@@ -121,6 +121,32 @@ class TestBlindness:
             tok = out["token"]
             turn = study._pending[tok]["turn"]
             assert turn.own_left() >= 2
+
+
+class TestPrefetch:
+    def test_the_next_position_is_ready_before_it_is_asked_for(self, study):
+        study.next("t")
+        with study._ready_cv:                      # let the background compute land
+            study._ready_cv.wait_for(lambda: study._ready, timeout=5)
+        waiting = study._ready[0]
+        out = study.next("t")
+        served = study._pending[out["token"]]
+        assert (served["seed"], served["arm"]) == (waiting["seed"], waiting["arm"])
+
+    def test_time_shown_is_stamped_when_served_not_when_computed(self, study):
+        study.next("t")
+        with study._ready_cv:
+            study._ready_cv.wait_for(lambda: study._ready, timeout=5)
+        import time
+        time.sleep(0.05)
+        t = time.time()
+        out = study.next("t")
+        assert study._pending[out["token"]]["t_shown"] >= t
+
+    def test_without_prefetch_nothing_runs_in_the_background(self, tmp_path):
+        s = ps.EvalStudy(FakeEngine(), ["decoy", "decoy_out25"], tmp_path / "e.jsonl", prefetch=False)
+        s.next("t")
+        assert len(s.engine.calls) == 1 and not s._ready
 
 
 class TestRecording:

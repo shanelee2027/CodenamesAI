@@ -299,14 +299,34 @@ class EvalTurn:
 
 
 class EvalStudy:
-    """Serves positions, assigns arms blind, records outcomes."""
+    """Serves positions, assigns arms blind, records outcomes.
+
+    **The next position is computed while the current one is played.** A clue
+    takes a second or more; after serving a position, a background thread
+    deals the next one and computes its clue, so "next" is usually instant.
+    What makes this safe for the data:
+
+    - A prefetched position is only a board and a clue. The player, the
+      position number and `t_shown` are stamped when it is SERVED, so
+      ms_to_first_pick still runs from when the guesser saw it.
+    - Positions are served in the order they were computed, and arms are drawn
+      at compute time, so block balance holds exactly as before. The only
+      position ever lost is the one waiting when the server stops -- never
+      served, never seen, so it cannot depend on any outcome.
+    - Nothing about a position depends on earlier turns, so computing it
+      early changes nothing about what is dealt.
+    """
 
     MAX_PREREVEAL = MAX_PREREVEAL
 
-    def __init__(self, engine: Engine, arms: list[str], log_path: Path):
+    def __init__(self, engine: Engine, arms: list[str], log_path: Path, prefetch: bool = True):
         self.engine, self.arms, self.log_path = engine, arms, log_path
+        self.prefetch = prefetch
         self.session = secrets.token_hex(4)
         self._lock = threading.Lock()
+        self._ready_cv = threading.Condition()
+        self._ready: list[dict] = []
+        self._computing = False
         self._block: list[str] = []
         self._pending: dict[str, dict] = {}
         self._served = 0
@@ -319,15 +339,50 @@ class EvalStudy:
                 random.shuffle(self._block)
             return self._block.pop()
 
-    def next(self, player: str) -> dict:
+    def _compute(self) -> dict:
+        """One unserved position: an arm, a board, and that arm's clue."""
         arm = self._next_arm()
         while True:                      # redraw the rare position with nothing to clue
             seed, board, pre = deal_position()
             got = self.engine.best_clue(board, arm, turn_index=len(pre))
             if got is not None:
-                break
+                return {"arm": arm, "seed": seed, "board": board, "pre": pre, "got": got}
+
+    def warm(self) -> None:
+        """Start computing the next position if none is ready or underway."""
+        if not self.prefetch:
+            return
+        with self._ready_cv:
+            if self._ready or self._computing:
+                return
+            self._computing = True
+        threading.Thread(target=self._prefetch_one, daemon=True).start()
+
+    def _prefetch_one(self) -> None:
+        item = None
+        try:
+            item = self._compute()
+        except Exception as exc:         # next() falls back to computing it itself
+            sys.stderr.write(f"  eval prefetch failed: {type(exc).__name__}: {exc}\n")
+        with self._ready_cv:
+            if item is not None:
+                self._ready.append(item)
+            self._computing = False
+            self._ready_cv.notify_all()
+
+    def next(self, player: str) -> dict:
+        with self._ready_cv:
+            # A position already underway is nearly done; waiting for it keeps
+            # the served order equal to the arm-assignment order.
+            while not self._ready and self._computing:
+                self._ready_cv.wait()
+            item = self._ready.pop(0) if self._ready else None
+        if item is None:
+            item = self._compute()
+        self.warm()
+        arm, seed, board, pre = item["arm"], item["seed"], item["board"], item["pre"]
         roles = [ROLE_CODE[c.role] for c in board.cards]
-        clue, number, score = got
+        clue, number, score = item["got"]
         token = secrets.token_hex(8)
         revealed = [i in pre for i in range(len(roles))]
         with self._lock:
@@ -589,6 +644,8 @@ def main() -> None:
         print(f"study: {url}eval   arms {' vs '.join(arms)} (blind)   -> {args.eval_log}")
     else:
         print(f"study: disabled -- arms {arms} need {missing or 'at least two entries'}")
+    if study:
+        study.warm()                     # the first position is ready when the page opens
     compare = CompareStudy(engine, args.compare_log)
     print(f"compare: {url}compare   -> {args.compare_log}")
     print("Ctrl-C to stop.")
