@@ -39,6 +39,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from codenames.spymasters.association_listener import AssociationListenerSpymaster
 from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
@@ -52,6 +53,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "expected_words": ExpectedWordsSpymaster,
     "learned_listener": LearnedListenerSpymaster,
     "llm": LLMSpymaster,
+    "association_listener": AssociationListenerSpymaster,
 }
 
 

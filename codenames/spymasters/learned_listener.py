@@ -204,6 +204,13 @@ class LearnedListenerSpymaster(Spymaster):
                     break
         return out
 
+    def _fixed_outside_score(self) -> float | None:
+        """An outside option whose score is the same for every clue, on the
+        listener's own scale -- None here. Meaningful only for a listener
+        whose scores have an absolute level, which the board softmax alone
+        does not give; see spymasters/association_listener.py."""
+        return None
+
     def _listener_features(
         self, clue: str, candidates: list[str], number: int, sims: SimilarityTensor,
         n_board: int | None = None,
@@ -310,7 +317,8 @@ class LearnedListenerSpymaster(Spymaster):
                 np.exp(out_block - out_block.max(axis=1, keepdims=True)).sum(axis=1))
             S = S[:, :n_board]
         else:
-            s_out = None
+            fixed = self._fixed_outside_score()
+            s_out = None if fixed is None else np.full(len(keep), fixed)
         gain, penalty = gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max, s_out=s_out)
         net = gain - penalty                                 # (n_keep, K_max)
         best_m = np.argmax(net, axis=1)

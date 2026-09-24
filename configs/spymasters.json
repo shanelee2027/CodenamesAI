@@ -40,6 +40,21 @@
    ]
   },
   {
+   "_comment": "The learned listener retrained with free-association counts (cache/listener_gbt_assoc_w0.3.txt), which give its scores an absolute level, plus a pass priced on that level: a fixed outside option at the score of a word named in `pass_rate` of association lists (codenames/spymasters/association_listener.py). pass_rate=null switches the pass off. Not swept; docs/versions/association_listener.md.",
+   "name": "association_listener",
+   "type": "association_listener",
+   "params": {
+    "pass_rate": 0.05,
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
+  },
+  {
    "_comment": "Reference opponent, not a model of ours: Claude Sonnet 5 shown the board with roles and asked for a clue (codenames/spymasters/llm_spymaster.py). Role 'reference' is picked up by no script automatically -- every game it plays costs money, so it is only ever run by name (scripts/pipeline/run_eval_suite.py learned_listener sonnet_spymaster).",
    "name": "sonnet_spymaster",
    "type": "llm",
