@@ -3483,3 +3483,45 @@ the behaviour it models, a guesser who stops, does not exist here. This
 result is about the arena's rules, not humans; /eval, where a human can stop,
 is where the pass can win. It does say 0.05 is not free: if humans don't stop
 as often as the pass assumes, it costs about 8 points of win rate.
+
+## Human guesser: incumbent vs assoc_pass, and decoy vs decoy_out25 (/eval, one player)
+
+**Set-up.** All rounds in `cache/human_eval.jsonl` were played by one player (the
+author) on the blind one-clue page, with the k=1 tiebreak on. Session 3bda2791
+played the default pair, decoy vs decoy_out25 (61 each). Session 40185f28
+played incumbent vs assoc_pass (66 vs 67).
+
+**Expected.** If the pass models real human stopping, assoc_pass should lose
+less to wrong guesses and give-ups, and win on reward despite lower numbers.
+
+**Observed, incumbent vs assoc_pass.**
+
+| per clue | assoc_pass | incumbent | perm p |
+|---|---|---|---|
+| reward | 1.74 | 2.00 | 0.13 |
+| own words found | 1.85 | 2.12 | 0.086 |
+| mean k | 2.48 | 2.94 | |
+| found all N | 57% | 42% | |
+| gave up short of N | 22% | 33% | |
+| ended on a wrong card | 21% | 24% | |
+
+The pass does what it models: smaller clues (9 fours against 21), completed
+more often, abandoned less. But the incumbent's ambitious clues still net
+more words. Stopping costs nothing, so a 4 that half-lands beats a 2 that
+fully lands. The direction matches the gpt-oss arena, where pass 0.05 lost at
+p = 0.017. The human did stop more on the incumbent's vague clues, so the
+behaviour is real; 0.05 appears to charge it too heavily. Not significant
+yet: about 90 more rounds per arm for the words-found gap, if it holds.
+
+**Judging vs. playing.** On /compare (15 of 16 votes blind) the same player
+preferred assoc_pass's clues 8–3 (5 ties, sign p ≈ 0.23). Clues that look
+cleaner to a judge who can see the key did not produce more words for the
+same person guessing blind.
+
+**Observed, decoy vs decoy_out25.** Nothing significant: reward 1.41 vs 1.08
+(p = 0.42, with 3 assassin hits against 1), own 1.77 vs 1.74. Give-ups short
+of N were 11% in both arms.
+
+**Measurement note.** analyze_human_eval.py's "stopped" includes declining the
+bonus guess after finding all N, which is most stops. Real give-ups, counted
+as `own_found < number`, are the figure that bears on the pass.
