@@ -24,6 +24,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import time
 from pathlib import Path
 
@@ -32,8 +33,9 @@ import numpy as np
 from codenames.listener_features import FEATURE_NAMES, N_FEATURES
 from codenames.listener_training import (
     CACHE, DB, DEFAULT_MODEL, FEATURE_BLOCKS,
-    accuracy_on, build_groups, decoy_group_mask, first_step_mask, load_positions, load_soft_labels,
-    mcfadden_on, step_weights, train,
+    ASSOCIATIONS, accuracy_on, association_report, association_targets, build_groups, decoy_group_mask,
+    first_step_mask, load_associations, load_positions, load_soft_labels, mcfadden_on, split_positions,
+    step_weights, train,
 )
 from codenames.local_lm import DEFAULT_LM
 
@@ -76,6 +78,15 @@ def main() -> None:
     ap.add_argument("--lm", default=DEFAULT_LM, help="which local model's distributions")
     ap.add_argument("--temperature", type=float, default=1.0,
                     help="applied to the soft labels; 0 keeps only their argmax (hard-label control)")
+    ap.add_argument("--assoc", type=Path, nargs="?", const=ASSOCIATIONS, default=None,
+                    help="add a Poisson term on free-association counts (scripts/data/"
+                         "collect_associations.py), which pins the per-clue level the board "
+                         "softmax leaves free. Writes <out>.assoc.json with the rate link")
+    ap.add_argument("--assoc-weight", type=float, default=1.0,
+                    help="weight of the association term against the board softmax")
+    ap.add_argument("--assoc-slope", type=float, default=1.0,
+                    help="a in rate = exp(a*s + b): association nats per listener nat. "
+                         "Fixed, not learned -- estimate it with scripts/tools/eval_association_level.py")
     ap.add_argument("--out", type=Path, default=CACHE / "listener_gbt.txt")
     args = ap.parse_args()
 
@@ -89,22 +100,9 @@ def main() -> None:
     if not positions:
         raise SystemExit("no usable positions")
 
-    # Board and decoy seeds are drawn SEPARATELY, so the board split is
-    # byte-identical whether or not --decoys is passed. Pooling them would make
-    # every board accuracy incomparable with the run it is supposed to be
-    # measured against: adding seeds changes the draw for all of them, and a
-    # -0.005 difference is then partly a different validation set.
-    seeds = sorted({p["seed"] for p in positions if not p.get("decoy")})
-    rng = np.random.default_rng(args.seed)
-    val_seeds = set(rng.choice(seeds, size=max(1, int(len(seeds) * args.val_frac)), replace=False).tolist())
-    dec_seeds = sorted({p["seed"] for p in positions if p.get("decoy")})
-    if dec_seeds:
-        rng_d = np.random.default_rng(args.seed + 1)
-        val_seeds |= set(rng_d.choice(dec_seeds, size=max(1, int(len(dec_seeds) * args.val_frac)),
-                                      replace=False).tolist())
-        seeds = seeds + dec_seeds
-    tr_pos = [p for p in positions if p["seed"] not in val_seeds]
-    va_pos = [p for p in positions if p["seed"] in val_seeds]
+    tr_pos, va_pos = split_positions(positions, args.val_frac, args.seed)
+    seeds = sorted({p["seed"] for p in positions})
+    val_seeds = {p["seed"] for p in va_pos}
     if args.decoy_frac < 1.0:
         dec_tr = sorted({p["seed"] for p in tr_pos if p.get("decoy")})
         keep = set(np.random.default_rng(args.seed + 2).choice(
@@ -164,8 +162,22 @@ def main() -> None:
                   f"   (baseline {base:.4f})")
         return
 
+    assoc_term = None
+    if args.assoc:
+        lists = load_associations(args.assoc)
+        a_ytr, a_rtr = association_targets(tr_pos, lists)
+        a_yva, a_rva = association_targets(va_pos, lists)
+        # b starts the rate at the base rate with every score at 0, so the
+        # trees spend nothing on a global shift. The level any one clue ends
+        # up at relative to that is the thing being learned.
+        offset = float(np.log(a_ytr.sum() / a_rtr.sum()))
+        assoc_term = (a_ytr, a_rtr, args.assoc_weight, args.assoc_slope, offset)
+        print(f"association term: {int((a_rtr > 0).sum())} train rows from "
+              f"{sum(1 for p in tr_pos if p['clue'].lower() in lists)} positions, "
+              f"base rate {np.exp(offset):.4f}/list, weight {args.assoc_weight}, slope {args.assoc_slope}")
+
     booster, acc = train(Xtr, ytr, gtr, Xva, yva, gva, args.rounds, args.seed, names,
-                         step_weights(tr_pos))
+                         step_weights(tr_pos), assoc_term)
     preds = booster.predict(Xva, raw_score=True)
     m_all, m_s1 = accuracy_on(preds, gva, yva), accuracy_on(preds, gva, yva, step1)
     print(f"model    : all steps {m_all:.4f} ({m_all-base_all:+.4f})   "
@@ -203,6 +215,16 @@ def main() -> None:
                     ob.append(float(q["targets"][0] in set(dr.tolist())))
                 print(f" {d:2d} {len(lv):5d} {np.mean(lv):9.2f} +-{np.std(lv)/np.sqrt(len(lv)):.2f}"
                       f" {np.mean(pr):11.3f} {np.mean(ob):10.3f}")
+
+    if args.assoc:
+        rep = association_report(booster.predict(Xtr, raw_score=True), a_ytr, a_rtr,
+                                 preds, a_yva, a_rva, gva, va_pos)
+        print(f"\nassociation counts, val: deviance explained {rep['d2']:.4f}   "
+              f"board level rho {rep['level_rho']:.4f}   within-board rho {rep['within_rho']:.4f}   "
+              f"(refit a={rep['a']:.3f} b={rep['b']:.3f}; {rep['boards']} boards)")
+        args.out.with_suffix(".assoc.json").write_text(json.dumps(
+            {"slope": args.assoc_slope, "offset": offset, "weight": args.assoc_weight,
+             "refit_on_train": {"a": rep["a"], "b": rep["b"]}}, indent=1))
 
     imp = sorted(zip(names, booster.feature_importance("gain")), key=lambda t: -t[1])
     print("\nfeature importance (gain):")

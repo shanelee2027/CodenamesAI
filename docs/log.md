@@ -3220,3 +3220,76 @@ The incumbent listener's McFadden R^2 on each prompt's picks:
 **Caveat.** The kept ranked step-2 samples are selected: they are the 79% that
 agreed with the stored first word, which may make them more concentrated
 (self-agreement 0.63 vs 0.58).
+
+## Association counts: an unnormalised target for the per-clue level
+
+**Problem.** The board softmax is invariant to adding a constant to every
+word's score for one clue. So a clue that points strongly at one word and
+weakly at two (4, 2, 2) and a vague one (2, 0, 0) look identical. The
+professor suggested a Bregman divergence. A loss on the normalised
+distributions cannot help, because cross-entropy/KL already is one and they
+all see the same probabilities. What can help is a Bregman divergence on
+**unnormalised** targets, which needs a target that is not normalised over
+the board.
+
+**Target** (`scripts/data/collect_associations.py`). gpt-oss is asked for "the
+25 words that *clue* most strongly makes you think of", with no board, at
+temperature 1, 5 samples per clue. That is 9,494 clues and 47,444 lists
+(136 failed on first pass; 66 persistently, for clues like "aa"), costing
+5.0M tokens in and 5.7M out. A board word's count is how many lists name it,
+matching plurals and ignoring case and punctuation. The base rate is 0.021 per
+list per board word.
+
+**Loss.** Row count y ~ Poisson(R · exp(a·s + b)), added to the board
+softmax on step-1 rows only, so each (clue, word) enters once per position:
+
+- The Poisson deviance is the generalized KL, the Bregman divergence of
+  x log x.
+- s is the listener's own score, so the term constrains the level the
+  softmax leaves free.
+- a = 0.87 is fixed from the incumbent: a Poisson GLM fit of its scores to
+  the counts gives 0.865.
+- b is the log base rate, so no trees are spent on a global shift.
+
+Gradient checked against finite differences (`tests/test_association_term.py`).
+`<out>.assoc.json` keeps a and b.
+
+**Evaluation** (`scripts/tools/eval_association_level.py`). Each model gets its
+own best (a, b) on training rows, so the incumbent is judged on what its
+scores know, not on an arbitrary level. Validation is the incumbent's board
+split; Sonnet and the gpt-oss holdout come from `compare_listeners.py`.
+
+| Model | board R^2 | Sonnet R^2 | gpt-oss holdout R^2 | decoy R^2 | assoc D^2 | level ρ | unseen-clue D^2 | unseen-clue level ρ |
+|---|---|---|---|---|---|---|---|---|
+| incumbent | 0.3548 | 0.5528 | 0.3415 | 0.2129 | 0.696 | 0.577 | 0.600 | 0.414 |
+| weight 0.3 | 0.3514 | 0.5542 | 0.3367 | 0.2070 | 0.785 | 0.710 | 0.669 | 0.513 |
+| weight 1 | 0.3421 | 0.5472 | 0.3250 | 0.1969 | 0.807 | 0.746 | 0.673 | 0.542 |
+| weight 3 | 0.3266 | 0.5346 | 0.3081 | 0.1801 | 0.811 | 0.765 | 0.655 | 0.556 |
+
+- **Level ρ** is the Spearman correlation between a board's predicted total
+  association mass, Σ_w R·exp(a·s_w + b), and the observed total, over 6,241
+  validation boards. That is the per-clue number the softmax cannot learn.
+- **Unseen clues** (902 validation positions) guard against a leak: the split
+  is by board, clues repeat across boards, and counts depend only on
+  (clue, word).
+
+**Conclusions.**
+- **The incumbent already knows part of the level.** Its ρ is 0.58 (0.41 on
+  unseen clues). Its score is one function shared across all boards, and
+  several features are raw rather than board-relative, so some absolute
+  information leaks in despite the loss.
+- **The Poisson term adds a lot of it, and at weight 0.3 almost for free.**
+  Unseen-clue ρ goes 0.41 -> 0.51. Board-choice prediction is unchanged on
+  Sonnet (+0.001) and slightly lower on gpt-oss (-0.003 val, -0.005 holdout).
+  Higher weights buy more level (0.54, 0.56) at a growing board cost
+  (Sonnet -0.006, -0.018).
+- **Decoys cannot see this.** Decoy-board R^2 falls slightly as the weight
+  rises. A decoy group is still a softmax within one clue, and a clue-level
+  shift moves the random words' scores too, so the decoy data pin the level
+  relative to "a random word under this clue", which is a different reference
+  from an absolute association rate. Which reference "passing" should be
+  priced against is a modelling choice for the reward, not settled by either
+  dataset.
+- **Not yet shown:** that a better level makes better clues. That needs the
+  level in the reward, e.g. a fixed pass rate against exp(a·s + b) in place of
+  the decoy-based outside option, and then games.

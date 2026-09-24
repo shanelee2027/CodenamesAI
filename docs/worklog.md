@@ -209,8 +209,61 @@ the heading named in each entry.
     distilling it through the features is what makes it usable.
 - ⬜ Head-to-head games against the incumbent on the frozen suite: not
   worth the money unless something changes, since it lost on prediction.
-- ⬜ Idea: decoys become exact. The decoy level would come straight from
-  Qwen's probability mass on off-board words, with no sampling.
+
+### 3d. Does the way gpt-oss is asked change its picks? — ✅ done
+- ✅ 300 holdout positions, 8 samples each at temperature 1. Four prompts:
+  - the training prompt (clue and number, rank everything);
+  - the same without the number;
+  - one word at a time, with earlier picks removed;
+  - one word at a time, also told "your first guess was correct".
+- ✅ **Step 1 does not depend on the prompt.** Distributions differ by at
+  most D = 0.04 (squared L2; disjoint = 2). The incumbent listener scores all
+  three prompts' picks within 0.01 R^2 (0.603–0.613).
+- ✅ **Step 2 does.** Continuing the list vs re-asking: D ≈ 0.12, about 5
+  points of agreement below self-agreement. Being told the first guess was
+  correct moves it again (D = 0.06).
+  - The re-ask is closer to what our model assumes: it picks step 1's
+    runner-up 62% of the time, against 51% for the list continuation.
+  - The listener predicts both about equally (0.301 on the training prompt,
+    0.305 on the re-ask, 0.278 when told the first guess was correct).
+  - The arena's LLM guesser reads one ranking per turn, so for the arena the
+    training prompt is the matching one.
+- ✅ Found on the way: the training rankings were bought with no temperature
+  set, and DeepInfra then answers an identical prompt identically in runs.
+  The listener is fitted to gpt-oss's near-greedy picks, not its sampled
+  distribution.
+
+### 3e. Association counts, so the listener knows how good a clue is — ✅ built · **[built, not yet used in play]**
+- The problem again: the board softmax cannot tell (4, 2, 2) from (2, 0, 0).
+  Any target that fixes one level per clue solves it.
+- ✅ Asked gpt-oss for 25 free associations of each of the 9,494 clues, with
+  no board shown, 5 samples each (47k calls). A board word's target is how
+  many of the 5 lists name it: an absolute rate, not normalised over the
+  board.
+- ✅ Added a Poisson term (generalized KL, the Bregman divergence for counts)
+  on step-1 rows, alongside the board softmax. Slope 0.87, taken from the
+  incumbent's own scores.
+- ✅ Results on held-out boards. "Level ρ" is the Spearman correlation of
+  predicted vs observed association total per board, i.e. the number the
+  softmax cannot learn:
+
+  | Model | board R^2 (val) | Sonnet R^2 | gpt-oss holdout R^2 | level ρ | level ρ, unseen clues |
+  |---|---|---|---|---|---|
+  | incumbent | **0.355** | 0.553 | **0.342** | 0.577 | 0.414 |
+  | weight 0.3 | 0.351 | **0.554** | 0.337 | 0.710 | 0.513 |
+  | weight 1 | 0.342 | 0.547 | 0.325 | 0.746 | 0.542 |
+  | weight 3 | 0.327 | 0.535 | 0.308 | **0.765** | **0.556** |
+
+  - The incumbent already knows part of the level (ρ 0.58), because some
+    features are raw rather than board-relative.
+  - At weight 0.3 the level improves a lot (+0.10 on unseen clues) for
+    almost no board cost (Sonnet +0.001, gpt-oss holdout −0.005).
+  - Higher weights trade board accuracy for level.
+  - Decoy-board R^2 drops slightly (0.213 → 0.207). Decoys measure the
+    level against random words under the same clue, and a clue-wide shift
+    moves those words too, so they cannot see what this adds.
+- ⬜ Next: use the level in play. Price "pass" as a fixed rate against
+  exp(a·s + b) instead of a random word's score.
 
 ## 4. Evaluation and benchmarks
 

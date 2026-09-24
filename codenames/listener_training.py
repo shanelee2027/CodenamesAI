@@ -460,12 +460,165 @@ def step_weights(positions: list[dict], decay: float = STEP_DECAY) -> np.ndarray
                      for j in range(min(p["k"], p["n"] - 1))], dtype=np.float64)
 
 
-def group_softmax_objective(groups: list[int], event_weights=None):
+def split_positions(positions: list[dict], val_frac: float, seed: int) -> tuple[list[dict], list[dict]]:
+    """Train/val by BOARD seed, as train_listener.py has always drawn it.
+
+    Board and decoy seeds are drawn SEPARATELY, so the board split is
+    byte-identical whether or not decoys are mixed in. Pooling them would make
+    every board accuracy incomparable with the run it is supposed to be
+    measured against: adding seeds changes the draw for all of them. Here so
+    an evaluation can rebuild the exact validation set a model was stopped on.
+    """
+    seeds = sorted({p["seed"] for p in positions if not p.get("decoy")})
+    rng = np.random.default_rng(seed)
+    val_seeds = set(rng.choice(seeds, size=max(1, int(len(seeds) * val_frac)), replace=False).tolist())
+    dec_seeds = sorted({p["seed"] for p in positions if p.get("decoy")})
+    if dec_seeds:
+        rng_d = np.random.default_rng(seed + 1)
+        val_seeds |= set(rng_d.choice(dec_seeds, size=max(1, int(len(dec_seeds) * val_frac)),
+                                      replace=False).tolist())
+    return ([p for p in positions if p["seed"] not in val_seeds],
+            [p for p in positions if p["seed"] in val_seeds])
+
+
+ASSOCIATIONS = CACHE / "associations.db"
+
+
+def _assoc_norm(w: str) -> str:
+    """Lowercase, accents and punctuation stripped: 'New York', 'new-york' and
+    'newyork' are one word here, and so are the model's non-ASCII hyphens."""
+    import unicodedata
+
+    s = unicodedata.normalize("NFKD", w).lower()
+    return "".join(ch for ch in s if ch.isalnum())
+
+
+def load_associations(path: Path = ASSOCIATIONS) -> dict[str, list[set[str]]]:
+    """clue (lowercase) -> one set of normalised words per sampled list,
+    from scripts/data/collect_associations.py."""
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    out: dict[str, list[set[str]]] = {}
+    for clue, words in conn.execute("SELECT clue, words FROM lists"):
+        out.setdefault(clue.lower(), []).append({_assoc_norm(w) for w in json.loads(words)})
+    conn.close()
+    return out
+
+
+def association_counts(words: list[str], lists: list[set[str]]) -> np.ndarray:
+    """How many of the lists name each word. A plural or singular form counts
+    ('Bells' for Bell, 'bell' for Bells); each list counts at most once."""
+    out = []
+    for w in words:
+        n = _assoc_norm(w)
+        forms = {n, n + "s", n + "es"} | ({n[:-1]} if n.endswith("s") else set())
+        out.append(sum(1 for lst in lists if forms & lst))
+    return np.array(out, dtype=np.float64)
+
+
+def association_targets(positions: list[dict], assoc: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Per row of build_groups(positions): the association count `y` and the
+    number of lists `R` it is out of.
+
+    Only step-1 rows carry one -- they hold every candidate exactly once, so
+    each (clue, word) enters once per position rather than once per step it
+    survives to. Every other row, and every position whose clue has no lists,
+    gets R = 0, which removes it from the Poisson term exactly (its mean is
+    R * rate = 0 and so is its target)."""
+    ys, rs = [], []
+    for p in positions:
+        if "steps" in p:
+            raise ValueError("association targets need full-board rows; drop --refresh-features")
+        lists = None if p.get("decoy") else assoc.get(p["clue"].lower())
+        for j in range(min(p["k"], p["n"] - 1)):
+            m = p["n"] - j
+            if j == 0 and lists:
+                ys.append(association_counts(p["words"], lists))
+                rs.append(np.full(m, float(len(lists))))
+            else:
+                ys.append(np.zeros(m))
+                rs.append(np.zeros(m))
+    return np.concatenate(ys), np.concatenate(rs)
+
+
+def fit_rate_link(s: np.ndarray, y: np.ndarray, r: np.ndarray, iters: int = 50) -> tuple[float, float]:
+    """Poisson GLM y ~ Poisson(r * exp(a*s + b)) in (a, b), by Newton.
+
+    Used two ways: to pick the slope a from an existing listener before
+    training (a listener's scores are choice log-odds; how many association
+    nats one of those is worth is not 1 by assumption), and to give every
+    model its best (a, b) on training rows before it is scored on validation
+    ones, so a listener never trained on associations is not penalised for an
+    arbitrary level or scale."""
+    m = r > 0
+    s, y, r = s[m], y[m], r[m]
+    a, b = 1.0, float(np.log(max(y.sum(), 1e-9) / r.sum()) - s.mean())
+    for _ in range(iters):
+        mu = r * np.exp(np.clip(a * s + b, -30, 10))
+        g = np.array([np.dot(mu - y, s), np.sum(mu - y)])
+        h = np.array([[np.dot(mu, s * s), np.dot(mu, s)], [np.dot(mu, s), mu.sum()]])
+        step = np.linalg.solve(h + 1e-9 * np.eye(2), g)
+        a, b = a - step[0], b - step[1]
+        if np.abs(step).max() < 1e-8:
+            break
+    return float(a), float(b)
+
+
+def poisson_deviance(y: np.ndarray, mu: np.ndarray) -> float:
+    """Total Poisson deviance, 2 * sum(y log(y/mu) - (y - mu)): the generalised
+    KL divergence between counts and means, i.e. the Bregman divergence of
+    x log x -- the loss the association term minimises."""
+    mu = np.maximum(mu, 1e-12)
+    t = np.where(y > 0, y * np.log(np.maximum(y, 1e-12) / mu), 0.0)
+    return float(2.0 * np.sum(t - (y - mu)))
+
+
+def association_report(s_tr, y_tr, r_tr, s_va, y_va, r_va, groups_va, positions_va) -> dict:
+    """How well a listener's scores predict held-out association counts.
+
+    (a, b) is refitted on training rows for every model -- see fit_rate_link.
+    `d2` is the share of Poisson deviance explained against one constant rate
+    for every row. `level_rho` is the one number the board softmax cannot
+    learn: per position, the predicted total association mass of its board,
+    sum_w r*exp(a*s_w + b), against the observed total, Spearman over
+    positions. `within_rho` is the complementary, board-relative part: each
+    row's predicted and observed count with its position's mean removed from
+    both, which is what the softmax already sees."""
+    from scipy.stats import spearmanr
+
+    a, b = fit_rate_link(s_tr, y_tr, r_tr)
+    m = r_va > 0
+    mu = r_va * np.exp(np.clip(a * s_va + b, -30, 10))
+    null = r_va[m] * (y_va[m].sum() / r_va[m].sum())
+    d2 = 1.0 - poisson_deviance(y_va[m], mu[m]) / poisson_deviance(y_va[m], null)
+
+    starts = np.concatenate([[0], np.cumsum(groups_va)[:-1]])
+    pred_tot, obs_tot, pw, ow = [], [], [], []
+    for st, g in zip(starts, groups_va):
+        sl = slice(st, st + g)
+        if r_va[st] == 0 or g < 2:
+            continue
+        pred_tot.append(mu[sl].sum())
+        obs_tot.append(y_va[sl].sum())
+        pw.extend(np.log(mu[sl]) - np.log(mu[sl]).mean())
+        ow.extend(y_va[sl] - y_va[sl].mean())
+    return {"a": a, "b": b, "d2": d2, "rows": int(m.sum()), "boards": len(pred_tot),
+            "level_rho": float(spearmanr(pred_tot, obs_tot)[0]),
+            "within_rho": float(spearmanr(pw, ow)[0])}
+
+
+def group_softmax_objective(groups: list[int], event_weights=None, assoc=None):
     """Conditional-logit loss: within each group, softmax cross-entropy.
 
     grad = p - y and hess = p(1-p), the standard multiclass softmax
     derivatives, applied per group rather than per row -- which is the whole
     difference between "score this word" and "choose among these words".
+
+    `assoc = (y, r, weight, slope, offset)` adds a Poisson term on association
+    counts (association_targets): row count y ~ Poisson(r * exp(slope*s +
+    offset)), contributing weight * (mu - y) * slope to the gradient and
+    weight * mu * slope^2 to the hessian. That term is not invariant to adding
+    a constant to a group, so it is what pins the per-clue level the softmax
+    leaves free -- see docs/log.md, "association counts".
 
     Fully vectorised with `reduceat` rather than a Python loop over groups.
     The objective runs on every boosting round, so a loop over ~6k groups is
@@ -488,6 +641,11 @@ def group_softmax_objective(groups: list[int], event_weights=None):
         grad, hess = p - y, np.maximum(p * (1.0 - p), 1e-6)
         if row_w is not None:
             grad, hess = grad * row_w, hess * row_w
+        if assoc is not None:
+            ay, ar, lam, slope, offset = assoc
+            mu = ar * np.exp(np.clip(slope * preds + offset, -30, 10))
+            grad = grad + lam * slope * (mu - ay)
+            hess = hess + lam * slope * slope * mu
         return grad, hess
 
     return obj
@@ -541,7 +699,7 @@ def group_log_loss(preds, groups, y) -> tuple[np.ndarray, np.ndarray]:
 
 
 def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
-          names: list[str] | None = None, event_weights=None):
+          names: list[str] | None = None, event_weights=None, assoc=None):
     """LightGBM >= 4 takes a custom objective through `params["objective"]`.
 
     Early stopping is not optional here: this model will drive TRAINING accuracy
@@ -555,7 +713,7 @@ def train(Xtr, ytr, gtr, Xva, yva, gva, rounds: int, seed: int = 0,
     dtr = lgb.Dataset(Xtr, label=ytr, feature_name=names, free_raw_data=False)
     dva = lgb.Dataset(Xva, label=yva, feature_name=names, reference=dtr, free_raw_data=False)
     params = {
-        "objective": group_softmax_objective(gtr, event_weights),
+        "objective": group_softmax_objective(gtr, event_weights, assoc),
         # Swept late and mattered more than most feature blocks: 0.1/0.05/0.02/
         # 0.01/0.005/0.003 give R2 0.3505/0.3538/0.3559/0.3565/0.3570/0.3569
         # over three seeds. The curve flattens by 0.005, and 0.005 beats 0.01 by
