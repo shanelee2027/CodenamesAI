@@ -3445,3 +3445,41 @@ Choices worth knowing:
   own words are the most likely correct run, and a target can still sit at 3%
   first-guess probability: in the first test deal, the incumbent's STORY 3 was
   meant for Plot (92%), Tail (4%) and Skyscraper (3%).
+
+## The association listener against the incumbent, with gpt-oss guessing
+
+**Set-up.** `configs/eval_suite_gptoss.json` (`holdout_v1_gptoss`) uses
+holdout_v1's 100 boards, both seatings, with `deepinfra:openai/gpt-oss-120b`
+as the guesser. It is a cheap screen before any Sonnet run, and a separate
+suite, so these numbers never mix with holdout_v1's. Tiebreak off on both
+sides (config default). `run_eval_suite.py` now parses `none` as None, for
+`pass_rate=None`. After one retry, gpt-oss still refused to rank on 1 and 3
+boards; those are left out.
+
+**Expected.** No pass: roughly a tie, since the level the retraining adds is
+unused without an outside option; possibly worse, if the two smoke-test
+boards' drift to vague 4-word clues is typical. Pass 0.05: worse. gpt-oss
+always takes all N guesses and never stops, so a spymaster that expects the
+guesser to give up lowers its numbers for nothing (the outside_n sweep's
+pattern).
+
+**Observed.**
+
+| Challenger vs incumbent | boards | win% | swept (ch. vs inc.) | sign p | assassin losses | mean k | own% |
+|---|---|---|---|---|---|---|---|
+| assoc, no pass | 99 | 48.0% | 16 vs 20 | 0.62 | 10 vs 14 | 2.20 vs 2.21 | 81.0 vs 82.1 |
+| assoc, pass 0.05 | 97 | 41.8% | 12 vs 28 | **0.017** | 6 vs 13 | 1.89 vs 2.14 | 85.5 vs 81.9 |
+
+- **No pass: no detectable difference.** Mean k is the same (2.20 vs 2.21),
+  so the drift to vague 4-word clues on the two smoke boards was not typical.
+- **Pass 0.05: loses clearly.** It works as designed: lower numbers (k 1.89 vs
+  2.14), more of its guesses land (85.5% vs 81.9%), half the assassin losses.
+  But against a guesser that never stops, the caution only costs tempo.
+  Fewer own words per clue (1.54 vs 1.60) loses races.
+
+**What this does and does not say.** The retrained scores are safe to use:
+no loss when the level is unused. The arena cannot judge the pass, because
+the behaviour it models, a guesser who stops, does not exist here. This
+result is about the arena's rules, not humans; /eval, where a human can stop,
+is where the pass can win. It does say 0.05 is not free: if humans don't stop
+as often as the pass assumes, it costs about 8 points of win rate.

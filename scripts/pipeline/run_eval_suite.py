@@ -32,7 +32,9 @@ from codenames.stats import fisher_2x2
 
 
 def parse_value(v: str):
-    """float, then int, then bool, then string -- as the arena CLI does."""
+    """None, then bool, then int, then float, then string."""
+    if v.lower() == "none":
+        return None
     if v.lower() in ("true", "false"):
         return v.lower() == "true"
     for cast in (int, float):
