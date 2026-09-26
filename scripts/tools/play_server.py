@@ -58,6 +58,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
+import os
 import random
 import secrets
 import sys
@@ -146,6 +147,18 @@ SPYMASTERS: dict[str, dict] = {
            ("assoc_pass_strong", "Association-trained, pass 0.2", 0.2,
             "As above with the pass at 20%: vague clues are punished hard."))},
 }
+
+# Every result row goes through append_row. When results are synced to a Hub
+# dataset (--results-repo), this becomes the sync job's lock, so a push never
+# catches a half-written line.
+_ROW_LOCK = threading.Lock()
+
+
+def append_row(path: Path, row: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _ROW_LOCK, path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row) + "\n")
+
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
 # single user never needs two clues at once. ~0.7-1.1 s per clue.
@@ -437,9 +450,8 @@ class EvalStudy:
                                  if p["t_first"] else None),
             "ms_total": int((time.time() - p["t_shown"]) * 1000),
         }
-        self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock, self.log_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row) + "\n")
+        append_row(self.log_path, row)
+        with self._lock:
             del self._pending[token]
             self._recorded += 1
             recorded = self._recorded
@@ -532,7 +544,7 @@ class CompareStudy:
                 "agreed": agreed, "blind": blind,
                 "sides": [{f: sd[f] for f in public} if blind else sd for sd in sides]}
 
-    def vote(self, token: str, choice: str, note: str) -> dict:
+    def vote(self, token: str, choice: str, note: str, player: str = "") -> dict:
         if choice not in self.VOTES:
             raise ValueError(f"vote must be one of {self.VOTES}")
         with self._lock:
@@ -543,7 +555,7 @@ class CompareStudy:
         winner = {"left": sides[0]["key"], "right": sides[1]["key"]}.get(choice)
         row = {
             "ts": _dt.datetime.now().isoformat(timespec="seconds"), "session": self.session,
-            "seed": p["seed"], "pre_revealed": [p["words"][i] for i in p["pre"]],
+            "player": player, "seed": p["seed"], "pre_revealed": [p["words"][i] for i in p["pre"]],
             "blind": p["blind"], "agreed_before": p["agreed"], "k1_tiebreak": self.engine.k1,
             "left": sides[0]["key"], "right": sides[1]["key"],
             "vote": choice, "winner": winner, "note": note,
@@ -551,9 +563,7 @@ class CompareStudy:
                       for sd in sides},
             "ms": int((time.time() - p["t_shown"]) * 1000),
         }
-        self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock, self.log_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row) + "\n")
+        append_row(self.log_path, row)
         return {"sides": sides, "winner": winner}
 
 
@@ -610,7 +620,8 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
                                                    bool(req.get("blind", True))))
                 if self.path == "/api/compare/vote" and compare is not None:
                     return self._json(compare.vote(str(req["token"]), str(req["vote"]),
-                                                   str(req.get("note") or "")[:500]))
+                                                   str(req.get("note") or "")[:500],
+                                                   str(req.get("player") or "")[:40]))
                 if self.path.startswith("/api/eval/"):
                     if study is None:
                         return self._json({"error": "the eval study is not enabled -- "
@@ -632,6 +643,27 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
     return Handler
 
 
+def start_results_sync(args) -> None:
+    """Hosted mode: write results to per-run files and push them to a private
+    Hub dataset every 5 minutes, and once more on a clean exit. A crash can
+    lose at most the rows since the last push."""
+    global _ROW_LOCK
+    import atexit
+
+    from huggingface_hub import CommitScheduler
+
+    run = _dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(3)
+    folder = DEFAULT_CACHE_DIR / "results"
+    args.eval_log = folder / f"human_eval-{run}.jsonl"
+    args.compare_log = folder / f"compare_votes-{run}.jsonl"
+    folder.mkdir(parents=True, exist_ok=True)
+    scheduler = CommitScheduler(repo_id=args.results_repo, repo_type="dataset",
+                                folder_path=folder, every=5, private=True)
+    _ROW_LOCK = scheduler.lock
+    atexit.register(scheduler.trigger)
+    print(f"results: synced to dataset {args.results_repo} every 5 min (run {run})")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -648,9 +680,16 @@ def main() -> None:
     ap.add_argument("--eval-log", type=Path, default=DEFAULT_EVAL_LOG)
     ap.add_argument("--compare-log", type=Path, default=DEFAULT_COMPARE_LOG)
     ap.add_argument("--no-open", dest="open_browser", action="store_false")
+    ap.add_argument("--results-repo", default=os.environ.get("RESULTS_REPO"),
+                    help="a Hugging Face dataset (user/name) to sync results to, for a hosted "
+                         "copy whose disk does not survive restarts. Each server run then "
+                         "writes its own files under cache/results/, named by run, so a "
+                         "restart never overwrites rows already pushed. Needs HF_TOKEN.")
     ap.set_defaults(k1=True)
     args = ap.parse_args()
 
+    if args.results_repo:
+        start_results_sync(args)
     print("loading the model...", flush=True)
     engine = Engine(k1=args.k1)
     have = engine.available()

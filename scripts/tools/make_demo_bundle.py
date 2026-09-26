@@ -13,6 +13,13 @@ the real requirement is ~2 GB of free RAM.
 
 Usage:
     python scripts/tools/make_demo_bundle.py --out ~/codenames-demo
+    python scripts/tools/make_demo_bundle.py --out ~/codenames-space --space
+
+`--space` makes the same folder deployable as a Hugging Face Docker Space: it
+adds a Dockerfile and replaces the README with the Space's config. The Space
+runs the server with --results-repo taken from the RESULTS_REPO variable, so
+results survive the Space's disk being wiped (play_server.py,
+start_results_sync).
 """
 
 from __future__ import annotations
@@ -152,11 +159,48 @@ as a model of a guesser.
 """
 
 
+# A Docker Space: port 7860, run as uid 1000 (the Space's user), CPU-only
+# torch from PyTorch's own index -- the default wheel carries CUDA and is
+# several GB for a no-op here. libgomp is LightGBM's OpenMP runtime, which the
+# slim image lacks.
+DOCKERFILE = """\
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \\
+    && rm -rf /var/lib/apt/lists/*
+RUN useradd -m -u 1000 user
+USER user
+ENV HOME=/home/user PATH=/home/user/.local/bin:$PATH PYTHONUNBUFFERED=1
+WORKDIR /home/user/app
+COPY --chown=user requirements.txt .
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch \\
+    && pip install --no-cache-dir -r requirements.txt huggingface_hub
+COPY --chown=user . .
+EXPOSE 7860
+CMD ["python", "play_server.py", "--host", "0.0.0.0", "--port", "7860", "--no-open", \\
+     "--eval-arms", "incumbent,assoc_pass"]
+"""
+
+SPACE_HEADER = """\
+---
+title: Codenames Spymaster
+emoji: 🕵️
+colorFrom: blue
+colorTo: red
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
+"""
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--cache-dir", type=Path, default=PROJECT_ROOT / "cache")
+    ap.add_argument("--space", action="store_true",
+                    help="also make it a Hugging Face Docker Space (Dockerfile + Space README)")
     ap.add_argument("--model", type=Path, default=None,
                     help="booster to ship as listener_gbt.txt (default: the deployed one)")
     args = ap.parse_args()
@@ -184,7 +228,9 @@ def main() -> None:
         total += src.stat().st_size
 
     (out / "requirements.txt").write_text(REQUIREMENTS)
-    (out / "README.md").write_text(README)
+    (out / "README.md").write_text((SPACE_HEADER if args.space else "") + README)
+    if args.space:
+        (out / "Dockerfile").write_text(DOCKERFILE)
     (out / "start.sh").write_text(START_SH)
     (out / "start.sh").chmod(0o755)
     (out / "start.bat").write_text(START_BAT)
