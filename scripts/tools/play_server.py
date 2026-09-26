@@ -88,6 +88,27 @@ from codenames.spymasters.learned_listener import ListenerBundle, LearnedListene
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
          "/compare": "compare.html"}
+# The tab bar every page carries, defined once and injected at __NAV__.
+TABS = [("/", "Play a game"), ("/eval", "Guess blind"), ("/compare", "Compare clues")]
+_NAV_STYLE = """<style>
+.tabs{display:flex;gap:4px;margin:0 0 12px;padding:3px;border:1px solid var(--line);
+  border-radius:11px;background:var(--surface)}
+.tabs a{flex:1;text-align:center;padding:7px 6px;border-radius:8px;font-size:12.5px;
+  font-weight:600;color:var(--muted);text-decoration:none;white-space:nowrap}
+.tabs a:hover{color:var(--ink)}
+.tabs a[aria-current=page]{background:var(--gold);color:#1A1509}
+.tabs a:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+</style>"""
+
+
+def nav(path: str) -> str:
+    here = PAGES.get(path)
+    links = "".join(
+        f'<a href="{href}"{" aria-current=page" if PAGES[href] == here else ""}>{label}</a>'
+        for href, label in TABS)
+    return f'{_NAV_STYLE}<nav class="tabs" aria-label="Pages">{links}</nav>'
+
+
 WEB = Path(__file__).parent / "webplay"
 ROLE_CODE = {Role.OWN: "a", Role.OPPONENT: "b", Role.NEUTRAL: "n", Role.ASSASSIN: "x"}
 DEFAULT_EVAL_LOG = DEFAULT_CACHE_DIR / "human_eval.jsonl"
@@ -560,7 +581,7 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
             path = self.path.split("?")[0]
             if path in PAGES:
                 html = (WEB / PAGES[path]).read_text(encoding="utf-8").replace(
-                    "__K1__", "on" if engine.k1 else "off")
+                    "__K1__", "on" if engine.k1 else "off").replace("__NAV__", nav(path))
                 return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
             if path == "/api/spymasters":
                 return self._json({"default": default_key, "spymasters": [
