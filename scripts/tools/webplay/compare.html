@@ -99,8 +99,6 @@ td.pc{text-align:right;width:44px} td.rt{text-align:right;width:52px;color:var(-
 .vote{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
 .vote button.L{border-color:var(--gold)} .vote button.R{border-color:var(--teal)}
 .note{margin-top:8px}
-.name{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.name label{letter-spacing:.1em;text-transform:uppercase;font-size:10.5px;color:var(--muted);white-space:nowrap}
 .foot{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5}
 .foot a{color:inherit}
 @media (max-width:760px){
@@ -127,9 +125,6 @@ __NAV__
   <label class="check"><input type="checkbox" id="blind" checked> Blind</label>
   <button class="act primary" id="deal">Deal</button>
 </div>
-<div class="name"><label for="player">Your name</label>
-  <input type="text" id="player" autocomplete="nickname" maxlength="40"
-    placeholder="so your votes can be told apart"></div>
 <div class="status" id="status">Pick two models and deal.</div>
 
 <div class="layout">
@@ -160,7 +155,7 @@ __NAV__
   association models' predicted share of free-association lists that name the word.
   <b>Expected</b> is that model's expected net words for the clue.
   In blind mode, names and probabilities stay on the server until you vote.
-  Every vote is recorded with your name and note. k=1 tiebreak: <b>__K1__</b>.
+  Votes are appended to <code>cache/compare_votes.jsonl</code>. k=1 tiebreak: <b>__K1__</b>.
 </div>
 
 <script>
@@ -184,8 +179,6 @@ async function init(){
   $('ma').value = pick(load('a'), ['incumbent']);
   $('mb').value = pick(load('b'), ['assoc_pass', 'assoc']);
   const b = load('blind'); if (b !== null) $('blind').checked = b === '1';
-  try { $('player').value = localStorage.getItem('player') || ''; } catch(e) {}
-  $('player').oninput = e => { try { localStorage.setItem('player', e.target.value); } catch(_) {} };
   $('ma').onchange = () => store('a', $('ma').value);
   $('mb').onchange = () => store('b', $('mb').value);
   $('blind').onchange = () => store('blind', $('blind').checked ? '1' : '0');
@@ -267,7 +260,7 @@ async function vote(v){
   if (busy || !cur) return;
   busy = true; setVote(false);
   try {
-    const r = await post('/api/compare/vote', {token: cur.token, vote: v, note: $('note').value, player: $('player').value.trim()});
+    const r = await post('/api/compare/vote', {token: cur.token, vote: v, note: $('note').value});
     if (r.error) throw new Error(r.error);
     cur.sides = r.sides;
     const w = r.winner ? (r.winner === r.sides[0].key ? 'L' : 'R') : null;
@@ -283,7 +276,7 @@ function status(msg, err){ $('status').textContent = msg; $('status').className 
 $('deal').onclick = deal;
 document.querySelectorAll('#vote button').forEach(b => b.onclick = () => vote(b.dataset.v));
 document.addEventListener('keydown', e => {
-  if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;   // typing a name or note
+  if (e.target.tagName === 'INPUT' && e.target.type === 'text') return;
   if (e.key === 'n' || e.key === 'Enter') deal();
   const k = {'1':'left', '2':'right', '3':'tie', '4':'both_bad'}[e.key];
   if (k && !$('vote').querySelector('button').disabled) vote(k);

@@ -209,10 +209,10 @@ class TestCompare:
         assert all(set(s) == {"clue", "number", "targets"} for s in out["sides"])
         blob = json.dumps(out)
         assert "incumbent" not in blob and "assoc" not in blob
-        res = study.vote(out["token"], "right", "why", "bob")
+        res = study.vote(out["token"], "right", "why")
         assert {s["key"] for s in res["sides"]} == {"incumbent", "assoc_pass"}
         row = json.loads((tmp_path / "v.jsonl").read_text())
-        assert row["winner"] == row["right"] and row["note"] == "why" and row["player"] == "bob"
+        assert row["winner"] == row["right"] and row["note"] == "why"
 
     def test_a_board_takes_one_vote(self, tmp_path):
         study = ps.CompareStudy(FakeCompareEngine(), tmp_path / "v.jsonl")
