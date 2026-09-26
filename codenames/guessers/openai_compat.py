@@ -93,6 +93,7 @@ class OpenAICompatGuesser(Guesser):
         min_coverage: float = 0.8,
         cache_path: str | Path | None = None,
         client=None,
+        temperature: float | None = None,
     ):
         if provider not in PROVIDERS and base_url is None:
             raise ValueError(f"unknown provider {provider!r}; pass base_url, or one of {list(PROVIDERS)}")
@@ -103,6 +104,12 @@ class OpenAICompatGuesser(Guesser):
         self.api_key_env = api_key_env or default_env
         self.max_tokens = max_tokens
         self.reasoning_effort = reasoning_effort
+        # None sends no temperature: the host's default, which on DeepInfra is
+        # near-deterministic (identical prompts come back byte-identical; see
+        # scripts/data/collect_prompt_variants.py). Set, it makes this a noisier
+        # guesser -- one sampled ranking per position, cached like any other,
+        # so a run is still reproducible.
+        self.temperature = temperature
         self.min_coverage = min_coverage
         # Count of accepted responses where the model ranked only part of the
         # board. Not zero in practice, and worth reporting rather than hiding:
@@ -149,7 +156,11 @@ class OpenAICompatGuesser(Guesser):
         hosts cannot silently share rankings -- they are different deployments
         and can differ in quantisation, sampling defaults, and version."""
         base = f"{self.provider}/{self.model}"
-        return base if self.reasoning_effort is None else f"{base}+effort={self.reasoning_effort}"
+        if self.reasoning_effort is not None:
+            base += f"+effort={self.reasoning_effort}"
+        # Part of the identity: a sampled ranking must never be served as a
+        # near-greedy one, or the reverse.
+        return base if self.temperature is None else f"{base}+temp={self.temperature:g}"
 
     def _query(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:
         """Raises rather than returning a fabricated ranking. See the module
@@ -198,6 +209,8 @@ class OpenAICompatGuesser(Guesser):
             }
             if self.reasoning_effort is not None:
                 request["reasoning_effort"] = self.reasoning_effort
+            if self.temperature is not None:
+                request["temperature"] = self.temperature
             if attempt > 1:
                 request["frequency_penalty"] = RETRY_FREQUENCY_PENALTY
             choice = self.client.chat.completions.create(**request).choices[0]

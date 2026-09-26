@@ -589,6 +589,17 @@ class TestOpenAICompatGuesserStrictness:
         g.rank_candidates("vehicle", self.WORDS, None, number=2)
         assert client.calls[0]["reasoning_effort"] == "low"
 
+    def test_temperature_is_sent_on_every_attempt(self):
+        g, client = self._guesser([_FakeOpenAIChoice("", "length"), _FakeOpenAIChoice(self.RANKING)],
+                                  temperature=1.0)
+        g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        assert [c["temperature"] for c in client.calls] == [1.0, 1.0]
+
+    def test_no_temperature_is_sent_by_default(self):
+        g, client = self._guesser([_FakeOpenAIChoice(self.RANKING)])
+        g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        assert "temperature" not in client.calls[0]
+
     def test_effort_is_part_of_the_cache_identity(self):
         low = OpenAICompatGuesser(model="m", client=object())
         high = OpenAICompatGuesser(model="m", reasoning_effort="high", client=object())
@@ -609,6 +620,24 @@ class TestBuildGuesser:
         from codenames.guessers.registry import build_guesser
         g = build_guesser("deepinfra:openai/gpt-oss-120b")
         assert g.cache_model_id == "deepinfra/openai/gpt-oss-120b+effort=low"
+
+    def test_temperature_is_a_separate_cache_identity(self):
+        from codenames.guessers.registry import build_guesser
+        hot = build_guesser("deepinfra:openai/gpt-oss-120b:low:temperature=1.5")
+        assert hot.temperature == 1.5 and hot.reasoning_effort == "low"
+        assert hot.cache_model_id == "deepinfra/openai/gpt-oss-120b+effort=low+temp=1.5"
+        # effort left out still defaults to low, and the plain spec is untouched
+        assert build_guesser("deepinfra:openai/gpt-oss-120b:temperature=1").cache_model_id == \
+            "deepinfra/openai/gpt-oss-120b+effort=low+temp=1"
+        assert build_guesser("deepinfra:openai/gpt-oss-120b:low").cache_model_id == \
+            "deepinfra/openai/gpt-oss-120b+effort=low"
+
+    @pytest.mark.parametrize("spec", ["anthropic:claude-sonnet-5:medium:temperature=1",
+                                      "deepinfra:openai/gpt-oss-120b:low:top_p=0.9"])
+    def test_unsupported_options_raise(self, spec):
+        from codenames.guessers.registry import build_guesser
+        with pytest.raises(ValueError):
+            build_guesser(spec)
 
     def test_a_bare_name_comes_from_the_pool_config(self):
         from codenames.guessers.registry import build_guesser

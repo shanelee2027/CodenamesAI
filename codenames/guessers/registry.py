@@ -115,31 +115,46 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
     """One guesser from a one-line spec, or by name from `pool_config`.
 
         anthropic:<model>[:<effort>]    LLMGuesser, e.g. anthropic:claude-sonnet-5:medium
-        <provider>:<model>[:<effort>]   OpenAICompatGuesser, for any provider in
+        <provider>:<model>[:<effort>][:temperature=<t>]
+                                        OpenAICompatGuesser, for any provider in
                                         codenames/guessers/openai_compat.py::PROVIDERS,
-                                        e.g. deepinfra:openai/gpt-oss-120b:low
+                                        e.g. deepinfra:openai/gpt-oss-120b:low:temperature=1.0
         <name>                          an entry in `pool_config` (the synthetic guessers)
 
     Every LLM guesser caches to cache/llm_store.db, keyed by model and
-    effort, so two specs never share an answer and the same spec never pays
-    twice.
+    effort (and temperature, when set), so two specs never share an answer and
+    the same spec never pays twice.
 
     Effort is part of the cache key, and its default differs by provider on
     purpose. An Anthropic model left without one runs with thinking disabled
     (see LLMGuesser.__init__). gpt-oss-120b left to its own default reasons at
     medium: 8x the completion tokens for the same one-shot judgment, and on a
     small budget an empty answer -- so OpenAICompatGuesser defaults to low.
+
+    Temperature is accepted for OpenAI-compatible providers only: Claude Sonnet
+    5 and later reject the sampling parameters outright.
     """
     provider, sep, rest = spec.partition(":")
     if not sep:
         return load_pool(pool_config)[spec].guesser
-    model, _, effort = rest.partition(":")
+    model, _, tail = rest.partition(":")
     if not model:
         raise ValueError(f"guesser spec {spec!r} names no model")
+    fields = tail.split(":") if tail else []
+    effort = fields.pop(0) if fields and "=" not in fields[0] else ""
+    options = {}
+    for f in fields:
+        key, eq, value = f.partition("=")
+        if not eq or key != "temperature":
+            raise ValueError(f"unknown guesser option {f!r} in {spec!r}; only temperature=<t> is supported")
+        options["temperature"] = float(value)
     if provider == "anthropic":
+        if options:
+            raise ValueError(f"{spec!r}: Anthropic guessers take no temperature (rejected by the API)")
         return LLMGuesser(model=model, effort=effort or None, cache_path=DEFAULT_DB_PATH)
     if provider in PROVIDERS:
         kwargs = {"reasoning_effort": effort} if effort else {}
-        return OpenAICompatGuesser(model=model, provider=provider, cache_path=DEFAULT_DB_PATH, **kwargs)
+        return OpenAICompatGuesser(model=model, provider=provider, cache_path=DEFAULT_DB_PATH,
+                                   **kwargs, **options)
     raise ValueError(f"unknown guesser provider {provider!r} in {spec!r}; "
                      f"use anthropic or one of {sorted(PROVIDERS)}")
