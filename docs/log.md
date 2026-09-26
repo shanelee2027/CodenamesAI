@@ -3556,3 +3556,42 @@ more words than it saves, including for the one human tested, who can stop.
 
 Cost: 1,463 new Sonnet guesser calls (the rest were cached), about $2.65 at
 the measured 195 in / 142 out tokens per call.
+
+## Does a noisier guesser rescue the pass? assoc_pass vs incumbent with gpt-oss at temperature 1 and 1.5
+
+**Hypothesis (the author's).** The incumbent may be overfitted to how LLMs
+guess: near-greedy, and never stopping. Against a noisier guesser, the pass
+model's more conservative clues might hold up better and close the gap.
+
+**Set-up.** `OpenAICompatGuesser(temperature=...)`, with the temperature part
+of the cache identity (`+temp=<t>`). Suites `holdout_v1_gptoss_t1` and
+`holdout_v1_gptoss_t1.5`: holdout_v1's 100 boards, both seatings, one sampled
+ranking per position. llm_store.db backed up first
+(`cache/backups/llm_store_2026-09-26_pre_hot_guesser.db`). All 100 boards played
+at both temperatures; the 2 boards refused at 1.5 went through on the retry.
+
+**How much the temperature changes the guesser.** On positions answered both
+near-greedy and hot, the first word differs 20% of the time at T=1 and 15% at
+T=1.5, and the first N words in order differ about half the time at both. So
+these are genuinely different guessers, but 1.5 is no noisier than 1.
+Presumably the reasoning step settles on similar answers whatever the
+sampling, or the host limits the temperature. Guess accuracy barely moves: the
+incumbent's own% is 81.9, 81.1 and 81.9 at default, T=1 and T=1.5.
+
+**Observed.**
+
+| Guesser | assoc_pass win% | swept (pass vs inc.) | sign p | assassin losses | mean k (pass vs inc.) | own/clue |
+|---|---|---|---|---|---|---|
+| gpt-oss, default (near-greedy) | 41.8% | 12 vs 28 | 0.017 | 6 vs 13 | 1.89 vs 2.14 | 1.54 vs 1.60 |
+| gpt-oss, T = 1 | 42.0% | 10 vs 26 | 0.011 | 5 vs 13 | 1.89 vs 2.18 | 1.51 vs 1.60 |
+| gpt-oss, T = 1.5 | 40.5% | 14 vs 33 | 0.008 | 10 vs 13 | 1.93 vs 2.16 | 1.56 vs 1.63 |
+
+**Not supported over this range.** The gap does not move: about 41% at every
+temperature, significant at each. The pass model makes its guesser land more
+often (85% vs 81–82%) and loses fewer games to the assassin at T=1 (5 vs 13,
+Fisher p = 0.089). But it still finds fewer words per clue and loses races.
+
+**Caveat.** Temperature makes gpt-oss choose differently, not badly. Its
+errors stay about as frequent, so this is not an erratic guesser. A truly
+error-prone guesser, or one allowed to stop (option B, not yet run), could
+still behave differently.
