@@ -595,6 +595,21 @@ class TestOpenAICompatGuesserStrictness:
         g.rank_candidates("vehicle", self.WORDS, None, number=2)
         assert [c["temperature"] for c in client.calls] == [1.0, 1.0]
 
+    def test_stop_mode_offers_stop_and_says_what_it_means(self):
+        from codenames.game import STOP
+        ranking = '["Car", "STOP", "Apple", "Doghouse", "Banana", "Elephant"]'
+        g, client = self._guesser([_FakeOpenAIChoice(ranking)], allow_stop=True)
+        out = g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        assert out[:2] == ["Car", STOP]
+        prompt = client.calls[0]["messages"][0]["content"]
+        assert "\nSTOP" in prompt and "ending your turn" in prompt
+        assert g.cache_model_id.endswith("+stop")
+
+    def test_a_stop_the_model_left_out_goes_last_so_nothing_stops(self):
+        from codenames.game import STOP
+        g, _ = self._guesser([_FakeOpenAIChoice(self.RANKING)], allow_stop=True)
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=2)[-1] == STOP
+
     def test_no_temperature_is_sent_by_default(self):
         g, client = self._guesser([_FakeOpenAIChoice(self.RANKING)])
         g.rank_candidates("vehicle", self.WORDS, None, number=2)
@@ -631,6 +646,8 @@ class TestBuildGuesser:
             "deepinfra/openai/gpt-oss-120b+effort=low+temp=1"
         assert build_guesser("deepinfra:openai/gpt-oss-120b:low").cache_model_id == \
             "deepinfra/openai/gpt-oss-120b+effort=low"
+        stop = build_guesser("deepinfra:openai/gpt-oss-120b:low:stop=1")
+        assert stop.allow_stop and stop.cache_model_id == "deepinfra/openai/gpt-oss-120b+effort=low+stop"
 
     @pytest.mark.parametrize("spec", ["anthropic:claude-sonnet-5:medium:temperature=1",
                                       "deepinfra:openai/gpt-oss-120b:low:top_p=0.9"])

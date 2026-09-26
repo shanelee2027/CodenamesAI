@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from codenames.board import Board, Card, Role
 from codenames.spymasters.base import Spymaster
-from codenames.game import ROLE_REWARD, play_turn, play_two_team_game
+from codenames.game import ROLE_REWARD, STOP, play_turn, play_two_team_game
 from codenames.guessers.base import Guesser
 
 BOARD_WORDS = [f"Board{i}" for i in range(25)]
@@ -89,6 +89,43 @@ class TestPlayTurn:
         assert turn.ended_reason == "no_guesses"
         assert turn.guesses == []
         assert turn.reward == 0.0
+
+
+class RawGuesser(Guesser):
+    """Returns a fixed list verbatim, STOP included -- what a stop-capable
+    guesser hands the game."""
+
+    def __init__(self, ranking: list[str]):
+        self.ranking = ranking
+
+    def score_candidates(self, clue, candidate_words, sims):
+        return {}
+
+    def rank_candidates(self, clue, candidate_words, sims, number=None):
+        return list(self.ranking)
+
+
+class TestStop:
+    def test_stop_ends_the_turn_after_the_words_above_it(self):
+        turn = play_turn(make_board(), FixedSpymaster(number=3), RawGuesser(["Board0", STOP, "Board1"]), sims=None)
+        assert turn.ended_reason == "stopped"
+        assert [w for w, _ in turn.guesses] == ["Board0"]
+        assert turn.reward == ROLE_REWARD[Role.OWN]
+
+    def test_stop_first_is_a_pass_worth_nothing(self):
+        board = make_board()
+        turn = play_turn(board, FixedSpymaster(number=2), RawGuesser([STOP, "Board0"]), sims=None)
+        assert turn.ended_reason == "stopped" and turn.guesses == [] and turn.reward == 0.0
+        assert not board.revealed
+
+    def test_stop_below_the_number_changes_nothing(self):
+        turn = play_turn(make_board(), FixedSpymaster(number=2), RawGuesser(["Board0", "Board1", STOP]), sims=None)
+        assert turn.ended_reason == "exhausted_guesses"
+        assert [w for w, _ in turn.guesses] == ["Board0", "Board1"]
+
+    def test_a_miss_above_stop_still_ends_the_turn_as_a_miss(self):
+        turn = play_turn(make_board(), FixedSpymaster(number=3), RawGuesser(["Board9", STOP]), sims=None)
+        assert turn.ended_reason == "opponent"
 
 
 class TestPlayTwoTeamGame:

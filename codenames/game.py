@@ -14,6 +14,13 @@ Neutral is non-zero because it still costs a turn and gains nothing.
 A clue announcing `n` gets exactly `n` guesses -- no standard-Codenames
 "+1 bonus guess". A guesser has no notion of "still feels confident" to
 decide when to spend one.
+
+**Stopping.** A guesser may end the turn early by ranking the token STOP: the
+turn plays its ranking up to STOP and no further. Only a guesser built to
+offer it (OpenAICompatGuesser(allow_stop=True)) ever returns STOP -- it is
+not a board word -- so for every other guesser this rule never fires and the
+arena is "exactly n guesses" as before. STOP ranked first is a pass: the turn
+ends with nothing guessed and reward 0.
 """
 
 from __future__ import annotations
@@ -22,7 +29,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from codenames.board import Board, OpponentBoardView, Role
-from codenames.guessers.base import Guesser
+from codenames.guessers.base import STOP, Guesser
 from codenames.similarity import SimilarityTensor
 
 if TYPE_CHECKING:
@@ -84,7 +91,7 @@ class TurnResult:
     number: int
     guesses: list[tuple[str, Role]] = field(default_factory=list)
     reward: float = 0.0
-    ended_reason: str = ""  # "own_words_complete" | "opponent" | "neutral" | "assassin" | "exhausted_guesses" | "no_guesses"
+    ended_reason: str = ""  # "own_words_complete" | "opponent" | "neutral" | "assassin" | "exhausted_guesses" | "no_guesses" | "stopped"
 
 
 def play_turn(
@@ -101,6 +108,11 @@ def play_turn(
     clue, number = spymaster.give_clue(ctx, sims)
     candidates = [w for w in board.words if not board.is_revealed(w)]
     attempts = guesser.rank_candidates(clue, candidates, sims, number=number)[:number]
+    stopped = STOP in attempts
+    if stopped:
+        attempts = attempts[:attempts.index(STOP)]
+        if not attempts:
+            return TurnResult(clue=clue, number=number, ended_reason="stopped")
 
     if not attempts:
         return TurnResult(clue=clue, number=number, ended_reason="no_guesses")
@@ -121,7 +133,7 @@ def play_turn(
             result.ended_reason = "own_words_complete"
             return result
 
-    result.ended_reason = "exhausted_guesses"
+    result.ended_reason = "stopped" if stopped else "exhausted_guesses"
     return result
 
 

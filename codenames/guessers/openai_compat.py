@@ -58,7 +58,7 @@ import os
 import threading
 from pathlib import Path
 
-from codenames.guessers.base import Guesser
+from codenames.guessers.base import STOP, Guesser
 from codenames.guessers.llm import _PROMPT_TEMPLATE, LLMGuesser
 from codenames.llm_store import LLMResponseCache
 from codenames.similarity import SimilarityTensor
@@ -81,6 +81,22 @@ PROVIDERS = {
 }
 
 
+# Appended to the ranking prompt when the guesser may stop. It has to say that
+# a wrong guess costs something, or stopping has no reason to exist -- the
+# ranking prompt alone never mentions it. That makes how often it stops a
+# property of this wording, recorded with the results (docs/log.md). "Still
+# rank every entry" is not decoration: without it gpt-oss reads "above STOP
+# only the words you would guess" as "list only those", and returns a
+# one-word answer the coverage check (rightly) refuses.
+STOP_NOTE = (
+    "\n\nOne entry, STOP, is not a board word: it stands for ending your turn. Your turn ends "
+    "at your first wrong guess, and a wrong guess can give a word to the other team or lose "
+    "the game. Still rank every entry, STOP included: put the words you would actually guess "
+    "for this clue above STOP, in the order you would guess them, and every other word below "
+    "it. If you would not guess any word, put STOP first."
+)
+
+
 class OpenAICompatGuesser(Guesser):
     def __init__(
         self,
@@ -94,6 +110,7 @@ class OpenAICompatGuesser(Guesser):
         cache_path: str | Path | None = None,
         client=None,
         temperature: float | None = None,
+        allow_stop: bool = False,
     ):
         if provider not in PROVIDERS and base_url is None:
             raise ValueError(f"unknown provider {provider!r}; pass base_url, or one of {list(PROVIDERS)}")
@@ -110,6 +127,11 @@ class OpenAICompatGuesser(Guesser):
         # guesser -- one sampled ranking per position, cached like any other,
         # so a run is still reproducible.
         self.temperature = temperature
+        # A guesser that may end its turn early: STOP joins the words it
+        # ranks, and the turn plays the ranking only up to it
+        # (codenames/game.py). Its own cache identity (+stop): the prompt
+        # differs, and the rankings contain a token no other guesser's do.
+        self.allow_stop = allow_stop
         self.min_coverage = min_coverage
         # Count of accepted responses where the model ranked only part of the
         # board. Not zero in practice, and worth reporting rather than hiding:
@@ -160,7 +182,9 @@ class OpenAICompatGuesser(Guesser):
             base += f"+effort={self.reasoning_effort}"
         # Part of the identity: a sampled ranking must never be served as a
         # near-greedy one, or the reverse.
-        return base if self.temperature is None else f"{base}+temp={self.temperature:g}"
+        if self.temperature is not None:
+            base += f"+temp={self.temperature:g}"
+        return base + "+stop" if self.allow_stop else base
 
     def _query(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:
         """Raises rather than returning a fabricated ranking. See the module
@@ -199,6 +223,8 @@ class OpenAICompatGuesser(Guesser):
         and still stops the run."""
         count_note = f" for {number} word(s)" if number else ""
         prompt = _PROMPT_TEMPLATE.format(clue=clue, count_note=count_note, words="\n".join(candidate_words))
+        if self.allow_stop:
+            prompt += STOP_NOTE
         budget = self.max_tokens
         problems = []
         for attempt in range(1, ATTEMPTS + 1):
@@ -332,6 +358,8 @@ class OpenAICompatGuesser(Guesser):
         sims: SimilarityTensor,
         number: int | None = None,
     ) -> list[str]:
+        if self.allow_stop:
+            candidate_words = list(candidate_words) + [STOP]
         return self._ranked(clue, candidate_words, number)
 
     def __repr__(self) -> str:

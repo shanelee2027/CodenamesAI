@@ -115,7 +115,7 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
     """One guesser from a one-line spec, or by name from `pool_config`.
 
         anthropic:<model>[:<effort>]    LLMGuesser, e.g. anthropic:claude-sonnet-5:medium
-        <provider>:<model>[:<effort>][:temperature=<t>]
+        <provider>:<model>[:<effort>][:temperature=<t>][:stop=1]
                                         OpenAICompatGuesser, for any provider in
                                         codenames/guessers/openai_compat.py::PROVIDERS,
                                         e.g. deepinfra:openai/gpt-oss-120b:low:temperature=1.0
@@ -132,7 +132,9 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
     small budget an empty answer -- so OpenAICompatGuesser defaults to low.
 
     Temperature is accepted for OpenAI-compatible providers only: Claude Sonnet
-    5 and later reject the sampling parameters outright.
+    5 and later reject the sampling parameters outright. `stop=1` lets the
+    guesser end its turn early (OpenAICompatGuesser.allow_stop), likewise
+    OpenAI-compatible only.
     """
     provider, sep, rest = spec.partition(":")
     if not sep:
@@ -145,12 +147,15 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
     options = {}
     for f in fields:
         key, eq, value = f.partition("=")
-        if not eq or key != "temperature":
-            raise ValueError(f"unknown guesser option {f!r} in {spec!r}; only temperature=<t> is supported")
-        options["temperature"] = float(value)
+        if not eq or key not in ("temperature", "stop"):
+            raise ValueError(f"unknown guesser option {f!r} in {spec!r}; "
+                             "supported: temperature=<t>, stop=1")
+        options[key if key == "temperature" else "allow_stop"] = (
+            float(value) if key == "temperature" else value.lower() in ("1", "true", "yes"))
     if provider == "anthropic":
         if options:
-            raise ValueError(f"{spec!r}: Anthropic guessers take no temperature (rejected by the API)")
+            raise ValueError(f"{spec!r}: Anthropic guessers take no options here (temperature is "
+                             "rejected by the API; stop is not implemented for them)")
         return LLMGuesser(model=model, effort=effort or None, cache_path=DEFAULT_DB_PATH)
     if provider in PROVIDERS:
         kwargs = {"reasoning_effort": effort} if effort else {}

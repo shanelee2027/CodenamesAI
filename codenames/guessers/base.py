@@ -18,6 +18,12 @@ from abc import ABC, abstractmethod
 from codenames.similarity import SimilarityTensor
 
 
+# The token a stop-capable guesser ranks to end its turn early. Defined here,
+# with the interface, so the game loop and the guessers can both import it
+# without importing each other (codenames/game.py, "Stopping").
+STOP = "STOP"
+
+
 class Guesser(ABC):
     @abstractmethod
     def score_candidates(self, clue: str, candidate_words: list[str], sims: SimilarityTensor) -> dict[str, float]:
