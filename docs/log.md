@@ -3595,3 +3595,54 @@ Fisher p = 0.089). But it still finds fewer words per clue and loses races.
 errors stay about as frequent, so this is not an erratic guesser. A truly
 error-prone guesser, or one allowed to stop (option B, not yet run), could
 still behave differently.
+
+## Does a guesser that may stop rescue the pass? assoc_pass vs incumbent with a stop-capable gpt-oss
+
+**Hypothesis.** This is option B from the entry above. The incumbent never had
+to fear a guesser declining its clue, because no guesser in the arena could.
+A guesser allowed to end its turn early might punish the incumbent's riskier,
+higher-number clues and favour the pass model's.
+
+**Set-up.** `OpenAICompatGuesser(allow_stop=True)`, with cache identity
+`+stop`. A STOP entry is added to the candidates, and a note asks the model to
+rank the words it would actually guess above STOP. The game plays the words
+ranked above STOP (at most N) and ends the turn there; STOP ranked first is an
+outright pass. Suite `holdout_v1_gptoss_stop` uses holdout_v1's boards.
+llm_store.db was backed up first
+(`cache/backups/llm_store_2026-09-26_pre_stop_guesser.db`). The note's first
+wording ("rank above STOP only the words you would guess") made gpt-oss list
+one word and nothing else, which the coverage check refuses. The final wording
+("still rank every entry, STOP included") gave 20/20 usable answers in a probe.
+Even so, 11 of 100 boards are still refused after one retry pass, so the
+results cover 89 boards.
+
+**The guesser does use STOP.**
+
+| Clues from | turns ended by STOP | outright passes | stop rate at N = 1 / 2 / 3 / 4 |
+|---|---|---|---|
+| incumbent | 13.7% | 9.0% | 1% / 20% / 12% / 21% |
+| assoc_pass | 11.6% | 8.0% | 2% / 19% / 11% / 14% |
+
+**Observed.** assoc_pass wins 42.7% (95% CI 0.36–0.51), sign p = 0.050. It
+sweeps 10 boards to the incumbent's 22. It loses to the assassin 3 times to
+13 (Fisher p = 0.019). Mean k is 1.94 vs 2.20, own% 86.2 vs 82.5, and own
+words per clue 1.41 vs 1.44.
+
+On the same 89 boards, assoc_pass wins 43.6% near-greedy (86 of them played),
+41.6% at T = 1, 41.6% at T = 1.5, and 42.7% with stopping.
+
+**Not supported.** Stopping does not close the gap. The guesser does stop
+somewhat more often on the incumbent's clues, most of all at N = 4 (21% vs
+14%), and the pass model's assassin advantage is the largest yet (3 vs 13).
+But the incumbent still wins the race. Stopping costs it about as much as
+guessing wrong did before: own words per clue fall for both models (1.60 to
+1.44 for the incumbent, 1.54 to 1.41 for assoc_pass) and the gap barely
+changes.
+
+**Caveats.**
+- The STOP note changes the prompt itself, not only the options the guesser
+  has, so these rankings are not the near-greedy guesser's with a stop option
+  bolted on.
+- The 11 refused boards are the ones where gpt-oss would not rank every entry
+  around STOP. If those skew toward clues it wanted to pass, they are missing
+  from the result.
