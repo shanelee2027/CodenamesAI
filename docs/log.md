@@ -3525,3 +3525,34 @@ of N were 11% in both arms.
 **Measurement note.** analyze_human_eval.py's "stopped" includes declining the
 bonus guess after finding all N, which is most stops. Real give-ups, counted
 as `own_found < number`, are the figure that bears on the pass.
+
+## assoc_pass (0.05) against the incumbent on holdout_v1, Sonnet guessing
+
+**Set-up.** The frozen suite: 100 held-out boards, both seatings, Sonnet 5
+(medium) guessing for both sides, tiebreak off. llm_store.db backed up first
+(`cache/backups/llm_store_2026-09-25_pre_assoc_sonnet.db`).
+
+**Expected.** A loss, as with gpt-oss (41.8%, p = 0.017). The arena guesser
+must take exactly N guesses and never stops, so the pass only lowers numbers.
+
+**Observed.** All 100 boards played, none refused.
+
+| | win% | 95% CI | swept | assassin losses | mean k | own/clue | own% |
+|---|---|---|---|---|---|---|---|
+| assoc_pass (0.05) | 39.5% | [0.33, 0.46] | 10 | 7 | 1.90 | 1.57 | 87.0% |
+| incumbent | **60.5%** | [0.54, 0.67] | **31** | 11 | 2.14 | 1.68 | 85.0% |
+
+Sign test on 41 decisive boards: **p = 0.0015**. Assassin losses 7 vs 11,
+Fisher p = 0.47.
+
+Same pattern as with gpt-oss, and stronger. Sonnet completes slightly more of
+the pass model's guesses (87% vs 85%), but it gives smaller clues (k 1.90 vs
+2.14) and finds fewer own words per clue (1.57 vs 1.68), and loses races.
+
+**Three guessers, one direction.** gpt-oss (p = 0.017), Sonnet (p = 0.0015)
+and the author guessing blind (1.85 vs 2.12 own words per clue, p = 0.086)
+all favour the incumbent. The pass works as designed, but at 0.05 it costs
+more words than it saves, including for the one human tested, who can stop.
+
+Cost: 1,463 new Sonnet guesser calls (the rest were cached), about $2.65 at
+the measured 195 in / 142 out tokens per call.
