@@ -13,9 +13,10 @@ Config format: {"spymasters": [{"name", "type", "params", "trained",
 `type` selects a class from SPYMASTER_CLASSES. `params` are passed as
 keyword args to that class's constructor. `trained` marks whether this
 entry expects a trained artifact (a checkpoint) to exist before it can be
-built. No entry in `configs/spymasters.json` does: the learned listener
-loads its booster from a fixed cache path, so every entry is constructible
-straight from its params.
+built. Only the clue policies do (`imitation_policy`, `gptoss_reward_policy`:
+checkpoints from scripts/pipeline/train_imitation_policy.py and
+train_reward_policy.py); the learned listener loads its booster from a fixed
+cache path, so every other entry is constructible straight from its params.
 
 `roles` is how a script says *which kind* of spymaster it wants without
 naming names: `scripts/pipeline/run_arena.py` takes the "baseline" role, and
@@ -43,6 +44,8 @@ from codenames.spymasters.association_listener import AssociationListenerSpymast
 from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
+from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaster
+from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import LearnedListenerSpymaster
 from codenames.spymasters.llm_spymaster import LLMSpymaster
 
@@ -54,6 +57,8 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "learned_listener": LearnedListenerSpymaster,
     "llm": LLMSpymaster,
     "association_listener": AssociationListenerSpymaster,
+    "imitation_policy": ImitationPolicySpymaster,
+    "gptoss_reward_policy": GptossRewardPolicySpymaster,
 }
 
 

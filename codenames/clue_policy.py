@@ -259,6 +259,47 @@ def stack_inputs(feats: PolicyFeatures, boards: list[BoardInputs]):
             np.stack([b.present for b in boards]), np.stack([b.legal for b in boards]))
 
 
+class DeviceFeatures:
+    """The whole feature table on one torch device (213 MB at float16), and
+    training batches assembled from word ids there."""
+
+    def __init__(self, feats: PolicyFeatures, device: str = "cuda"):
+        import torch
+
+        self.pair = torch.as_tensor(np.asarray(feats.pair), device=device)      # (400, P, F)
+        self.word = torch.as_tensor(feats.word, device=device)
+        self.illegal = torch.as_tensor(feats.illegal, device=device)
+        self.device = device
+
+    def batch(self, words, roles, present):
+        """pair (B, 25, P, F), word, roles, present, legal (B, P), K_max (B,)."""
+        import torch
+
+        w = torch.as_tensor(np.asarray(words), device=self.device)
+        rol = torch.as_tensor(np.asarray(roles), device=self.device)
+        pres = torch.as_tensor(np.asarray(present), device=self.device)
+        kmax = ((rol == ROLE_ID[Role.OWN]) & pres).sum(1).clamp(max=MAX_CLUE_NUMBER)
+        return self.pair[w], self.word[w], rol, pres, ~self.illegal[w].any(dim=1), kmax
+
+
+# ---------------------------------------------------------------------------
+# One guesser call
+
+
+def rollout(guesser, view, clue: str) -> dict:
+    """Ask `guesser` to rank the unrevealed words for `clue`, with no number
+    announced (docs/log.md, "gptoss_reward_policy: design", choice 2), and score
+    the ranking for every number: {"ranking", "outcome", "rewards"} with
+    rewards[k-1] the turn's reward had k been announced. Raises whatever the
+    guesser raises when it will not rank."""
+    candidates = [w for w in view.words if not view.is_revealed(w)]
+    ranking = guesser.rank_candidates(clue, candidates, None, number=None)
+    roles = role_map(view)
+    kmax = k_max(view)
+    return {"ranking": ranking, "outcome": outcome_of(ranking, roles, kmax),
+            "rewards": [turn_reward(ranking, roles, k) for k in range(1, kmax + 1)]}
+
+
 # ---------------------------------------------------------------------------
 # The network (torch imported lazily: nothing above needs it)
 

@@ -1,5 +1,5 @@
 {
- "_comment": "Spymaster registry config (docs/iteration-architecture.md step 2, codenames/spymasters/registry.py). Each entry names a Spymaster subclass (see SPYMASTER_CLASSES) and its constructor params. 'trained' marks whether this entry expects a trained artifact before it can be built -- false for every entry here, since none of them train. 'roles' says which scripts pick an entry up without naming it: 'baseline' is the standard comparison set (both arenas), 'exploration' is only offered by scripts/pipeline/run_two_team_arena.py. A new entry omitting 'roles' defaults to ['baseline'], so it appears in the arenas automatically.",
+ "_comment": "Spymaster registry config (docs/iteration-architecture.md step 2, codenames/spymasters/registry.py). Each entry names a Spymaster subclass (see SPYMASTER_CLASSES) and its constructor params. 'trained' marks whether this entry expects a trained artifact before it can be built -- true only for the clue policies, whose checkpoints come from their training scripts. 'roles' says which scripts pick an entry up without naming it: 'baseline' is the standard comparison set (both arenas), 'exploration' is only offered by scripts/pipeline/run_two_team_arena.py. A new entry omitting 'roles' defaults to ['baseline'], so it appears in the arenas automatically.",
  "spymasters": [
   {
    "name": "centroid",
@@ -50,6 +50,26 @@
     "max_rarity": 10.0
    },
    "trained": false,
+   "roles": [
+    "exploration"
+   ]
+  },
+  {
+   "_comment": "A clue policy (codenames/clue_policy.py): one network maps a board to pi(clue | board) over the incumbent's pool from raw clue-word evidence and roles, and an outcome head picks the number. These weights (cache/policy_imitation.pt) imitate the incumbent's picks and values on training boards; it is the control for gptoss_reward_policy, which starts from them. docs/versions/imitation_policy.md.",
+   "name": "imitation_policy",
+   "type": "imitation_policy",
+   "params": {},
+   "trained": true,
+   "roles": [
+    "exploration"
+   ]
+  },
+  {
+   "_comment": "imitation_policy fine-tuned by REINFORCE on the reward gpt-oss-120b's guesses (temperature 1) earn on the policy's own clues, with a KL penalty to the imitation policy (scripts/pipeline/train_reward_policy.py, cache/policy_gptoss_reward.pt). docs/versions/gptoss_reward_policy.md.",
+   "name": "gptoss_reward_policy",
+   "type": "gptoss_reward_policy",
+   "params": {},
+   "trained": true,
    "roles": [
     "exploration"
    ]
