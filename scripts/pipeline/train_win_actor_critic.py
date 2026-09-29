@@ -132,6 +132,20 @@ class Actor:
             return out
 
 
+class IncumbentAgent:
+    """The learned listener playing the agent's side: its own clue and number,
+    but ranked the way the agent's turns are, with no number announced. Against
+    the listener itself this measures what that ranking costs a side
+    (docs/log.md, "win_actor_critic: critic pilot")."""
+
+    def __init__(self, opp_pool):
+        self.pool = opp_pool
+
+    def __call__(self, seed: int, revealed, team: str) -> list[dict]:
+        clue, number = self.pool.submit(_opp_move, (seed, tuple(sorted(revealed)), team)).result()
+        return [{"clue": clue, "k": int(number), "pool": -1, "kmax": int(number), "logp": 0.0}]
+
+
 def play_games(seeds: list[int], actor: Actor, guesser, opp_pool, threads: int, log_path: Path,
                extra: dict | None = None) -> list[GameRecord]:
     """Play one game per seed, concurrently; append each finished game to
@@ -373,7 +387,9 @@ def make_guesser(budget: float, already_spent: float = 0.0):
 
 
 def cmd_play(args) -> None:
-    feats, gf, net = setup(Path(args.policy))
+    if args.agent == "policy" and not args.policy:
+        raise SystemExit("--policy is required unless --agent incumbent")
+    feats, gf, net = setup(Path(args.policy) if args.agent == "policy" else None)
     guesser, meter = make_guesser(args.budget)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -386,12 +402,13 @@ def cmd_play(args) -> None:
         used = {g["seed"] for g in read_games(list(DATA.glob("win_games_*.jsonl")))}
         seeds = next_seeds(max(0, args.n - len(done)), TRAIN_SEEDS, used)
     print(f"{len(seeds)} games to play ({len(done)} already in {out})", flush=True)
-    actor = Actor(net, feats, gf, greedy=args.greedy, branches=1)
     t0 = time.time()
     with ProcessPoolExecutor(args.opp_workers, initializer=_opp_init) as opp:
+        actor = Actor(net, feats, gf, greedy=args.greedy, branches=1) if args.agent == "policy" else IncumbentAgent(opp)
         for s in range(0, len(seeds), args.chunk):
             games = play_games(seeds[s: s + args.chunk], actor, guesser, opp, args.threads, out,
-                               {"policy": str(args.policy), "greedy": args.greedy})
+                               {"policy": str(args.policy) if args.agent == "policy" else "incumbent",
+                                "greedy": args.greedy})
             report_games(games, meter, t0, s + len(games))
             if meter.limit is not None and meter.dollars >= meter.limit:
                 print("budget spent; stopping")
@@ -419,9 +436,14 @@ def cmd_fit_critic(args) -> None:
     tr, va = split_games(S)
     z = S.outcomes()
     results, best_epochs = {}, {}
-    for lam in args.lam:
-        critic = build_critic(len(feats.word_names), d=args.d, layers=args.layers).cuda()
-        opt = torch.optim.AdamW(critic.parameters(), lr=args.lr, weight_decay=1e-4)
+
+    def new_critic(board: bool):
+        critic = build_critic(len(feats.word_names), d=args.d, layers=args.layers, board=board,
+                              dropout=args.dropout).cuda()
+        return critic, torch.optim.AdamW(critic.param_groups(1e-4, args.board_wd), lr=args.lr)
+
+    for variant, lam in [(v, l) for v in args.variants for l in args.lam]:
+        critic, opt = new_critic(variant == "board")
         # Early stopping on held-out log loss against the real results: the
         # critic is small data (a few thousand games) and overfits.
         best_ll, best_state, best_epoch = math.inf, None, 0
@@ -436,27 +458,30 @@ def cmd_fit_critic(args) -> None:
         critic.load_state_dict(best_state)
         rep = critic_report(critic, gf, S, va, tr)
         rep["best_epoch"] = best_epoch
-        results[lam], best_epochs[lam] = (rep, critic), best_epoch
-        print(f"lambda {lam}: best epoch {best_epoch}, last train loss {loss:.4f}  held-out "
+        results[variant, lam], best_epochs[variant, lam] = (rep, critic), best_epoch
+        print(f"{variant} lambda {lam}: best epoch {best_epoch}, last train loss {loss:.4f}  held-out "
               f"{json.dumps({k: rep[k] for k in ('critic', 'counts_only', 'constant')})}  "
               f"drift {rep['martingale_mean_change']:+.4f} ± {rep['martingale_se']:.4f}", flush=True)
-    best = min(results, key=lambda l: results[l][0]["critic"]["log_loss"])
+    # The critic the actor uses reads the board: the counts-only variant is
+    # there to show what the board adds, not to be chosen.
+    keep = [k for k in results if k[0] == "board"] or list(results)
+    best = min(keep, key=lambda k: results[k][0]["critic"]["log_loss"])
     rep, critic = results[best]
-    print(f"best lambda {best}; calibration:")
+    print(f"best {best}; calibration:")
     for row in rep["calibration"]:
         print(f"   {row}")
     if args.final:
         # Refit on every game with the chosen lambda for the held-out-chosen
         # number of epochs (scaled for the extra data), for the actor to use.
-        critic = build_critic(len(feats.word_names), d=args.d, layers=args.layers).cuda()
-        opt = torch.optim.AdamW(critic.parameters(), lr=args.lr, weight_decay=1e-4)
+        critic, opt = new_critic(best[0] == "board")
         every = np.arange(len(S.P["words"]))
         for epoch in range(best_epochs[best]):
-            fit_critic_steps(critic, opt, gf, S, every, best, max(1, len(tr) // args.batch), args.batch, rng)
-    save_critic(critic, Path(args.out), {"lam": best, "report": rep, "games": [str(p) for p in args.games],
+            fit_critic_steps(critic, opt, gf, S, every, best[1], max(1, len(tr) // args.batch), args.batch, rng)
+    save_critic(critic, Path(args.out), {"lam": best[1], "variant": best[0], "report": rep,
+                                         "board_wd": args.board_wd, "games": [str(p) for p in args.games],
                                          "refit_on_all": bool(args.final), "args": vars(args) | {"games": None}})
     Path(args.out).with_suffix(".report.json").write_text(json.dumps(
-        {str(l): r for l, (r, _) in results.items()} | {"best": best}, indent=1))
+        {f"{v} {l}": r for (v, l), (r, _) in results.items()} | {"best": list(best)}, indent=1))
     print(f"saved {args.out}")
 
 
@@ -511,7 +536,7 @@ def cmd_train(args) -> None:
     critic, cmeta = load_critic(Path(args.critic), device="cuda")
     lam = cmeta["lam"] if args.lam is None else args.lam
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=0.0)
-    copt = torch.optim.AdamW(critic.parameters(), lr=args.critic_lr, weight_decay=1e-4)
+    copt = torch.optim.AdamW(critic.param_groups(1e-4, cmeta.get("board_wd", 0.05)), lr=args.critic_lr)
     start, history = 0, []
     if resume:
         st = torch.load(state_path, map_location="cuda", weights_only=False)
@@ -655,7 +680,8 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("play")
-    p.add_argument("--policy", required=True)
+    p.add_argument("--policy")
+    p.add_argument("--agent", choices=["policy", "incumbent"], default="policy")
     p.add_argument("--seeds", choices=["train", "val"], required=True)
     p.add_argument("--n", type=int, required=True)
     p.add_argument("--greedy", action="store_true")
@@ -671,8 +697,11 @@ def main() -> None:
     p.add_argument("--epochs", type=int, default=30)
     p.add_argument("--batch", type=int, default=256)
     p.add_argument("--lr", type=float, default=3e-4)
-    p.add_argument("--d", type=int, default=64)
-    p.add_argument("--layers", type=int, default=3)
+    p.add_argument("--d", type=int, default=32)
+    p.add_argument("--layers", type=int, default=2)
+    p.add_argument("--dropout", type=float, default=0.2)
+    p.add_argument("--board-wd", type=float, default=0.05, help="weight decay on the board correction")
+    p.add_argument("--variants", nargs="+", choices=["board", "counts"], default=["board", "counts"])
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--final", action="store_true", help="refit the chosen lambda on every game before saving")
     p.add_argument("--out", default=str(CRITIC))

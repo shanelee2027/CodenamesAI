@@ -181,6 +181,7 @@ def test_edge_features_brute_force_and_critic_slot_invariance():
     # The critic does not care which slot holds which word.
     torch.manual_seed(0)
     critic = build_critic(len(feats.word_names)).cuda().eval()
+    torch.nn.init.normal_(critic.read[-1].weight)      # the board correction starts at zero; wake it
     perm = np.random.default_rng(0).permutation(25)
     outs = []
     for order in (np.arange(25), perm):

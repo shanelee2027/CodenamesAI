@@ -19,10 +19,21 @@ above a crowd give a small level, small margins and big crowd counts, even
 when the order is the same. Keeping each source separate keeps
 disagreement between the embeddings and the association data visible.
 
-**Network.** Attention over the unrevealed words. The pair features enter
-as per-head attention biases and as part of each message. The readout
-pools per role (mean and max), adds role counts and the agent flag, and
-gives one logit.
+**Network.** Two parts, added as logits:
+
+- **Counts.** A small MLP on the words left per role, which roles are
+  still present, and the agent flag. On 800 pilot games a counts-only model
+  beat a board-only critic by a wide margin (docs/log.md, "win_actor_critic:
+  critic pilot"). The board critic memorised about 640 games instead of
+  learning what counts already say.
+- **Board correction.** Attention over the unrevealed words. The pair
+  features enter as per-head attention biases and as part of each message.
+  The readout pools per role (mean and max). Its output layer starts at
+  zero, so the critic starts as the counts model. Dropout, and weight decay
+  on this part only (`param_groups`), make the board earn every departure
+  from the counts on held-out games.
+
+`board=False` builds the counts part alone, for comparison.
 
 **Targets.** TD(lambda) along real games, in `lambda_returns`. The next
 position belongs to the other side, so its value from the mover's side is
@@ -117,9 +128,12 @@ def full_edges(e300):
     return out
 
 
-def build_critic(n_word: int, n_edge: int = N_EDGE, d: int = 64, heads: int = 4, layers: int = 3):
+def build_critic(n_word: int, n_edge: int = N_EDGE, d: int = 32, heads: int = 4, layers: int = 2,
+                 board: bool = True, dropout: float = 0.2):
     import torch
     from torch import nn
+
+    n_counts = 2 * len(ROLE_ORDER) + 1
 
     class Layer(nn.Module):
         def __init__(self):
@@ -130,6 +144,7 @@ def build_critic(n_word: int, n_edge: int = N_EDGE, d: int = 64, heads: int = 4,
             self.ev = nn.Linear(d, d)
             self.out = nn.Linear(d, d)
             self.ff = nn.Sequential(nn.Linear(d, 2 * d), nn.GELU(), nn.Linear(2 * d, d))
+            self.drop = nn.Dropout(dropout)
 
         def forward(self, h, e, mask):
             B, N, _ = h.shape
@@ -139,38 +154,57 @@ def build_critic(n_word: int, n_edge: int = N_EDGE, d: int = 64, heads: int = 4,
             att = att.masked_fill(~mask[:, None, None, :], float("-inf")).softmax(-1)
             msg = torch.einsum("bhij,bjhc->bihc", att, v).reshape(B, N, d)
             msg = msg + torch.einsum("bhij,bijhc->bihc", att, self.ev(e).view(B, N, N, heads, dh)).reshape(B, N, d)
-            h = h + self.out(msg)
-            return h + self.ff(self.norm2(h))
+            h = h + self.drop(self.out(msg))
+            return h + self.drop(self.ff(self.norm2(h)))
 
     class WinCritic(nn.Module):
         def __init__(self):
             super().__init__()
-            self.config = dict(n_word=n_word, n_edge=n_edge, d=d, heads=heads, layers=layers)
-            self.node = nn.Sequential(nn.Linear(n_word + len(ROLE_ORDER), d), nn.GELU(), nn.Linear(d, d))
-            self.edge = nn.Sequential(nn.Linear(n_edge, d), nn.GELU(), nn.Linear(d, d))
-            self.layers = nn.ModuleList(Layer() for _ in range(layers))
-            n_read = 2 * len(ROLE_ORDER) * d + 2 * len(ROLE_ORDER) + 1
-            self.read = nn.Sequential(nn.LayerNorm(n_read), nn.Linear(n_read, 128), nn.GELU(), nn.Linear(128, 1))
+            self.config = dict(n_word=n_word, n_edge=n_edge, d=d, heads=heads, layers=layers, board=board,
+                               dropout=dropout)
+            self.counts = nn.Sequential(nn.Linear(n_counts, 32), nn.GELU(), nn.Linear(32, 32), nn.GELU(),
+                                        nn.Linear(32, 1))
+            self.board = board
+            if board:
+                self.node = nn.Sequential(nn.Linear(n_word + len(ROLE_ORDER), d), nn.GELU(), nn.Linear(d, d))
+                self.edge = nn.Sequential(nn.Linear(n_edge, d), nn.GELU(), nn.Linear(d, d))
+                self.layers = nn.ModuleList(Layer() for _ in range(layers))
+                n_read = 2 * len(ROLE_ORDER) * d + n_counts
+                last = nn.Linear(64, 1)
+                nn.init.zeros_(last.weight)
+                nn.init.zeros_(last.bias)
+                self.read = nn.Sequential(nn.LayerNorm(n_read), nn.Dropout(dropout), nn.Linear(n_read, 64),
+                                          nn.GELU(), last)
 
         def forward(self, word, roles, present, edges, agent):
             """word (B, 25, Fw), roles (B, 25) relative to the side to move,
             present (B, 25) bool, edges (B, 300, F), agent (B,) bool -> logit
             of P(side to move wins), (B,)."""
+            masks = [(roles == r) & present for r in range(len(ROLE_ORDER))]
+            ns = [m.sum(1, keepdim=True) for m in masks]
+            xc = torch.cat([n.float() / 9.0 for n in ns] + [(n > 0).float() for n in ns]
+                           + [agent.float()[:, None]], -1)
+            logit = self.counts(xc).squeeze(-1)
+            if not self.board:
+                return logit
             onehot = nn.functional.one_hot(roles, len(ROLE_ORDER)).float()
             h = self.node(torch.cat([word.float(), onehot], -1))
             e = self.edge(full_edges(edges).float())
             for layer in self.layers:
                 h = layer(h, e, present)
-            parts, counts, has = [], [], []
-            for r in range(len(ROLE_ORDER)):
-                m = (roles == r) & present
-                n = m.sum(1, keepdim=True)
+            parts = []
+            for m, n in zip(masks, ns):
                 parts.append((h * m[..., None]).sum(1) / n.clamp(min=1))
                 parts.append(h.masked_fill(~m[..., None], -1e4).amax(1) * (n > 0))
-                counts.append(n.float() / 9.0)
-                has.append((n > 0).float())
-            x = torch.cat(parts + counts + has + [agent.float()[:, None]], -1)
-            return self.read(x).squeeze(-1)
+            return logit + self.read(torch.cat(parts + [xc], -1)).squeeze(-1)
+
+        def param_groups(self, weight_decay: float, board_weight_decay: float) -> list[dict]:
+            """The counts part lightly regularised, the board correction hard."""
+            counts = list(self.counts.parameters())
+            ids = {id(p) for p in counts}
+            rest = [p for p in self.parameters() if id(p) not in ids]
+            return [{"params": counts, "weight_decay": weight_decay},
+                    {"params": rest, "weight_decay": board_weight_decay}]
 
     return WinCritic()
 

@@ -3947,3 +3947,83 @@ plus counts and a flag for whether the side to move is our agent.
 - V estimates the win probability against the learned listener only.
 - TD targets use V(next state) = 1 - V(state as the other side sees it):
   the game is zero-sum, and timeouts are dropped.
+
+## win_actor_critic: critic pilot
+
+**Imitation warm start** (`train_imitation_policy.py --head k`, 8 epochs, 30k
+positions from the uncapped incumbent). On 2,000 held-out positions:
+- its clue is the incumbent's 51.6% of the time;
+- it lands inside the incumbent's 200-clue shortlist 96% of the time;
+- given the incumbent's clue, it picks the same number 88% of the time.
+
+The uncapped incumbent announced 5 or more on about 5% of positions.
+
+**Pilot games.** 800 games with the initial policy sampling against the
+learned listener: $0.39, 11.7 min at 160 games at once. That is $0.0005
+per game, 8.1 half-turns on average, and about 1 in 150 games lost to a
+DeepInfra error.
+
+**Expected.** A critic reading the board would beat a counts-only model.
+
+**Observed.** It did not. Held-out log loss, 20% of games by seed, scored
+against the real results:
+
+| | log loss | Brier |
+|---|---|---|
+| constant | 0.693 | 0.250 |
+| counts only (LightGBM on role counts and mover) | 0.408 | 0.126 |
+| board critic (attention, d 64, 3 layers), best lambda 0.5 | 0.547 | 0.181 |
+
+The critic memorised about 640 games: train loss reached 0.0006 at
+lambda = 1.
+
+The zero-average-change check (mean change in the mover's win probability
+per half-turn) also failed:
+- lambda = 1 gave -0.12 and lambda = 0.8 gave +0.12, each ± 0.005, so
+  V(s) + V(next) was not close to 1;
+- lambda = 0.5 passed (-0.007).
+
+Bootstrapping from 1 - V(next) enforces that consistency. At this data size
+the network does not learn it on its own.
+
+The actor-critic step was stopped after 15 games (about $0.02) rather than
+trained on a signal worse than counts.
+
+**Fix.** The critic is now a counts MLP (role counts, which roles are left,
+mover flag) plus a board correction:
+- the board correction is attention, d 32, 2 layers, with dropout 0.2;
+- its output layer starts at zero;
+- it has weight decay 0.05, against 1e-4 on the counts part.
+
+Refit on the same ~815 games, held-out log loss is 0.432 (board, lambda 1)
+and 0.434 (board, lambda 0.5), against 0.424-0.429 for the counts part alone
+and 0.411 for LightGBM on counts. It is calibrated to within a few points in
+most bins, and lambda 0.5 passes the drift check (-0.002). The board adds
+nothing yet at about 650 training games. The counts network was still
+improving at its 30th and last epoch.
+
+**Is the no-number ranking a handicap?** On our turns gpt-oss ranks with no
+number; the opponent's turns announce it. To test it, the incumbent played
+the agent's side against itself on the 300 validation seeds, with its own
+clue and number, ranked the agent's way. Seats alternate with seed parity,
+so with no handicap it should win half.
+
+It won **50.0%** [44.4, 55.6] (149 of 298). The no-number ranking costs
+nothing measurable.
+
+**So the initial policy is simply weak against the incumbent.** Greedy on
+the same seeds, it won **27.1%** [22.4, 32.5]. Paired by seed, the
+incumbent-as-agent won 98 seeds the policy lost, and lost 30 the policy
+won: sign p < 0.001.
+
+| agent (greedy, 295 paired seeds) | assassin | turn ended neutral | turn ended opponent | own words per turn | mean k |
+|---|---|---|---|---|---|
+| initial policy | 38 | 403 | 168 | 1.60 | 2.39 |
+| incumbent | 15 | 265 | 147 | 1.69 | 2.22 |
+
+The policy asks for more and lands less. It hits the assassin two and a half
+times as often, and ends more turns on a neutral. When its clue differs from
+the incumbent's (about half the time), the replacement is clearly worse. This
+is the same pattern imitation_policy showed with Sonnet (42.5%), but larger
+with gpt-oss. So there is a lot of room for actor-critic to gain, and the
+starting point is 27%, not 50%.
