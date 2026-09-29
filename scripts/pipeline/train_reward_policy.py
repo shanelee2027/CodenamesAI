@@ -70,7 +70,18 @@ GUESSER = "deepinfra:openai/gpt-oss-120b:low:temperature=1.0"
 INIT = DEFAULT_CACHE_DIR / "policy_imitation.pt"
 OUT = DEFAULT_CACHE_DIR / "policy_gptoss_reward.pt"
 ROLLOUTS = DEFAULT_CACHE_DIR / "training_data" / "policy_rl_rollouts.jsonl"
-CHUNK = 16
+CHUNK = 16          # boards per GPU pass; --chunk
+PAUSE = 0.0         # seconds idle after each pass; --gpu-pause
+
+
+def yield_gpu() -> None:
+    """Let the GPU go idle between passes, so the work of an iteration is spread
+    out instead of arriving as one burst (another program sharing the card
+    stutters during the bursts). Changes timing only: the update is the same
+    sum over chunks either way."""
+    if PAUSE > 0:
+        torch.cuda.synchronize()
+        time.sleep(PAUSE)
 
 
 class Baseline(nn.Module):
@@ -154,6 +165,7 @@ def greedy_picks(net, gf, feats, views) -> list[tuple[str, int]]:
         c = logp.argmax(1)
         k = er[torch.arange(len(idx)), c].argmax(-1) + 1
         out += [(feats.clue_words[int(ci)], int(ki)) for ci, ki in zip(c, k)]
+        yield_gpu()
     return out
 
 
@@ -175,6 +187,7 @@ def validate(net, gf, feats, guesser, pool, val_views, it, log) -> dict:
 
 
 def main() -> None:
+    global CHUNK, PAUSE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--iterations", type=int, required=True)
     ap.add_argument("--batch", type=int, default=64)
@@ -189,9 +202,12 @@ def main() -> None:
     ap.add_argument("--init", default=str(INIT))
     ap.add_argument("--out", default=str(OUT))
     ap.add_argument("--rollouts", default=str(ROLLOUTS))
+    ap.add_argument("--chunk", type=int, default=CHUNK, help="boards per GPU pass")
+    ap.add_argument("--gpu-pause", type=float, default=0.0, help="seconds idle after each GPU pass")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    CHUNK, PAUSE = args.chunk, args.gpu_pause
 
     out = Path(args.out)
     state_path = out.with_suffix(".state.pt")
@@ -263,6 +279,7 @@ def main() -> None:
                 p = logp.exp()
                 ents += (-(p * logp.nan_to_num(neginf=0.0)).sum(1)).tolist()
                 greedy_hit += int((c == logp.argmax(1)).sum())
+                yield_gpu()
 
         res = run_rollouts(guesser, pool, [(v, feats.clue_words[c]) for v, c in zip(views, clues)])
         ok = [i for i, r in enumerate(res) if not isinstance(r, Exception)]
@@ -302,6 +319,7 @@ def main() -> None:
             tot["oc"] += float(oc.sum().detach())
             tot["v"] += float(((V - r) ** 2).sum().detach())
             tot["adv_sd"] += adv.tolist()
+            yield_gpu()
         torch.nn.utils.clip_grad_norm_(net.parameters(), 5.0)
         opt.step()
 
