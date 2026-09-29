@@ -3827,3 +3827,57 @@ weakest. Its outcome head was fitted to the listener's expected values only,
 through their means. This is the control: what the policy form costs before
 RL. The RL stage's outcome head learns the number from real rankings, which
 is where the pilot's early gain was.
+
+## gptoss_reward_policy: the full RL run, stopped at iteration 275
+
+**Expected.** A slow climb in validation reward from the pilot's +0.07.
+
+**Observed.** Flat. The greedy policy's reward on the 300 validation
+positions was 1.762 at iteration 0. After that it went 1.775 (it 50), 1.759
+(100), 1.757 (150), 1.769 (200) and 1.788 (250). Every paired difference
+from iteration 0 is inside ±0.03. The policy did move: KL to the imitation
+policy reached 0.2-0.3, and by iteration 200 about a fifth of its greedy
+clues had changed. But reward did not. The whole run cost about $1.3 across
+its two sessions.
+
+One gpt-oss sample per board, on a reward whose SD is about 2 per turn, is
+too noisy to steer 10k-way clue logits in a few thousand steps. Shane stopped
+the run to change the objective (next entries).
+
+## The clue-number cap, made a parameter
+
+**Why.** The cap of 4 was a convention of ours, not a rule of the game, and
+the trained policy should be free to announce every own word left.
+`board.clue_number_cap(n_own, max_number)` is now the one place the cap
+lives.
+
+**What changed.**
+- `learned_listener` (so `association_listener` too) and `expected_words`
+  take `max_number`: 4 by default, `None` for uncapped.
+- The clue policy's outcome head and top-own pooling are sized by a
+  `max_number` stored in the checkpoint config. `POLICY_MAX_NUMBER` = 9 for
+  new policies; old checkpoints have no key and load as 4.
+
+**Two structural options:**
+1. **Change the default to uncapped.** This silently changes every
+   registered model. The eval store's identity hashes params and model
+   files, not code, so stored holdout_v1 results would then describe a
+   model that no longer plays that way.
+2. **Keep 4 as the default and make uncapped an explicit
+   `max_number=None`.** Its identity is then a different spymaster.
+
+Chose 2.
+
+**Caveat.** The listener's k feature was only ever trained on k = 1-4, so
+its expected values above 4 are an extrapolation.
+
+**Where to try them.** The play server offers uncapped twins of
+`incumbent`, `decoy_out25`, `assoc`, `assoc_pass` and `assoc_pass_strong`.
+It also offers the two trained policies, which are still capped at 4.
+
+On 30 fresh boards, uncapped the incumbent gave a 5 and a 6, and `assoc`
+gave three 5s and a 6. The pass models stay conservative: `assoc_pass`
+gave one 5 and `assoc_pass_strong` none.
+
+The imitation data is being recollected with the uncapped incumbent, into
+`*_uncapped.npz`. It will train `policy_imitation_uncapped.pt`.

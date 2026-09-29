@@ -11,8 +11,13 @@ for every k of each of its 200 shortlisted clues. Free: no LLM is called.
 Positions come from `clue_policy.positions` over the split's seed range, so
 train and val never share a board.
 
-Writes cache/training_data/policy_imitation_<split>.npz, from shards of 2,000
-positions kept in policy_imitation_<split>_shards/ so a rerun resumes.
+The incumbent plays uncapped (max_number=None): it may announce every own
+word left, and the net values run to k = POLICY_MAX_NUMBER.
+
+Writes cache/training_data/policy_imitation_<split>_uncapped.npz, from shards
+of 2,000 positions kept in policy_imitation_<split>_uncapped_shards/ so a
+rerun resumes. (The capped-at-4 data the first imitation_policy was trained
+on is policy_imitation_<split>.npz.)
 """
 
 from __future__ import annotations
@@ -23,9 +28,9 @@ from multiprocessing import Pool
 
 import numpy as np
 
-from codenames.board import MAX_CLUE_NUMBER
 from codenames.clue_policy import (
     IMITATION_SEEDS,
+    POLICY_MAX_NUMBER,
     VAL_SEEDS,
     PolicyFeatures,
     incumbent_targets,
@@ -50,7 +55,9 @@ def _init() -> None:
     torch.set_num_threads(1)
 
     _state["sims"] = SimilarityTensor.load()
-    _state["sm"] = LearnedListenerSpymaster()
+    # The incumbent uncapped, so the policy learns from numbers up to every
+    # own word left.
+    _state["sm"] = LearnedListenerSpymaster(max_number=None)
     feats = PolicyFeatures.load()
     _state["feats"] = feats
     _state["pool_pos"] = {int(c): i for i, c in enumerate(feats.pool)}
@@ -64,7 +71,7 @@ def _one(seed: int) -> dict:
     feats, pos, sims = _state["feats"], _state["pool_pos"], _state["sims"]
     b = feats.encode(view)
     short = np.full(SHORTLIST, -1, dtype=np.int32)
-    net = np.full((SHORTLIST, MAX_CLUE_NUMBER), np.nan, dtype=np.float32)
+    net = np.full((SHORTLIST, POLICY_MAX_NUMBER), np.nan, dtype=np.float32)
     idx = [pos[int(c)] for c in t["shortlist"]]          # the incumbent's pool is this pool
     short[: len(idx)] = idx
     net[: len(idx), : t["net"].shape[1]] = t["net"]
@@ -84,7 +91,7 @@ def main() -> None:
     # Shards of SHARD positions, each written as soon as it is done and skipped
     # on a rerun: a run killed at 26k of 30k (the terminal closed) had kept
     # everything in memory and lost it all.
-    shard_dir = OUT_DIR / f"policy_imitation_{args.split}_shards"
+    shard_dir = OUT_DIR / f"policy_imitation_{args.split}_uncapped_shards"
     shard_dir.mkdir(parents=True, exist_ok=True)
     shards = [seeds[i: i + SHARD] for i in range(0, len(seeds), SHARD)]
     todo = [(j, s) for j, s in enumerate(shards) if not (shard_dir / f"{s[0]}_{len(s)}.npz").exists()]
@@ -99,10 +106,10 @@ def main() -> None:
             print(f"  shard {j + 1}/{len(shards)}  {done / (time.time() - t0):.1f} positions/s", flush=True)
 
     parts = [np.load(shard_dir / f"{s[0]}_{len(s)}.npz") for s in shards]
-    out = OUT_DIR / f"policy_imitation_{args.split}.npz"
+    out = OUT_DIR / f"policy_imitation_{args.split}_uncapped.npz"
     np.savez(out, **{k: np.concatenate([d[k] for d in parts]) for k in parts[0].files})
-    numbers = np.bincount(np.concatenate([d["number"] for d in parts]), minlength=MAX_CLUE_NUMBER + 1)[1:]
-    print(f"wrote {out}: {len(seeds)} positions in {time.time() - t0:.0f}s; incumbent numbers 1-4: {numbers.tolist()}")
+    numbers = np.bincount(np.concatenate([d["number"] for d in parts]), minlength=POLICY_MAX_NUMBER + 1)[1:]
+    print(f"wrote {out}: {len(seeds)} positions in {time.time() - t0:.0f}s; incumbent numbers 1-{POLICY_MAX_NUMBER}: {numbers.tolist()}")
 
 
 if __name__ == "__main__":

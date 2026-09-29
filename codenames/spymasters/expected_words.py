@@ -97,7 +97,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from codenames.board import Board, OpponentBoardView, Role, is_legal_clue
+from codenames.board import Board, OpponentBoardView, Role, clue_number_cap, is_legal_clue
 from codenames.clue_search import top_legal_clue
 from codenames.clue_stats import ClueStats
 from codenames.acronyms import load_acronym_mask
@@ -118,7 +118,8 @@ def _ndtr(x: np.ndarray) -> np.ndarray:
 
 
 def gain_and_penalty(
-    a: np.ndarray, b: np.ndarray, costs: np.ndarray, sigma: float, cells: int = GRID_CELLS
+    a: np.ndarray, b: np.ndarray, costs: np.ndarray, sigma: float, cells: int = GRID_CELLS,
+    max_number: int | None = MAX_CLUE_NUMBER,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(gain, penalty)`, each `(n_cand, K_max)`, from `a` (`(n_cand,
     n_own)`, **all** descending own z-scores per candidate -- not just the
@@ -150,10 +151,11 @@ def gain_and_penalty(
     +/-0.002 expected words at 3M samples.
 
     Pure function (no `ClueStats`/board lookups) so the algebra can be
-    unit-tested directly against hand-computed z-scores.
+    unit-tested directly against hand-computed z-scores. `max_number` caps k;
+    None allows every own word.
     """
     n_cand, n_own = a.shape
-    k_max = min(n_own, MAX_CLUE_NUMBER)
+    k_max = clue_number_cap(n_own, max_number)
 
     # One grid per candidate clue, spanning where that clue's own D can
     # plausibly land. Padding by GRID_PAD sigma on each side puts the
@@ -220,6 +222,7 @@ class ExpectedWordsSpymaster(Spymaster):
         opponent_cost: float | None = None,
         assassin_cost: float | None = None,
         exclude_acronyms: bool = True,
+        max_number: int | None = MAX_CLUE_NUMBER,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         clue_stats: ClueStats | None = None,
@@ -243,6 +246,9 @@ class ExpectedWordsSpymaster(Spymaster):
         # scripts/data/build_acronym_mask.py on why this is not in is_legal_clue.
         self.exclude_acronyms = exclude_acronyms
         self.acronym_mask = load_acronym_mask(cache_dir, self.clue_stats.clue_words) if exclude_acronyms else None
+        # The most a clue may announce. MAX_CLUE_NUMBER (4) by default; None
+        # lets it announce every own word left.
+        self.max_number = max_number
 
     def _score_all_clues(
         self, board: Board | OpponentBoardView, sims: SimilarityTensor
@@ -288,13 +294,13 @@ class ExpectedWordsSpymaster(Spymaster):
         z_non_own = self.clue_stats.z_for_board(sims, non_own, self.space)[candidate_idx]  # (n_cand, n_non_own)
 
         n_cand = len(candidate_idx)
-        K_max = min(len(own), MAX_CLUE_NUMBER)
+        K_max = clue_number_cap(len(own), self.max_number)
         # All own words, not just the top K_max: N counts every own word
         # the guesser reaches, so the tail below k depends on all of them.
         a = -np.sort(-z_own, axis=1)  # (n_cand, n_own), descending
         b = z_non_own  # (n_cand, n_non_own)
 
-        gain, penalty = gain_and_penalty(a, b, costs, self.sigma)
+        gain, penalty = gain_and_penalty(a, b, costs, self.sigma, max_number=self.max_number)
         score = gain - penalty  # (n_cand, K_max)
 
         if b.shape[1] > 0:

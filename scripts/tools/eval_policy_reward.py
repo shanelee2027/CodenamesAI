@@ -29,7 +29,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import numpy as np
 
-from codenames.clue_policy import CAP, MISS_ROLES, VAL_SEEDS, positions, rollout
+from codenames.clue_policy import MISS_ROLES, POLICY_MAX_NUMBER, VAL_SEEDS, positions, rollout
 from codenames.eval_suite import spymaster_identity
 from codenames.guessers.registry import build_guesser
 from codenames.similarity import DEFAULT_CACHE_DIR
@@ -79,13 +79,12 @@ def summarise(rows: list[dict]) -> dict:
     r = np.array([x["reward"] for x in rows])
     own, ends = [], {"all": 0, **{role.value: 0 for role in MISS_ROLES}}
     for x in rows:
-        j, e = divmod(x["outcome"], len(MISS_ROLES)) if x["outcome"] != CAP else (x["number"], None)
-        if e is None or j >= x["number"]:
+        if x["miss"] is None or x["lead_own"] >= x["number"]:
             own.append(x["number"])
             ends["all"] += 1
         else:
-            own.append(j)
-            ends[MISS_ROLES[e].value] += 1
+            own.append(x["lead_own"])
+            ends[x["miss"]] += 1
     n = len(rows)
     return {"n": n, "reward": r.mean(), "se": r.std(ddof=1) / math.sqrt(n), "own": float(np.mean(own)),
             "mean_k": float(np.mean([x["number"] for x in rows])),
@@ -114,7 +113,7 @@ def main() -> None:
 
             def one(i):
                 try:
-                    return rollout(guesser, views[i][1], picks[i][0])
+                    return rollout(guesser, views[i][1], picks[i][0], max_number=POLICY_MAX_NUMBER)
                 except Exception as exc:                                  # noqa: BLE001
                     return exc
             got = list(pool.map(one, range(len(views))))
@@ -123,8 +122,8 @@ def main() -> None:
                 if isinstance(g, Exception):
                     continue
                 row = {"spymaster": ident, "arg": arg, "guesser": args.guesser, "seed": seed, "clue": clue,
-                       "number": number, "reward": g["rewards"][number - 1], "outcome": g["outcome"],
-                       "rewards": g["rewards"]}
+                       "number": number, "reward": g["rewards"][number - 1], "lead_own": g["lead_own"],
+                       "miss": g["miss"], "rewards": g["rewards"]}
                 rows[seed] = row
                 log.write(json.dumps(row) + "\n")
             results[arg] = rows

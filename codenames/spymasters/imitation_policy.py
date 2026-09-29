@@ -60,13 +60,13 @@ class ImitationPolicySpymaster(Spymaster):
 
     def scores(self, board) -> tuple[np.ndarray, np.ndarray]:
         """(log pi over the pool, -inf off the legal clues; expected reward
-        (n_pool, 4), -inf beyond K_max)."""
+        (n_pool, max_number), -inf beyond K_max)."""
         import torch
 
         b = self.feats.encode(board)
         pair, word, roles, present, legal = stack_inputs(self.feats, [b])
         roles_t, present_t = torch.as_tensor(roles), torch.as_tensor(present)
-        kmax = ((roles_t == 0) & present_t).sum(1).clamp(max=4)
+        kmax = ((roles_t == 0) & present_t).sum(1).clamp(max=self.net.max_number)
         with self._lock, torch.no_grad():
             logits, outcome, _ = self.net(torch.as_tensor(pair, dtype=torch.float32),
                                           torch.as_tensor(word), roles_t, present_t)

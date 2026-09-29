@@ -78,12 +78,14 @@ PROJECT_ROOT = next((c for c in (_HERE.parents[1], _HERE) if (c / "codenames").i
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from codenames.board import Board, OpponentBoardView, Role
+from codenames.board import Board, OpponentBoardView, Role, clue_number_cap
 from codenames.clue_stats import ClueStats
 from codenames.pl_reward import gain_and_penalty
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
-from codenames.spymasters.base import MAX_CLUE_NUMBER, TurnContext
+from codenames.spymasters.base import TurnContext
 from codenames.spymasters.association_listener import AssociationListenerSpymaster
+from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaster
+from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import ListenerBundle, LearnedListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
@@ -145,7 +147,30 @@ SPYMASTERS: dict[str, dict] = {
             "free-association lists."),
            ("assoc_pass_strong", "Association-trained, pass 0.2", 0.2,
             "As above with the pass at 20%: vague clues are punished hard."))},
+    # The trained clue policies (codenames/clue_policy.py): one forward pass,
+    # no listener, so no bundle and no `listen` for the explanation. Each
+    # announces at most what its checkpoint was trained to (the first two: 4).
+    **{key: {"label": label, "model": model, "outside_n": 0, "cls": cls, "policy": True,
+             "needs": ["policy_features.npy", "policy_features_aux.npz"], "about": about}
+       for key, label, model, cls, about in (
+           ("imitation_policy", "Imitation policy (k <= 4)", "policy_imitation.pt",
+            ImitationPolicySpymaster, "A network trained to copy the incumbent's clues, capped at 4."),
+           ("gptoss_reward_policy", "RL policy, per-turn reward (k <= 4)", "policy_gptoss_reward.pt",
+            GptossRewardPolicySpymaster, "The imitation policy after 275 REINFORCE steps on gpt-oss's "
+            "per-turn reward (the run was flat), capped at 4."),
+           ("imitation_policy_uncapped", "Imitation policy, uncapped", "policy_imitation_uncapped.pt",
+            ImitationPolicySpymaster, "A network trained to copy the uncapped incumbent; may "
+            "announce every own word left."))},
 }
+# Uncapped twins: the same model allowed to announce every own word left
+# rather than at most 4 (max_number=None). The listener's k feature was only
+# ever trained on 1-4, so above that its numbers are an extrapolation.
+for _key in ("incumbent", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
+    _spec = SPYMASTERS[_key]
+    SPYMASTERS[f"{_key}_uncapped"] = {
+        **_spec, "label": f"{_spec['label']}, uncapped",
+        "kwargs": {**(_spec.get("kwargs") or {"outside_n": _spec["outside_n"]}), "max_number": None},
+        "about": f"{_spec['about']} No cap on the number: up to every own word left."}
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
 # single user never needs two clues at once. ~0.7-1.1 s per clue.
@@ -171,6 +196,10 @@ class Engine:
             raise ValueError(f"unknown or unavailable spymaster {key!r}; have {self.available()}")
         if key not in self._spymasters:
             spec = SPYMASTERS[key]
+            if spec.get("policy"):
+                self._spymasters[key] = spec["cls"](model_path=self.cache_dir / spec["model"],
+                                                    cache_dir=self.cache_dir)
+                return self._spymasters[key]
             if spec["model"] not in self._bundles:
                 self._bundles[spec["model"]] = ListenerBundle.load(
                     self.cache_dir, self.cache_dir / spec["model"])
@@ -209,7 +238,8 @@ class Engine:
         chosen on."""
         with _LOCK:
             sm = self.spymaster(key)
-            got = sm.listen(board, clue, self.sims)
+            # A trained policy has no listener to explain its clue with.
+            got = sm.listen(board, clue, self.sims) if hasattr(sm, "listen") else None
         if got is None:
             return {"targets": [], "order": [], "value": None}
         words, roles, s = got["words"], got["roles"], got["scores"]
@@ -220,7 +250,7 @@ class Engine:
         s_out = None if got["outside"] is None else np.array([got["outside"]])
         gain, penalty = gain_and_penalty(
             s[None, :n_own], s[None, n_own:], np.array([sm.costs[r] for r in roles[n_own:]]),
-            min(n_own, MAX_CLUE_NUMBER), s_out=s_out)
+            clue_number_cap(n_own, sm.max_number), s_out=s_out)
         value = float((gain - penalty)[0, number - 1])
         entries = [(w, ROLE_CODE[r], float(x)) for w, r, x in zip(words, roles, s)]
         if got["outside"] is not None:
@@ -426,6 +456,7 @@ class EvalStudy:
             "session": self.session, "player": p["player"], "position": p["position"],
             "seed": p["seed"], "arm": p["arm"], "model": spec["model"],
             "outside_n": spec["outside_n"], "k1_tiebreak": self.engine.k1,
+            "max_number": (spec.get("kwargs") or {}).get("max_number", 4),
             "clue": p["clue"], "number": p["number"], "score": p["score"],
             "pre_revealed": [w for w, r in zip(p["words"], turn.revealed) if r],
             "own_at_start": sum(1 for i, r in enumerate(turn.roles)

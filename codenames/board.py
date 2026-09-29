@@ -81,6 +81,13 @@ BOARD_SIZE = sum(ROLE_COUNTS.values())
 MAX_CLUE_NUMBER = 4
 
 
+def clue_number_cap(n_own: int, max_number: int | None = MAX_CLUE_NUMBER) -> int:
+    """The largest number a clue may announce with `n_own` own words left.
+    MAX_CLUE_NUMBER is the default every registered model uses; a model built
+    with `max_number=None` may announce every own word left."""
+    return n_own if max_number is None else min(n_own, max_number)
+
+
 @dataclass(frozen=True)
 class Card:
     word: str

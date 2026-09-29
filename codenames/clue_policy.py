@@ -76,7 +76,14 @@ from pathlib import Path
 
 import numpy as np
 
-from codenames.board import MAX_CLUE_NUMBER, Board, OpponentBoardView, Role, load_training_wordlist
+from codenames.board import (
+    MAX_CLUE_NUMBER,
+    Board,
+    OpponentBoardView,
+    Role,
+    clue_number_cap,
+    load_training_wordlist,
+)
 from codenames.game import ROLE_REWARD
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
@@ -87,8 +94,10 @@ AUX_FILE = "policy_features_aux.npz"
 ROLE_ORDER = (Role.OWN, Role.NEUTRAL, Role.OPPONENT, Role.ASSASSIN)
 ROLE_ID = {r: i for i, r in enumerate(ROLE_ORDER)}
 MISS_ROLES = (Role.NEUTRAL, Role.OPPONENT, Role.ASSASSIN)
-N_OUTCOMES = MAX_CLUE_NUMBER * len(MISS_ROLES) + 1      # 13
-CAP = N_OUTCOMES - 1
+# The most own words either side ever holds, so a policy built with it may
+# announce every own word left. Policies trained before the cap was lifted
+# carry max_number 4 in their checkpoint and keep it.
+POLICY_MAX_NUMBER = 9
 BOARD_SLOTS = 25
 MAX_PREREVEAL = 8
 
@@ -137,8 +146,19 @@ def positions(seed_range: tuple[int, int], n: int) -> list[tuple[int, Board | Op
     return out
 
 
-def k_max(view) -> int:
-    return min(view.remaining(Role.OWN), MAX_CLUE_NUMBER)
+def k_max(view, max_number: int | None = POLICY_MAX_NUMBER) -> int:
+    return clue_number_cap(view.remaining(Role.OWN), max_number)
+
+
+def n_outcomes(max_number: int) -> int:
+    """Outcome categories for a policy that may announce up to `max_number`:
+    j own words then a miss on one of three roles (j < max_number), or
+    max_number own words in a row -- the last category, `cap_of`."""
+    return max_number * len(MISS_ROLES) + 1
+
+
+def cap_of(max_number: int) -> int:
+    return n_outcomes(max_number) - 1
 
 
 # ---------------------------------------------------------------------------
@@ -163,25 +183,25 @@ def turn_reward(ranking: list[str], role_of: dict[str, Role], number: int) -> fl
     return reward
 
 
-def outcome_of(ranking: list[str], role_of: dict[str, Role], kmax: int) -> int:
+def outcome_of(ranking: list[str], role_of: dict[str, Role], kmax: int, max_number: int) -> int:
     """The outcome category of a ranking: j * 3 + (miss role) when the first
-    non-own word comes after j < kmax own words, else CAP."""
+    non-own word comes after j < kmax own words, else cap_of(max_number)."""
     j = 0
     for w in ranking:
         if j >= kmax:
-            return CAP
+            return cap_of(max_number)
         role = role_of[w]
         if role is Role.OWN:
             j += 1
             continue
         return j * len(MISS_ROLES) + MISS_ROLES.index(role)
-    return CAP
+    return cap_of(max_number)
 
 
-def reward_of_outcome(category: int, number: int) -> float:
+def reward_of_outcome(category: int, number: int, max_number: int) -> float:
     """What announcing `number` scores when the ranking's outcome is
     `category` -- the same number `turn_reward` gives, from the category alone."""
-    if category == CAP:
+    if category == cap_of(max_number):
         return float(number)
     j, e = divmod(category, len(MISS_ROLES))
     if j >= number:
@@ -271,14 +291,14 @@ class DeviceFeatures:
         self.illegal = torch.as_tensor(feats.illegal, device=device)
         self.device = device
 
-    def batch(self, words, roles, present):
+    def batch(self, words, roles, present, max_number: int = POLICY_MAX_NUMBER):
         """pair (B, 25, P, F), word, roles, present, legal (B, P), K_max (B,)."""
         import torch
 
         w = torch.as_tensor(np.asarray(words), device=self.device)
         rol = torch.as_tensor(np.asarray(roles), device=self.device)
         pres = torch.as_tensor(np.asarray(present), device=self.device)
-        kmax = ((rol == ROLE_ID[Role.OWN]) & pres).sum(1).clamp(max=MAX_CLUE_NUMBER)
+        kmax = ((rol == ROLE_ID[Role.OWN]) & pres).sum(1).clamp(max=max_number)
         return self.pair[w], self.word[w], rol, pres, ~self.illegal[w].any(dim=1), kmax
 
 
@@ -286,39 +306,49 @@ class DeviceFeatures:
 # One guesser call
 
 
-def rollout(guesser, view, clue: str) -> dict:
+def rollout(guesser, view, clue: str, max_number: int = POLICY_MAX_NUMBER) -> dict:
     """Ask `guesser` to rank the unrevealed words for `clue`, with no number
     announced (docs/log.md, "gptoss_reward_policy: design", choice 2), and score
     the ranking for every number: {"ranking", "outcome", "rewards"} with
-    rewards[k-1] the turn's reward had k been announced. Raises whatever the
-    guesser raises when it will not rank."""
+    rewards[k-1] the turn's reward had k been announced, plus "lead_own" (own
+    words at the top before the first non-own one) and "miss" (that word's
+    role, None if every own word came first). Raises whatever the guesser
+    raises when it will not rank."""
     candidates = [w for w in view.words if not view.is_revealed(w)]
     ranking = guesser.rank_candidates(clue, candidates, None, number=None)
     roles = role_map(view)
-    kmax = k_max(view)
-    return {"ranking": ranking, "outcome": outcome_of(ranking, roles, kmax),
-            "rewards": [turn_reward(ranking, roles, k) for k in range(1, kmax + 1)]}
+    kmax = k_max(view, max_number)
+    lead = next((i for i, w in enumerate(ranking) if roles[w] is not Role.OWN), len(ranking))
+    return {"ranking": ranking, "outcome": outcome_of(ranking, roles, kmax, max_number),
+            "rewards": [turn_reward(ranking, roles, k) for k in range(1, kmax + 1)],
+            "lead_own": lead, "miss": roles[ranking[lead]].value if lead < len(ranking) else None}
 
 
 # ---------------------------------------------------------------------------
 # The network (torch imported lazily: nothing above needs it)
 
 
-def build_net(n_pair: int, n_word: int, width: int = 32, hidden: int = 64, trunk: int = 128):
+def build_net(n_pair: int, n_word: int, width: int = 32, hidden: int = 64, trunk: int = 128,
+              max_number: int = MAX_CLUE_NUMBER):
+    """`max_number` sets how many own words the pooling keeps and how many
+    outcomes the head predicts. Its default is what every checkpoint trained
+    before the cap was lifted used, since their configs do not record it."""
     import torch
     from torch import nn
 
     class CluePolicyNet(nn.Module):
         def __init__(self):
             super().__init__()
-            self.config = dict(n_pair=n_pair, n_word=n_word, width=width, hidden=hidden, trunk=trunk)
+            self.config = dict(n_pair=n_pair, n_word=n_word, width=width, hidden=hidden, trunk=trunk,
+                               max_number=max_number)
+            self.max_number = max_number
             self.phi = nn.Sequential(nn.Linear(n_pair + n_word + len(ROLE_ORDER), hidden), nn.GELU(),
                                      nn.Linear(hidden, hidden), nn.GELU(), nn.Linear(hidden, width))
             self.salience = nn.Linear(width, 1)
-            d = (MAX_CLUE_NUMBER + len(MISS_ROLES)) * (width + 2) + width + len(ROLE_ORDER)
+            d = (max_number + len(MISS_ROLES)) * (width + 2) + width + len(ROLE_ORDER)
             self.rho = nn.Sequential(nn.Linear(d, trunk), nn.GELU(), nn.Linear(trunk, trunk), nn.GELU())
             self.logit = nn.Linear(trunk, 1)
-            self.outcome = nn.Linear(trunk, N_OUTCOMES)
+            self.outcome = nn.Linear(trunk, n_outcomes(max_number))
 
         def forward(self, pair, word, roles, present):
             """pair (B, N, P, Fp), word (B, N, Fw), roles (B, N), present (B, N)
@@ -337,8 +367,8 @@ def build_net(n_pair: int, n_word: int, width: int = 32, hidden: int = 64, trunk
             own = (roles == ROLE_ID[Role.OWN]) & present            # (B, N)
             n_own = own.sum(1)                                      # (B,)
             u_own = u.masked_fill(~own[:, :, None], neg)
-            top_u, top_i = u_own.topk(MAX_CLUE_NUMBER, dim=1)      # (B, 4, P)
-            slot = (torch.arange(MAX_CLUE_NUMBER, device=pair.device)[None, :] < n_own[:, None])
+            top_u, top_i = u_own.topk(max_number, dim=1)          # (B, M, P)
+            slot = (torch.arange(max_number, device=pair.device)[None, :] < n_own[:, None])
             slot = slot[:, :, None].to(h.dtype)                     # (B, 4, 1)
             h_top = torch.gather(h, 1, top_i[..., None].expand(-1, -1, -1, W)) * slot[..., None]
             top_u = top_u * slot
@@ -368,17 +398,18 @@ def masked_log_policy(logits, legal):
 
 
 def outcome_log_probs(outcome_logits, kmax):
-    """Log-probabilities of the 13 outcomes, with the impossible ones (j >=
+    """Log-probabilities of the outcomes, with the impossible ones (j >=
     K_max own words before a miss) masked out. `kmax` is (B,)."""
     import torch
 
-    j = torch.arange(N_OUTCOMES, device=outcome_logits.device) // len(MISS_ROLES)
-    ok = (j[None, :] < kmax[:, None]) | (torch.arange(N_OUTCOMES, device=outcome_logits.device) == CAP)[None, :]
+    n = outcome_logits.shape[-1]
+    idx = torch.arange(n, device=outcome_logits.device)
+    ok = ((idx // len(MISS_ROLES))[None, :] < kmax[:, None]) | (idx == n - 1)[None, :]
     return torch.log_softmax(outcome_logits.masked_fill(~ok[:, None, :], float("-inf")), dim=-1)
 
 
 def expected_rewards(outcome_logp, kmax, costs=None):
-    """(B, P, 4) expected reward of announcing k = 1..4, from the outcome
+    """(B, P, M) expected reward of announcing k = 1..M, from the outcome
     distribution; -inf where k > K_max. `costs` are the spymaster's prices
     for a neutral, opponent and assassin miss (default: the game's own)."""
     import torch
@@ -387,8 +418,9 @@ def expected_rewards(outcome_logp, kmax, costs=None):
         costs = [-ROLE_REWARD[r] for r in MISS_ROLES]
     p = outcome_logp.exp()
     B, P, _ = p.shape
-    miss = p[..., :CAP].reshape(B, P, MAX_CLUE_NUMBER, len(MISS_ROLES))      # (B, P, j, e)
-    j = torch.arange(MAX_CLUE_NUMBER, device=p.device, dtype=p.dtype)
+    M = (p.shape[-1] - 1) // len(MISS_ROLES)
+    miss = p[..., :-1].reshape(B, P, M, len(MISS_ROLES))                      # (B, P, j, e)
+    j = torch.arange(M, device=p.device, dtype=p.dtype)
     value = (miss * (j[:, None] - torch.as_tensor(costs, device=p.device, dtype=p.dtype))).sum(-1)
     mass = miss.sum(-1)                                                      # (B, P, j)
     k = j + 1
@@ -439,7 +471,7 @@ def incumbent_targets(sm, view, sims: SimilarityTensor) -> dict:
     finite = np.flatnonzero(np.isfinite(g_scores))
     take = finite[np.argsort(-g_scores[finite])[: sm.shortlist]]
     candidates = own + others
-    K = min(len(own), MAX_CLUE_NUMBER)
+    K = clue_number_cap(len(own), sm.max_number)
     rows, keep = [], []
     for ci in take:
         f = sm._listener_features(sims.clue_words[ci], candidates, K, sims)

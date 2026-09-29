@@ -16,13 +16,14 @@ import random
 import numpy as np
 import pytest
 
-from codenames.board import Board, OpponentBoardView, Role, is_legal_clue, load_holdout_wordlist
+from codenames.board import Board, OpponentBoardView, Role, clue_number_cap, is_legal_clue, load_holdout_wordlist
 from codenames.clue_policy import (
-    CAP,
-    N_OUTCOMES,
+    POLICY_MAX_NUMBER,
+    cap_of,
     deal_position,
     k_max,
     outcome_of,
+    n_outcomes,
     reward_of_outcome,
     role_map,
     turn_reward,
@@ -84,38 +85,48 @@ def test_rewards_from_one_ranking_match_play_turn():
             ranking = own[: rng.randint(1, len(own))] + [w for w in ranking if w not in own[: len(own)]]
             ranking = list(dict.fromkeys(ranking + own))
         roles = role_map(view)
-        kmax = k_max(view)
-        cat = outcome_of(ranking, roles, kmax)
-        assert 0 <= cat < N_OUTCOMES
+        M = POLICY_MAX_NUMBER
+        kmax = k_max(view, M)
+        assert kmax == view.remaining(Role.OWN)            # uncapped: every own word left
+        cat = outcome_of(ranking, roles, kmax, M)
+        assert 0 <= cat < n_outcomes(M)
         for k in range(1, kmax + 1):
             board = copy.deepcopy(view)
             turn = play_turn(board, _Fixed(k), _Ranked(ranking), sims=None)
             assert turn_reward(ranking, roles, k) == pytest.approx(turn.reward)
-            assert reward_of_outcome(cat, k) == pytest.approx(turn.reward)
+            assert reward_of_outcome(cat, k, M) == pytest.approx(turn.reward)
 
 
-def test_outcome_categories():
+def test_clue_number_cap():
+    assert clue_number_cap(7) == 4                          # the game's historical cap, still the default
+    assert clue_number_cap(3) == 3
+    assert clue_number_cap(7, None) == 7                    # uncapped: every own word left
+
+
+@pytest.mark.parametrize("M", [4, POLICY_MAX_NUMBER])
+def test_outcome_categories(M):
     roles = {"a": Role.OWN, "b": Role.OWN, "n": Role.NEUTRAL, "o": Role.OPPONENT, "x": Role.ASSASSIN}
-    assert outcome_of(["x", "a", "b"], roles, 2) == 0 * 3 + 2
-    assert outcome_of(["a", "n", "b"], roles, 2) == 1 * 3 + 0
-    assert outcome_of(["a", "b", "o"], roles, 2) == CAP
-    assert reward_of_outcome(1 * 3 + 1, 1) == 1.0          # the miss comes after the one guess
-    assert reward_of_outcome(1 * 3 + 1, 2) == 0.0          # +1, then -1 on the opponent word
+    assert outcome_of(["x", "a", "b"], roles, 2, M) == 0 * 3 + 2
+    assert outcome_of(["a", "n", "b"], roles, 2, M) == 1 * 3 + 0
+    assert outcome_of(["a", "b", "o"], roles, 2, M) == cap_of(M)
+    assert reward_of_outcome(1 * 3 + 1, 1, M) == 1.0       # the miss comes after the one guess
+    assert reward_of_outcome(1 * 3 + 1, 2, M) == 0.0       # +1, then -1 on the opponent word
 
 
-def test_expected_rewards_of_a_certain_outcome():
+@pytest.mark.parametrize("M", [4, POLICY_MAX_NUMBER])
+def test_expected_rewards_of_a_certain_outcome(M):
     torch = pytest.importorskip("torch")
     from codenames.clue_policy import expected_rewards, outcome_log_probs
 
-    for kmax in range(1, 5):
-        for cat in range(N_OUTCOMES):
-            if cat != CAP and cat // 3 >= kmax:
+    for kmax in range(1, M + 1):
+        for cat in range(n_outcomes(M)):
+            if cat != cap_of(M) and cat // 3 >= kmax:
                 continue
-            logits = torch.full((1, 1, N_OUTCOMES), -60.0)
+            logits = torch.full((1, 1, n_outcomes(M)), -60.0)
             logits[0, 0, cat] = 60.0
             er = expected_rewards(outcome_log_probs(logits, torch.tensor([kmax])), torch.tensor([kmax]))
-            for k in range(1, 5):
-                want = reward_of_outcome(cat, k) if k <= kmax else float("-inf")
+            for k in range(1, M + 1):
+                want = reward_of_outcome(cat, k, M) if k <= kmax else float("-inf")
                 assert float(er[0, 0, k - 1]) == pytest.approx(want, abs=1e-5)
 
 
@@ -146,7 +157,7 @@ def test_network_is_invariant_to_slot_order():
 
     feats = PolicyFeatures.load()
     torch.manual_seed(0)
-    net = build_net(len(feats.pair_names), len(feats.word_names)).eval()
+    net = build_net(len(feats.pair_names), len(feats.word_names), max_number=POLICY_MAX_NUMBER).eval()
     b = feats.encode(_views(1)[0])
     perm = np.random.default_rng(0).permutation(25)
     shuffled = type(b)(words=b.words[perm], roles=b.roles[perm], present=b.present[perm], legal=b.legal)
@@ -166,14 +177,15 @@ INCUMBENT = ["listener_gbt.txt", "clue_stats.npz", "swow.npz"]
 
 @pytest.mark.skipif(any(not (DEFAULT_CACHE_DIR / f).exists() for f in INCUMBENT),
                     reason="needs the incumbent's listener in cache/")
-def test_incumbent_targets_pick_what_the_incumbent_plays():
+@pytest.mark.parametrize("max_number", [4, None])
+def test_incumbent_targets_pick_what_the_incumbent_plays(max_number):
     from codenames.clue_policy import incumbent_targets
     from codenames.similarity import SimilarityTensor
     from codenames.spymasters.base import TurnContext
     from codenames.spymasters.learned_listener import LearnedListenerSpymaster
 
     sims = SimilarityTensor.load()
-    sm = LearnedListenerSpymaster()
+    sm = LearnedListenerSpymaster(max_number=max_number)
     for view in _views(3):
         t = incumbent_targets(sm, view, sims)
         clue, number, score = sm.top_clues(TurnContext(view, 0), sims, 1)[0]

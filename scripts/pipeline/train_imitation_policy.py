@@ -26,8 +26,8 @@ import time
 import numpy as np
 import torch
 
-from codenames.board import MAX_CLUE_NUMBER
 from codenames.clue_policy import (
+    POLICY_MAX_NUMBER,
     DeviceFeatures,
     PolicyFeatures,
     build_net,
@@ -49,7 +49,8 @@ def load_split(path) -> dict[str, np.ndarray]:
 
 
 def losses(net, gf: DeviceFeatures, d: dict, idx: np.ndarray, value_weight: float):
-    pair, word, roles, present, legal, kmax = gf.batch(d["words"][idx], d["roles"][idx], d["present"][idx])
+    pair, word, roles, present, legal, kmax = gf.batch(d["words"][idx], d["roles"][idx], d["present"][idx],
+                                                       max_number=net.max_number)
     with torch.autocast("cuda", dtype=torch.bfloat16):
         logits, outcome, _ = net(pair, word, roles, present)
     logits, outcome = logits.float(), outcome.float()
@@ -57,10 +58,10 @@ def losses(net, gf: DeviceFeatures, d: dict, idx: np.ndarray, value_weight: floa
     pick = torch.as_tensor(d["pick"][idx], device=gf.device, dtype=torch.long)
     ce = -logp.gather(1, pick[:, None]).squeeze(1)
 
-    er = expected_rewards(outcome_log_probs(outcome, kmax), kmax)            # (B, P, 4)
+    er = expected_rewards(outcome_log_probs(outcome, kmax), kmax)            # (B, P, M)
     short = torch.as_tensor(d["shortlist"][idx], device=gf.device, dtype=torch.long)
-    target = torch.as_tensor(d["net"][idx], device=gf.device)
-    got = er.gather(1, short.clamp(min=0)[:, :, None].expand(-1, -1, MAX_CLUE_NUMBER))
+    target = torch.as_tensor(d["net"][idx], device=gf.device)[:, :, : net.max_number]
+    got = er.gather(1, short.clamp(min=0)[:, :, None].expand(-1, -1, net.max_number))
     ok = torch.isfinite(target) & (short >= 0)[:, :, None] & torch.isfinite(got)
     # where, not a multiply: got is -inf beyond K_max, and -inf * 0 is nan.
     err = torch.where(ok, got - target.nan_to_num(), torch.zeros_like(got))
@@ -103,10 +104,12 @@ def main() -> None:
     ap.add_argument("--width", type=int, default=32)
     ap.add_argument("--hidden", type=int, default=64)
     ap.add_argument("--trunk", type=int, default=128)
+    ap.add_argument("--max-number", type=int, default=POLICY_MAX_NUMBER,
+                    help="highest number the policy may announce (the data must reach it)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=str(OUT))
-    ap.add_argument("--train-file", default=str(DATA / "policy_imitation_train.npz"))
-    ap.add_argument("--val-file", default=str(DATA / "policy_imitation_val.npz"))
+    ap.add_argument("--train-file", default=str(DATA / "policy_imitation_train_uncapped.npz"))
+    ap.add_argument("--val-file", default=str(DATA / "policy_imitation_val_uncapped.npz"))
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -116,7 +119,7 @@ def main() -> None:
     tr, va = load_split(args.train_file), load_split(args.val_file)
     print(f"train {len(tr['pick'])} positions, val {len(va['pick'])}")
     net = build_net(len(feats.pair_names), len(feats.word_names), width=args.width,
-                    hidden=args.hidden, trunk=args.trunk).cuda()
+                    hidden=args.hidden, trunk=args.trunk, max_number=args.max_number).cuda()
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
     steps = args.epochs * math.ceil(len(tr["pick"]) / args.batch)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=steps, pct_start=0.05)

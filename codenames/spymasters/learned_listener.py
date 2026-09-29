@@ -34,7 +34,7 @@ from pathlib import Path
 
 import numpy as np
 
-from codenames.board import Board, OpponentBoardView, Role
+from codenames.board import Board, OpponentBoardView, Role, clue_number_cap
 from codenames.clue_search import is_legal_clue
 from codenames.clue_stats import ClueStats
 from codenames.game import role_costs
@@ -136,6 +136,7 @@ class LearnedListenerSpymaster(Spymaster):
         opponent_cost: float | None = None,
         assassin_cost: float | None = None,
         exclude_acronyms: bool = True,
+        max_number: int | None = MAX_CLUE_NUMBER,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         model_path: Path | None = None,
@@ -153,6 +154,10 @@ class LearnedListenerSpymaster(Spymaster):
         self.k1_tiebreak = k1_tiebreak
         self.k1_tie_tolerance = k1_tie_tolerance
         self.costs = role_costs(neutral_cost, opponent_cost, assassin_cost)
+        # The most a clue may announce: MAX_CLUE_NUMBER (4) by default, every
+        # own word left when None. The listener's `k` feature was trained on
+        # 1-4 only, and its trees treat anything above 4 as 4.
+        self.max_number = max_number
         self.clue_stats = clue_stats if clue_stats is not None else ClueStats.load(cache_dir=cache_dir)
         # The costs go to the shortlisting stage too. They have to: the second
         # stage can only rerank what the first hands it, so leaving stage one on
@@ -161,7 +166,7 @@ class LearnedListenerSpymaster(Spymaster):
         self._first_stage = ExpectedWordsSpymaster(
             sigma=sigma, max_rarity=max_rarity, cache_dir=cache_dir, clue_stats=self.clue_stats,
             neutral_cost=neutral_cost, opponent_cost=opponent_cost, assassin_cost=assassin_cost,
-            exclude_acronyms=exclude_acronyms,
+            exclude_acronyms=exclude_acronyms, max_number=max_number,
         )
         self.acronym_mask = self._first_stage.acronym_mask
         self.bundle = bundle if bundle is not None else ListenerBundle.load(
@@ -286,7 +291,7 @@ class LearnedListenerSpymaster(Spymaster):
         n_board = len(candidates)
         outside = self._outside_words(board, sims)
         scored = candidates + outside
-        n_own, K_max = len(own), min(len(own), MAX_CLUE_NUMBER)
+        n_own, K_max = len(own), clue_number_cap(len(own), self.max_number)
         rows, keep = [], []
         for ci in take:
             clue = sims.clue_words[ci]
@@ -358,7 +363,7 @@ class LearnedListenerSpymaster(Spymaster):
         candidates = own + [w for ws in others.values() for w in ws]
         roles = [Role.OWN] * len(own) + [r for r, ws in others.items() for _ in ws]
         outside = self._outside_words(board, sims)
-        f = self._listener_features(clue, candidates + outside, min(len(own), MAX_CLUE_NUMBER),
+        f = self._listener_features(clue, candidates + outside, clue_number_cap(len(own), self.max_number),
                                     sims, n_board=len(candidates) if outside else None)
         if f is None:
             return None

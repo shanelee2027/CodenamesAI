@@ -104,7 +104,8 @@ def board_summary(logp, er, legal, roles, present):
 
 def forward(net, gf, boards, idx):
     pair, word, roles, present, legal, kmax = gf.batch(
-        [boards[i].words for i in idx], [boards[i].roles for i in idx], [boards[i].present for i in idx])
+        [boards[i].words for i in idx], [boards[i].roles for i in idx], [boards[i].present for i in idx],
+        max_number=net.max_number)
     with torch.autocast("cuda", dtype=torch.bfloat16):
         logits, outcome, _ = net(pair, word, roles, present)
     logp = masked_log_policy(logits.float(), legal)
@@ -145,11 +146,11 @@ class Counter:
         return self.PER_CALL * self.completion_tokens / self.AT_TOKENS
 
 
-def run_rollouts(guesser, pool: ThreadPoolExecutor, jobs: list[tuple]) -> list:
+def run_rollouts(guesser, pool: ThreadPoolExecutor, jobs: list[tuple], max_number: int) -> list:
     """jobs: (view, clue) -> list of rollout dicts, or the exception raised."""
     def one(job):
         try:
-            return rollout(guesser, *job)
+            return rollout(guesser, *job, max_number=max_number)
         except Exception as exc:                                          # noqa: BLE001
             return exc
     return list(pool.map(one, jobs))
@@ -171,7 +172,7 @@ def greedy_picks(net, gf, feats, views) -> list[tuple[str, int]]:
 
 def validate(net, gf, feats, guesser, pool, val_views, it, log) -> dict:
     picks = greedy_picks(net, gf, feats, [v for _, v in val_views])
-    res = run_rollouts(guesser, pool, [(v, c) for (_, v), (c, _) in zip(val_views, picks)])
+    res = run_rollouts(guesser, pool, [(v, c) for (_, v), (c, _) in zip(val_views, picks)], net.max_number)
     rewards, own, fails = [], [], 0
     for (seed, v), (clue, k), r in zip(val_views, picks, res):
         if isinstance(r, Exception):
@@ -281,7 +282,7 @@ def main() -> None:
                 greedy_hit += int((c == logp.argmax(1)).sum())
                 yield_gpu()
 
-        res = run_rollouts(guesser, pool, [(v, feats.clue_words[c]) for v, c in zip(views, clues)])
+        res = run_rollouts(guesser, pool, [(v, feats.clue_words[c]) for v, c in zip(views, clues)], net.max_number)
         ok = [i for i, r in enumerate(res) if not isinstance(r, Exception)]
         rewards = torch.tensor([res[i]["rewards"][ks[i] - 1] for i in ok], device="cuda")
         cats = torch.tensor([res[i]["outcome"] for i in ok], device="cuda")
