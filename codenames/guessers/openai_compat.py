@@ -70,6 +70,14 @@ from codenames.similarity import SimilarityTensor
 # so two attempts still lost ~20% of boards. Four takes that to a few percent.
 # Retries only ever fire on failure, so this costs nothing on the happy path.
 ATTEMPTS = 4
+
+# Waits (seconds, before jitter) between retries of a request the host
+# refused as busy (HTTP 429, "Model busy, retry later"). The client's own
+# max_retries backs off for seconds; a busy smaller model (Nemotron-3-Super)
+# stays busy for minutes, and a 429 surviving those retries discarded 86 of 100
+# boards in one suite run (docs/log.md). Only the transport is retried: the
+# same request is re-sent, so no answer can change.
+BUSY_WAITS = (15, 30, 60, 120, 240)
 RETRY_FREQUENCY_PENALTY = 1.0
 
 PROVIDERS = {
@@ -239,7 +247,7 @@ class OpenAICompatGuesser(Guesser):
                 request["temperature"] = self.temperature
             if attempt > 1:
                 request["frequency_penalty"] = RETRY_FREQUENCY_PENALTY
-            choice = self.client.chat.completions.create(**request).choices[0]
+            choice = self._create(request).choices[0]
             text = choice.message.content or ""
             named = self._named_by_model(text, candidate_words)
             problem = self._reject(choice, text, named, candidate_words, number)
@@ -256,6 +264,21 @@ class OpenAICompatGuesser(Guesser):
             "Not falling back to board order -- that would silently enter a "
             "fabricated ranking into cache/llm_store.db (see this module's docstring)."
         )
+
+    def _create(self, request: dict):
+        """One completion, re-sent after BUSY_WAITS when the host is busy."""
+        import random
+        import time
+
+        import openai
+
+        for wait in (*BUSY_WAITS, None):
+            try:
+                return self.client.chat.completions.create(**request)
+            except openai.RateLimitError:
+                if wait is None:
+                    raise
+                time.sleep(wait * (1 + random.random()))
 
     def _reject(
         self, choice, text: str, named: set[str], candidate_words: list[str], number: int | None

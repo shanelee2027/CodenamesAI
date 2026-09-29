@@ -50,6 +50,11 @@ Sign test on the 27 decisive boards: p = 0.052. **It loses.** Its guesses are
 more accurate (85% against 83% own), but it scores fewer words per turn and
 the game is a race.
 
+**With Nemotron-3-Super guessing** (holdout_v1_nemotron, 100 boards both
+ways): 47.0% [0.40, 0.54] against 53.0%. Boards won both ways: 15 against 21,
+sign test p = 0.41. It is the same direction as with gpt-oss, smaller and not
+significant, so the loss is not specific to gpt-oss.
+
 ## Why, and what is open
 
 - **Calibration was not the whole story.** The incumbent's role costs

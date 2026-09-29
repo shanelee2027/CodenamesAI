@@ -4356,3 +4356,43 @@ table compares each model's ranking with Sonnet's:
   independence: a lab whose guesser nothing in the project was fitted to.
 
 Spend: about $0.15 (pilot plus screen).
+
+## pick_temperature_listener with Nemotron guessing
+
+**Question** (Shane): was the per-pick temperature model's loss to the
+incumbent (44% against 56% with gpt-oss guessing) specific to gpt-oss?
+
+**Set-up.** `configs/eval_suite_nemotron.json` (`holdout_v1_nemotron`): the
+same 100 held-out-word boards as holdout_v1, both seatings, with Nemotron-3-
+Super-120B-A12B (reasoning, effort=low) guessing.
+
+**First attempt failed on throttling.** At 16 parallel requests the host
+answered "model busy" (429) for minutes. That outlasted the client's retries
+and discarded 86 of 100 boards. The guesser now re-sends a request refused as
+busy after 15, 30, 60, 120 and 240 s (with jitter, `BUSY_WAITS` in
+codenames/guessers/openai_compat.py). Only the transport is retried, so no
+answer can change. The rerun used 8 parallel requests and played every
+board. Rankings from the failed attempt were reused from the cache.
+
+**Result** (100 boards, 200 games, 65 min for the last 85 boards, about $0.86
+in Nemotron rankings across both attempts):
+
+| | win% | boards won both ways | assassin losses | mean k | own words / clue | own% |
+|---|---|---|---|---|---|---|
+| pick_temperature_listener | 47.0% [0.40, 0.54] | 15 | 15 | 1.98 | 1.51 | 82.8% |
+| learned_listener | 53.0% [0.46, 0.60] | 21 | 20 | 2.24 | 1.58 | 79.6% |
+
+Sign test on the 36 decisive boards: p = 0.41.
+
+**What it says.**
+- **The same direction as with gpt-oss, smaller and not significant.**
+  gpt-oss gave 8 against 19 boards won both ways; Nemotron gives 15 against
+  21. Pooled over the two guessers that is 23 against 40, a sign test p of
+  about 0.04. The games are separate but share boards and spymasters, so
+  read that as supporting evidence, not a clean test.
+- **The loss is not specific to gpt-oss.** The temperature model's style
+  holds under both guessers: more accurate guesses (own% +3), fewer words per
+  clue, fewer assassin losses here. It still does not win the race.
+- **So the conclusion stands:** calibrating later picks, with the costs
+  unchanged, does not help. The costs need re-tuning for this reward, or the
+  objective needs to value tempo.
