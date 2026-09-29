@@ -96,6 +96,26 @@
    "roles": [
     "reference"
    ]
+  },
+  {
+   "_comment": "learned_listener with the listener's confidence set per pick: at pick j the guesser picks from the words left by softmax(score / tau_j), tau = 1.0, 1.1, 1.3, 1.5 (pick 4's for later picks), fitted by maximum likelihood on the clean-holdout boards for cache/listener_gbt.txt. The frozen-score reward was calibrated at pick 1 and increasingly overconfident after it, so it overvalued clues whose later words are weak. The reward is computed exactly over which own words have been picked (codenames/spymasters/pick_temperature_listener.py). Everything else is learned_listener's. docs/versions/pick_temperature_listener.md.",
+   "name": "pick_temperature_listener",
+   "type": "pick_temperature_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0,
+    "pick_temperatures": [
+     1.0,
+     1.1,
+     1.3,
+     1.5
+    ]
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

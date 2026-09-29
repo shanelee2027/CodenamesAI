@@ -314,7 +314,7 @@ class LearnedListenerSpymaster(Spymaster):
         flat = self.bundle.booster.predict(np.vstack(rows), raw_score=True)
         S = np.asarray(flat, dtype=np.float64).reshape(len(keep), n_scored)
         S, s_out = self._split_outside(S, n_board)
-        gain, penalty = gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max, s_out=s_out)
+        gain, penalty = self._gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max, s_out)
         net = gain - penalty                                 # (n_keep, K_max)
         best_m = np.argmax(net, axis=1)
         idx = np.asarray(keep)
@@ -330,6 +330,13 @@ class LearnedListenerSpymaster(Spymaster):
         # which is on a stable scale and is not part of the ranking here.
         margin[idx] = g_margin[idx]
         return best_n, scores, margin
+
+    def _gain_and_penalty(self, s_own: np.ndarray, s_bad: np.ndarray, costs: np.ndarray, max_k: int,
+                          s_out: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+        """The reward model, as a method so a subclass can replace it
+        (spymasters/pick_temperature_listener.py) without copying the search.
+        Here: Plackett-Luce on frozen scores, codenames/pl_reward.py."""
+        return gain_and_penalty(s_own, s_bad, costs, max_k, s_out=s_out)
 
     def _split_outside(self, S: np.ndarray, n_board: int) -> tuple[np.ndarray, np.ndarray | None]:
         """(board scores, outside-option score per row) from a (clues x scored)

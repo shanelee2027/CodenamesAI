@@ -43,8 +43,9 @@ reads the same variable.
 | `centroid` | clue nearest the mean of a random own-word subset; no penalty for other words | reference opponent |
 | `expected_words` | guesser = similarity z-score + Gaussian noise N(0, σ²); exact expected reward by conditioning on the strongest distractor ([paper](docs/clue-selection-theory.pdf), [doc](docs/versions/expected_words.md)) | baseline, and stage one of the incumbent |
 | `learned_listener` | shortlists 200 clues with `expected_words` (σ=1.5), then scores them with the distilled listener's exact Plackett–Luce expected reward ([paper](docs/clue-selection-learned.pdf), [doc](docs/versions/learned_listener.md)) | **the incumbent** |
+| `pick_temperature_listener` | `learned_listener` with the listener's confidence set per pick (softmax(score / τ_j), τ = 1.0, 1.1, 1.3, 1.5), because frozen scores are overconfident after the first pick ([doc](docs/versions/pick_temperature_listener.md)) | challenger |
 
-All three are entries in `configs/spymasters.json`; a script picks spymasters
+All of these are entries in `configs/spymasters.json`; a script picks spymasters
 by registry name, never by import.
 
 ## How the pieces fit together

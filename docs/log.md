@@ -4280,3 +4280,43 @@ first are weak. That is the "for 4" pattern Shane saw.
 reward. The exponential-clock closed form needs fixed scores, so the reward
 becomes an explicit enumeration over own-word paths (a wrong pick ends the
 turn). Then count how often the chosen clue or number changes, then games.
+
+## pick_temperature_listener: calibrated later picks lose games
+
+**Expected.** Shane's point: the reward carries pick 1's confidence into
+picks 2-4 and overvalues clues whose later words are weak. The previous entry
+confirmed that the listener is overconfident after pick 1. So a reward with
+per-pick temperatures should prefer honest numbers and win more.
+
+**Built.** `codenames/spymasters/pick_temperature_listener.py`.
+- Pick j is softmax(score / tau_j), with tau = 1.0, 1.1, 1.3, 1.5 fitted for
+  the deployed `cache/listener_gbt.txt` on the clean-holdout boards. It was
+  fitted there because a `--booster` run of the calibration tool shows that
+  listener was trained on both train and val (R² 0.657 on each).
+- With the temperatures, top-pick ECE at pick 3 falls 0.18 -> 0.07 on
+  held-out words (gpt-oss) and 0.12 -> 0.06 on Sonnet.
+- The reward is an exact recursion over the set of own words picked so far.
+  It matches brute force and pl_reward at tau = 1.
+- The incumbent got a `_gain_and_penalty` hook and is otherwise unchanged.
+
+**Choices** (600 real game states): 32% differ. The mean number falls
+2.37 -> 2.03, and 4s fall from 95 to 26.
+
+**Games** (holdout_v1_gptoss, 97 boards both ways, 194 games, about $0.10):
+the new model wins 44.3% [0.38, 0.51] against the incumbent's 55.7%. Boards
+won both ways: 8 against 19, sign test p = 0.052. Own-word precision is 85.4%
+against 82.5%, but own words per clue are 1.56 against 1.61, and it swept a
+board 8 times against 19.
+
+**What it says.**
+- **Better calibration made the spymaster worse at winning.** The costs
+  (0.2 / 1 / 10) were swept under the overconfident reward. The
+  overconfidence was a hidden bonus for aggression, and aggression pays in a
+  race, which the per-turn objective does not see. Fixing one error exposed
+  the other.
+- **To use calibrated probabilities,** the objective has to value tempo: a
+  lower neutral cost, or something closer to win probability. The costs
+  should be re-swept under this reward before calling it.
+- **A single temperature per pick** also flattens genuinely good multi-word
+  clues. A pick-by-pick listener conditioned on the guessed words is the
+  version that can tell them apart.

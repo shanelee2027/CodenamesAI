@@ -48,6 +48,7 @@ from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaste
 from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import LearnedListenerSpymaster
 from codenames.spymasters.llm_spymaster import LLMSpymaster
+from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 from codenames.spymasters.win_actor_critic import WinActorCriticSpymaster
 
 DEFAULT_SPYMASTER_CONFIG = Path(__file__).parent.parent.parent / "configs" / "spymasters.json"
@@ -61,6 +62,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "imitation_policy": ImitationPolicySpymaster,
     "gptoss_reward_policy": GptossRewardPolicySpymaster,
     "win_actor_critic": WinActorCriticSpymaster,
+    "pick_temperature_listener": PickTemperatureListenerSpymaster,
 }
 
 

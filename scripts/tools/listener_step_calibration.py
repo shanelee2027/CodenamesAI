@@ -21,6 +21,11 @@ the way the reward scores it: frozen scores, renormalised. Optionally saved
 networks, which instead re-run on the words left at every pick.
 
     python scripts/tools/listener_step_calibration.py [--nets resid_no_attention]
+    python scripts/tools/listener_step_calibration.py --booster cache/listener_gbt.txt --fit-on "new boards"
+
+`--booster` scores a saved LightGBM listener (e.g. the deployed one) in place
+of the refitted GBT. `--fit-on` picks the set the temperatures are fitted on;
+use one the booster never trained on.
 """
 
 from __future__ import annotations
@@ -76,13 +81,22 @@ def stats(logp: np.ndarray, D: Tensors, m: np.ndarray) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--nets", nargs="*", default=[])
+    ap.add_argument("--booster", type=Path, default=None)
+    ap.add_argument("--fit-on", default="val")
     args = ap.parse_args()
 
     sets = load_sets()
-    base = pickle.loads(BASE_OUT.read_bytes())
+    if args.booster:
+        import lightgbm as lgb
+
+        from train_listener_net import gbt_scores, pkey
+        bst = lgb.Booster(model_file=str(args.booster))
+        base = {pkey(p): sc for ps in sets.values() for p, sc in zip(ps, gbt_scores(bst, ps))}
+    else:
+        base = pickle.loads(BASE_OUT.read_bytes())
     vw = WordVectors()
-    names = [k for k in sets if k != "train"]
-    models = [("GBT, frozen scores", None)] + [
+    names = [k for k in sets if k != "train" or args.booster]
+    models = [(f"GBT {args.booster.name if args.booster else '(refit)'}, frozen scores", None)] + [
         (n, load_listener_net(CACHE / f"listener_net_{n}.pt", vw, "cuda")) for n in args.nets]
 
     for label, nc in models:
@@ -100,9 +114,9 @@ def main() -> None:
             Ds[s] = D
         taus = {}
         for j, _ in STEPS:
-            m = step_mask(Ds["val"], j)
-            taus[j] = min(TAUS, key=lambda t: stats(tempered(logps["val"], t), Ds["val"], m)["nll"])
-        print("temperature fitted on val per pick: "
+            m = step_mask(Ds[args.fit_on], j)
+            taus[j] = min(TAUS, key=lambda t: stats(tempered(logps[args.fit_on], t), Ds[args.fit_on], m)["nll"])
+        print(f"temperature fitted on {args.fit_on} per pick: "
               + ", ".join(f"{name} {taus[j]:.2f}" for j, name in STEPS))
         for s in names:
             print(f"\n  {s}")
