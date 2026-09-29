@@ -80,13 +80,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from codenames.board import Board, OpponentBoardView, Role, clue_number_cap
 from codenames.clue_stats import ClueStats
-from codenames.pl_reward import gain_and_penalty
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 from codenames.spymasters.base import TurnContext
 from codenames.spymasters.association_listener import AssociationListenerSpymaster
 from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaster
 from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import ListenerBundle, LearnedListenerSpymaster
+from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
          "/compare": "compare.html"}
@@ -147,6 +147,14 @@ SPYMASTERS: dict[str, dict] = {
             "free-association lists."),
            ("assoc_pass_strong", "Association-trained, pass 0.2", 0.2,
             "As above with the pass at 20%: vague clues are punished hard."))},
+    # The incumbent with per-pick listener temperatures in its reward
+    # (codenames/spymasters/pick_temperature_listener.py). Same booster, so it
+    # shares the incumbent's bundle; only the reward differs.
+    "pick_temperature": {
+        "label": "Pick temperatures", "model": "listener_gbt.txt", "outside_n": 0,
+        "cls": PickTemperatureListenerSpymaster, "kwargs": {"outside_n": 0},
+        "about": "The incumbent, but later picks are scored flatter (temperatures 1.0, 1.1, "
+                 "1.3, 1.5), since the listener is overconfident after its first pick."},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).
@@ -165,7 +173,7 @@ SPYMASTERS: dict[str, dict] = {
 # Uncapped twins: the same model allowed to announce every own word left
 # rather than at most 4 (max_number=None). The listener's k feature was only
 # ever trained on 1-4, so above that its numbers are an extrapolation.
-for _key in ("incumbent", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
+for _key in ("incumbent", "pick_temperature", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
     _spec = SPYMASTERS[_key]
     SPYMASTERS[f"{_key}_uncapped"] = {
         **_spec, "label": f"{_spec['label']}, uncapped",
@@ -248,9 +256,11 @@ class Engine:
         # score is an artificial "best + 1" that only makes it win.
         n_own = sum(1 for r in roles if r is Role.OWN)
         s_out = None if got["outside"] is None else np.array([got["outside"]])
-        gain, penalty = gain_and_penalty(
+        # The model's own reward (pick_temperature_listener overrides it), so
+        # the value shown is the one the clue was chosen on.
+        gain, penalty = sm._gain_and_penalty(
             s[None, :n_own], s[None, n_own:], np.array([sm.costs[r] for r in roles[n_own:]]),
-            clue_number_cap(n_own, sm.max_number), s_out=s_out)
+            clue_number_cap(n_own, sm.max_number), s_out)
         value = float((gain - penalty)[0, number - 1])
         entries = [(w, ROLE_CODE[r], float(x)) for w, r, x in zip(words, roles, s)]
         if got["outside"] is not None:

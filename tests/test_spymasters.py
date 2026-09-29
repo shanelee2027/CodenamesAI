@@ -74,7 +74,7 @@ class TestRegistry:
         entries = load_spymasters(DEFAULT_SPYMASTER_CONFIG)
         assert set(entries) == {"centroid", "expected_words", "learned_listener", "association_listener",
                                 "imitation_policy", "gptoss_reward_policy", "win_actor_critic",
-                                "sonnet_spymaster"}
+                                "sonnet_spymaster", "pick_temperature_listener"}
 
     def test_the_paid_spymaster_is_never_picked_up_by_role(self):
         """Every game sonnet_spymaster plays costs money, so no arena may
