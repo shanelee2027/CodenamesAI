@@ -4127,3 +4127,111 @@ scripts/tools/analyze_win_games.py):
 
 **Spend.** DeepInfra meter so far across all win_actor_critic steps: about
 $7.5 of the $10.
+
+## A neural listener: raw embeddings and board attention against the GBT
+
+**Question** (Shane): can a deep model beat the LightGBM listener by reading
+the raw embedding vectors, not only statistics derived from them?
+
+**Expected.** Raw vectors can say *which direction* of similarity a guesser
+follows, which the derived columns flatten. The risk is the 250 training board
+words: a network given word vectors could learn which of those words get
+picked, which is worthless on held-out words. Attention across the board
+might also help, since the GBT scores each word from its own row.
+
+**Built** (no API calls; everything is cached rankings):
+- `scripts/data/build_word_vectors.py`: `cache/word_vectors.npz`, frozen,
+  L2-normalised vectors in five spaces (glove, numberbatch, wikipedia2vec,
+  glove840, fasttext) for 11,311 clue words and the 400 board words. Coverage
+  is complete except 3 clue words.
+- `codenames/listener_net.py`:
+  - Per space, 4 learned low-rank similarities <A c, B w> (rank 16) between
+    clue and word, plus the plain cosine, and both minus the best available
+    word's value.
+  - These are concatenated with the 44 listener features.
+  - Then 2 attention layers across the unrevealed words, with a bias from
+    their pairwise cosines.
+  - A word vector never enters on its own, only through a similarity, to
+    limit memorising training words.
+  - Optional residual: the output layer starts at zero and adds to the GBT
+    logit.
+- `scripts/pipeline/train_listener_net.py`:
+  - `base` refits the GBT with the incumbent's recipe, and cross-fits its
+    logits over 4 seed folds for the residual's training rows. An in-sample
+    logit would be overconfident.
+  - `fit` trains a network.
+  - `eval` scores the GBT and any saved networks on the same events with one
+    metric function: R², top-1 accuracy, NLL, calibration (ECE) over all
+    candidates and the top pick, and reliability tables.
+- `listener_training.load_positions(holdout_boards=100)` now also resolves
+  rankings on the frozen suites' boards, which use only the 150 held-out
+  words. This found 2,752 gpt-oss positions (holdout_v1_gptoss) and 4,155
+  Sonnet positions (holdout_v1) that were already paid for. It is off by
+  default, so no training set picks them up.
+
+**Sets.** Train and val are the incumbent's split, by board seed: 47,223 and
+15,638 events. The test sets:
+
+| set | events | what it tests |
+|---|---|---|
+| new boards (seed 1,040,000+) | 4,671 | new boards, training words |
+| held-out words, gpt-oss | 5,499 | new words, same teacher |
+| held-out words, Sonnet | 8,617 | new words, another guesser |
+
+Held-out-word R² runs higher for every model (0.54 against 0.36), because
+suite clues are real spymaster clues and the training set has many
+deliberately bad ones. So only compare numbers within a row.
+
+**Results** (McFadden R², `eval`, same events and code for every row; mean
+over 3-4 training seeds, spread about ±0.003):
+
+| model | val | new boards | held-out words | held-out words, Sonnet |
+|---|---|---|---|---|
+| GBT (refit, same split) | 0.3643 | 0.3425 | 0.5391 | 0.5456 |
+| network alone, features + vectors + attention | 0.3736 | 0.3486 | 0.5436 | 0.5270 |
+| network alone, no vectors | 0.3330 | 0.3106 | 0.5340 | 0.5228 |
+| GBT + correction, attention only (no vectors) | 0.3682 | 0.3457 | 0.5449 | 0.5481 |
+| GBT + correction, vectors + attention | 0.3820 | 0.3562 | 0.5503 | 0.5496 |
+| **GBT + correction, vectors, no attention** | **0.3845** | **0.3573** | **0.5486** | **0.5504** |
+
+Top-1 accuracy, GBT against the no-attention residual: val 48.1% against
+49.5%, new boards 46.7% against 48.1%, held-out words 63.6% against 64.3%,
+Sonnet 62.9% against 63.4%.
+
+**What it says.**
+- **Raw vectors help, used as learned similarities.** On top of the GBT they
+  add +0.020 R² on val, +0.015 on new boards and +0.010 on held-out words
+  (gpt-oss). This is not memorising training words: the gain holds on words
+  no model has seen, at about half the size.
+- **Transfer to Sonnet is small:** +0.005, at the edge of seed noise. What the
+  vectors learn is partly specific to gpt-oss.
+- **A network alone is worse than trees at the 44 derived features** (0.333
+  against 0.364 without vectors). On Sonnet held-out words it is worse
+  overall (0.527 against 0.546). Keeping the GBT and learning a correction is
+  what works.
+- **Attention across the board adds nothing measurable** (vectors with and
+  without attention are within noise). The IIA violation the GBT is known for
+  does not cost fit that attention can recover, at this data size.
+- **Calibration is the same.** ECE over all candidates is ≤ 0.01 for every
+  residual model and the GBT. All of them are overconfident at the top on
+  held-out-word boards: the top pick is predicted 0.75 and happens about
+  0.63-0.65 of the time. The standalone network is best calibrated (top-pick
+  ECE 0.035 against 0.08) but less accurate. A temperature fitted on val would
+  not fix this, because val is not overconfident; the boards differ.
+
+**Bug found on the way.** GBT scores were stored per (board, clue,
+candidates, number). gpt-oss and Sonnet often got the same clue on the same
+suite board (the same spymaster's first clue), and their rows are ordered
+differently, so 337 of 2,752 gpt-oss positions got Sonnet's misaligned
+scores. The key now includes the row order. All numbers above are from after
+the fix.
+
+**Not done.**
+- No spymaster uses this listener yet. The no-attention residual scores each
+  word independently, so it drops into pl_reward's closed-form reward like the
+  GBT does. The attention variant does not.
+- Using it in play means scoring about 200 shortlisted clues x 25 words per
+  turn through the network. That is cheap on the GPU, but it needs the
+  vectors in the spymaster process.
+- Deploying it is a new model under the naming rule, then arena and suite
+  games.
