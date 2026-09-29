@@ -3801,3 +3801,29 @@ boards, lr 3e-5, KL weight 0.05). llm_store.db was backed up first
 - **The policy barely moved** (KL 0.003 after 20 steps). The full run
   resumes from the pilot with lr 1e-4, for 500 iterations (~32k calls,
   about $2.3, ~2.5 h), well under the $20 limit that requires asking.
+
+## imitation_policy against the incumbent on holdout_v1, Sonnet guessing
+
+**Expected.** A loss or a tie. On gpt-oss validation positions it was -0.08
+reward per turn behind, within noise.
+
+**Observed.** All 100 boards played in both seatings. The run took 158 s,
+because the incumbent's side of most positions was already in the cache.
+
+| | win% | 95% CI | swept | assassin losses | mean k | own/clue | own% |
+|---|---|---|---|---|---|---|---|
+| imitation_policy | 42.5% | [0.36, 0.49] | 15 | 20 | 2.34 | 1.68 | 79.8% |
+| learned_listener | **57.5%** | [0.51, 0.64] | **30** | 12 | 2.21 | 1.68 | 84.1% |
+
+Sign test on 45 decisive boards: **p = 0.036**. Assassin losses 20 vs 12,
+Fisher p = 0.20.
+
+The policy loses, and the difference is in how much it asks for, not in its
+clues' reach. Own words per clue are identical (1.68). But it announces more
+(k 2.34 vs 2.21), a smaller share of its guesses land (79.8% vs 84.1%), and
+it loses more games to the assassin. That matches the imitation diagnostics:
+its clues match the incumbent's half the time, and the number is where it is
+weakest. Its outcome head was fitted to the listener's expected values only,
+through their means. This is the control: what the policy form costs before
+RL. The RL stage's outcome head learns the number from real rankings, which
+is where the pilot's early gain was.
