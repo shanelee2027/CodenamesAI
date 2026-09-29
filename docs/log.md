@@ -4081,3 +4081,49 @@ proposals per agent turn (2.8 distinct).
 - The budget ran out in the 6th iteration. Only 42 games finished, the short
   ones, and 57% of them were won, a biased sample that still got an update.
   The trainer now skips the update when an iteration is cut short.
+
+## win_actor_critic: the longer run, and validation
+
+**Expected.** More iterations should lift the win rate above the starting
+policy's 27%. The incumbent (learned_listener as the agent, also ranking with
+no number) wins 50% on the same seeds, so that is the bar.
+
+**Training** (`train --resume --budget 5.3 --games 112 --threads 112 --steps
+3`, continuing the 6 short iterations): iterations 7-40, $4.4, 83 min, about
+$0.13 per iteration of 110 games.
+
+| iterations | won (sampled policy) | entropy | KL to start |
+|---|---|---|---|
+| 7-12 | 33% | 2.1 -> 1.9 | |
+| 13-18 | 44% | 1.9 -> 1.75 | |
+| 19-30 | 46% | 1.8 -> 1.5 | ~0.8-1.0 |
+| 31-40 | 46% | 1.5 -> 1.4 | ~1.0-1.26 |
+
+The win rate climbed until about iteration 18 and was flat after. KL and
+entropy kept moving, so later steps changed the policy without improving it.
+The budget ran out in iteration 41, whose 17 finished games were not trained
+on.
+
+**Validation** (300 greedy games on the validation seeds, $0.07, 3.4 min;
+scripts/tools/analyze_win_games.py):
+
+| agent | won | assassin hits | own words / turn | mean k |
+|---|---|---|---|---|
+| starting policy (imitation) | 27.1% [22.4, 32.5] | 38 | 1.60 | 2.39 |
+| trained policy | 47.8% [42.2, 53.5] | 35 | 1.80 | 2.60 |
+| incumbent, no number | 50.0% [44.4, 55.6] | 15 | 1.69 | 2.22 |
+
+- **Against the starting policy**, paired on 294 seeds: the trained policy
+  alone won 86, the start alone 24 (sign test p < 0.001). Training worked.
+- **Against the incumbent**, paired on 297 seeds: 46 against 54 (p = 0.48).
+  They are indistinguishable, so the trained policy has caught up with the
+  search it began by imitating, but it is not better.
+- **Its style differs.** It gets more words per turn and clears its board
+  more often in fewer turns (3.7 against 4.0). But it hits the assassin more
+  than twice as often (35 against 15) and ends more turns on an opponent
+  word. The incumbent's caution toward the assassin is something the policy
+  has not learned. Assassin games are rare per turn, so their signal in
+  110-game iterations is weak.
+
+**Spend.** DeepInfra meter so far across all win_actor_critic steps: about
+$7.5 of the $10.
