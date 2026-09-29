@@ -212,6 +212,7 @@ def main() -> None:
         opt.load_state_dict(st["opt"])
         baseline.load_state_dict(st["baseline"])
         start, cursor, history = st["it"], st["cursor"], st["history"]
+        opt.param_groups[0]["lr"] = args.lr            # --lr wins over the saved state
         print(f"resumed at iteration {start}, seed cursor {cursor}")
 
     guesser = build_guesser(args.guesser)

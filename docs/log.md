@@ -3739,3 +3739,65 @@ Structural choices, two options each:
   against `is_legal_clue` directly; 0.13% of pairs are illegal.
 - Inputs (`scripts/data/build_policy_features.py`): 25 per pair and 12 per
   word, 213 MB at float16.
+
+## imitation_policy trained; RL pilot
+
+**Imitation data** (`scripts/data/collect_imitation_data.py`). The incumbent
+was run on 30,000 training positions and 2,000 validation positions, with
+disjoint seed ranges and the training vocabulary only. Its numbers were 1–4
+in 2% / 43% / 33% / 21% of positions. No LLM is involved.
+
+The run takes 70 min at 7 positions/s. That rate plateaus above about 8
+workers: the incumbent's first stage (expected_words over the whole pool)
+appears to be memory-bandwidth bound, and one thread per worker made no
+difference. The first attempt was killed at 26k of 30k when the terminal
+closed. The collector held everything in memory and lost it all, so it now
+writes a shard every 2,000 positions and a rerun resumes from them. Long
+jobs now run detached (`setsid nohup`).
+
+**Imitation training** (`scripts/pipeline/train_imitation_policy.py`). 12
+epochs at batch 16, 2.3 min per epoch on the RTX 5080. The kept checkpoint is
+epoch 9, chosen by validation cross-entropy. On the 2,000 validation positions:
+
+| val CE | same clue as incumbent | same clue and k | policy's clue in incumbent shortlist | regret (incumbent's values), where priced |
+|---|---|---|---|---|
+| 1.52 | 51.9% | 44.9% | 95.8% | 0.110 |
+
+Expected: close but short of the incumbent. It is closer than I expected on
+the clue: half the time it picks the incumbent's exact clue out of 10,674,
+from raw evidence alone. The number is the weaker part: with the same clue it
+also matches k 87% of the time.
+
+**Validation reward with gpt-oss** (`scripts/tools/eval_policy_reward.py`).
+The first 500 validation positions, `gpt-oss-120b:low:temperature=1.0`, no
+number in the prompt, each turn scored at the announced number.
+
+| spymaster | reward/turn | SE | own words | mean k | all N found | ended on neutral | on opponent | on assassin |
+|---|---|---|---|---|---|---|---|---|
+| learned_listener | 1.827 | 0.061 | 2.11 | 2.75 | 59.1% | 22.4% | 17.8% | 0.6% |
+| imitation_policy | 1.749 | 0.061 | 2.05 | 2.66 | 58.9% | 20.2% | 20.2% | 0.6% |
+
+The paired difference is -0.078 [-0.203, +0.047] over 499 positions; the two
+gave the same clue on 47%. So the imitation policy is slightly behind the
+incumbent, within noise.
+
+**RL pilot** (`scripts/pipeline/train_reward_policy.py`, 20 iterations x 64
+boards, lr 3e-5, KL weight 0.05). llm_store.db was backed up first
+(`cache/backups/llm_store_2026-09-29_pre_rl_pilot.db`).
+
+- **Cost and speed.** 1,252 new calls (1,331 requests with retries),
+  268k prompt / 478k completion tokens, about $0.09, 6.4 min. That is ~12k
+  calls/hour, not the 3k/hour budgeted from older collection runs; the
+  batch waits on its slowest call, and 64 run at once. One call in 1,280 was
+  refused.
+- **Validation.** Paired on the same 300 positions, the greedy policy went
+  from 1.762 to 1.829: +0.067 [-0.02, +0.15]. It kept the imitation policy's
+  clue on 96% of them, and the clue and k on 88%. So the early movement is
+  mostly in the number, which the outcome head now learns from real
+  rankings. The direction is right; the size is not yet significant.
+- **Sampling costs reward.** The sampled clues averaged 1.63 at the
+  announced k, against 1.76 greedy. Hindsight-best k would have given 2.14,
+  which is the ceiling a perfect number choice could reach on those clues.
+- **The policy barely moved** (KL 0.003 after 20 steps). The full run
+  resumes from the pilot with lr 1e-4, for 500 iterations (~32k calls,
+  about $2.3, ~2.5 h), well under the $20 limit that requires asking.
