@@ -102,17 +102,36 @@ def forward(net, gf, boards, idx):
 
 
 class Counter:
-    """Counts the guesser calls that miss every cache, i.e. the paid ones."""
+    """Counts the guesser calls that miss every cache (the paid ones) and the
+    tokens they use. Cost is priced from the measured $0.000102 per call at
+    555 completion tokens (docs/log.md, "gpt-oss-120B as a cheap listener"),
+    scaled by the completion tokens actually used."""
+
+    PER_CALL, AT_TOKENS = 0.000102, 555
 
     def __init__(self, guesser):
-        self.n = 0
+        self.n, self.requests, self.prompt_tokens, self.completion_tokens = 0, 0, 0, 0
         inner = guesser._query
+        create = guesser.client.chat.completions.create
 
         def counted(*a, **k):
             self.n += 1
             return inner(*a, **k)
 
+        def metered(*a, **k):
+            resp = create(*a, **k)
+            self.requests += 1
+            if resp.usage:
+                self.prompt_tokens += resp.usage.prompt_tokens
+                self.completion_tokens += resp.usage.completion_tokens
+            return resp
+
         guesser._query = counted
+        guesser.client.chat.completions.create = metered
+
+    @property
+    def dollars(self) -> float:
+        return self.PER_CALL * self.completion_tokens / self.AT_TOKENS
 
 
 def run_rollouts(guesser, pool: ThreadPoolExecutor, jobs: list[tuple]) -> list:
@@ -278,9 +297,9 @@ def main() -> None:
             loss = (pg + args.beta * kl + args.outcome_weight * oc + (V - r) ** 2).sum() / len(ok)
             loss.backward()
             tot["pg"] += float(pg.sum().detach())
-            tot["kl"] += float(kl.sum())
-            tot["oc"] += float(oc.sum())
-            tot["v"] += float(((V - r) ** 2).sum())
+            tot["kl"] += float(kl.sum().detach())
+            tot["oc"] += float(oc.sum().detach())
+            tot["v"] += float(((V - r) ** 2).sum().detach())
             tot["adv_sd"] += adv.tolist()
         torch.nn.utils.clip_grad_norm_(net.parameters(), 5.0)
         opt.step()
@@ -289,7 +308,7 @@ def main() -> None:
         rec = {"it": it, "n": len(ok), "fail": len(res) - len(ok), "reward": float(rewards.mean()),
                "mean_k": float(np.mean([ks[i] for i in ok])), "kl": tot["kl"] / n, "outcome_nll": tot["oc"] / n,
                "baseline_mse": tot["v"] / n, "adv_sd": float(np.std(tot["adv_sd"])), "entropy": float(np.mean(ents)),
-               "greedy_share": greedy_hit / len(boards), "calls": calls.n,
+               "greedy_share": greedy_hit / len(boards), "calls": calls.n, "dollars": calls.dollars,
                "minutes": (time.time() - t0) / 60}
         if args.val_every and it % args.val_every == 0:
             rec.update(validate(net, gf, feats, guesser, pool, val_views, it, log))
@@ -300,7 +319,9 @@ def main() -> None:
 
     pool.shutdown()
     log.close()
-    print(f"done: {calls.n} guesser calls in {(time.time() - t0) / 60:.1f} min")
+    print(f"done: {calls.n} guesser calls ({calls.requests} requests with retries), "
+          f"{calls.prompt_tokens:,} prompt / {calls.completion_tokens:,} completion tokens, "
+          f"~${calls.dollars:.2f}, in {(time.time() - t0) / 60:.1f} min")
 
 
 if __name__ == "__main__":

@@ -11,7 +11,8 @@ for every k of each of its 200 shortlisted clues. Free: no LLM is called.
 Positions come from `clue_policy.positions` over the split's seed range, so
 train and val never share a board.
 
-Writes cache/training_data/policy_imitation_<split>.npz.
+Writes cache/training_data/policy_imitation_<split>.npz, from shards of 2,000
+positions kept in policy_imitation_<split>_shards/ so a rerun resumes.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 OUT_DIR = DEFAULT_CACHE_DIR / "training_data"
 SHORTLIST = 200
+SHARD = 2000
 _state: dict = {}
 
 
@@ -79,19 +81,28 @@ def main() -> None:
     args = ap.parse_args()
 
     seeds = [s for s, _ in positions(IMITATION_SEEDS if args.split == "train" else VAL_SEEDS, args.n)]
-    t0 = time.time()
-    rows = []
+    # Shards of SHARD positions, each written as soon as it is done and skipped
+    # on a rerun: a run killed at 26k of 30k (the terminal closed) had kept
+    # everything in memory and lost it all.
+    shard_dir = OUT_DIR / f"policy_imitation_{args.split}_shards"
+    shard_dir.mkdir(parents=True, exist_ok=True)
+    shards = [seeds[i: i + SHARD] for i in range(0, len(seeds), SHARD)]
+    todo = [(j, s) for j, s in enumerate(shards) if not (shard_dir / f"{s[0]}_{len(s)}.npz").exists()]
+    print(f"{len(shards)} shards, {len(shards) - len(todo)} already on disk", flush=True)
+    t0, done = time.time(), 0
     with Pool(args.workers, initializer=_init) as p:
-        for i, r in enumerate(p.imap(_one, seeds, chunksize=8), 1):
-            rows.append(r)
-            if i % 1000 == 0 or i == len(seeds):
-                el = time.time() - t0
-                print(f"  {i}/{len(seeds)}  {i / el:.1f} positions/s", flush=True)
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+        for j, shard in todo:
+            rows = p.map(_one, shard, chunksize=8)
+            np.savez(shard_dir / f"{shard[0]}_{len(shard)}.npz",
+                     **{k: np.stack([r[k] for r in rows]) for k in rows[0]})
+            done += len(shard)
+            print(f"  shard {j + 1}/{len(shards)}  {done / (time.time() - t0):.1f} positions/s", flush=True)
+
+    parts = [np.load(shard_dir / f"{s[0]}_{len(s)}.npz") for s in shards]
     out = OUT_DIR / f"policy_imitation_{args.split}.npz"
-    np.savez(out, **{k: np.stack([r[k] for r in rows]) for k in rows[0]})
-    numbers = np.bincount([r["number"] for r in rows], minlength=MAX_CLUE_NUMBER + 1)[1:]
-    print(f"wrote {out}: {len(rows)} positions in {time.time() - t0:.0f}s; incumbent numbers 1-4: {numbers.tolist()}")
+    np.savez(out, **{k: np.concatenate([d[k] for d in parts]) for k in parts[0].files})
+    numbers = np.bincount(np.concatenate([d["number"] for d in parts]), minlength=MAX_CLUE_NUMBER + 1)[1:]
+    print(f"wrote {out}: {len(seeds)} positions in {time.time() - t0:.0f}s; incumbent numbers 1-4: {numbers.tolist()}")
 
 
 if __name__ == "__main__":
