@@ -575,8 +575,16 @@ def cmd_train(args) -> None:
             net.eval()
             games = play_games(seeds, actor, guesser, opp, args.threads, games_path, {"iteration": it})
             finished = [g for g in games if not g.error]
+            if meter.dollars >= meter.limit and len(finished) < 0.9 * len(seeds):
+                # The budget ran out mid-iteration. The games that finished are
+                # the short ones, a biased sample, so no update is made from
+                # them (the first short run's last iteration did: 42 of 112
+                # games, 57% won).
+                print(f"stopping: budget ${meter.limit:.2f} spent mid-iteration; "
+                      f"its {len(finished)} finished games are not trained on")
+                break
             if not finished:
-                print("no game finished (budget or errors); stopping")
+                print("no game finished (errors); stopping")
                 break
 
             # Actor targets first: Q(k) for every proposal from its real

@@ -4027,3 +4027,57 @@ the incumbent's (about half the time), the replacement is clearly worse. This
 is the same pattern imitation_policy showed with Sonnet (42.5%), but larger
 with gpt-oss. So there is a lot of room for actor-critic to gain, and the
 starting point is 27%, not 50%.
+
+## win_actor_critic: critic on 3,800 games, and the first actor-critic steps
+
+**More critic data.** 3,000 more pilot games cost $1.48 (still $0.0005 per
+game), for 3,800 in all.
+
+Held-out log loss, lambda 0.5:
+
+| | log loss |
+|---|---|
+| board critic | 0.4539 |
+| counts network | 0.4551 |
+| LightGBM on counts | 0.4530 |
+
+The critic is calibrated to within 3 points in every bin, and its drift is
++0.009 ± 0.002.
+
+**Regularisation sweep** (board correction only, training split, lambda
+0.5):
+
+| board weight decay / dropout / size | held-out log loss |
+|---|---|
+| 0.05 / 0.2 / d 32, 2 layers (current) | 0.4474 |
+| 0.005 / 0.1 / d 32, 2 layers | 0.4476 |
+| 0.0005 / 0 / d 32, 2 layers | 0.4535 |
+| 0.005 / 0.1 / d 64, 3 layers | 0.4583 |
+| LightGBM on counts | 0.4525 |
+
+Looser settings overfit, so the current ones stay. This fit and the one
+above differ by about 0.006, so the board's edge over counts is small next to
+run-to-run variation.
+
+**Does board structure matter, and does the critic see it?** (probe:
+scripts/tools/probe_win_critic.py, 6,357 held-out positions)
+- **A hand-built measure** of each side's best clean pair: how far its best
+  shared clue sits above the nearest non-own word, averaged over the five
+  embeddings. Adding it to the counts model moves log loss from 0.4525 to
+  0.4517. Our clean pair counts +0.11 logit per sd, the opponent's -0.10.
+  The nuance is real but small next to game noise.
+- **The critic's board correction**, within positions with identical counts,
+  correlates +0.11 with our clean pair and -0.05 with the opponent's.
+- **The critic's overall gain over counts** (0.4525 to 0.4474) is about six
+  times the hand-built measure's, so it reads more than clean pairs. Its
+  corrections have sd 0.8 logits, and some of that is likely still noise.
+
+**Short actor-critic** (`train --budget 0.8 --games 112 --steps 3`): 6
+iterations, $0.81, 2.4 min and $0.14 per iteration of about 110 games with 4
+proposals per agent turn (2.8 distinct).
+- KL to the initial policy grew 0.001 -> 0.08.
+- Win rate by iteration: 26, 20, 26, 24, 21%. That is no trend, as expected
+  at 6 iterations with ±4 points per iteration.
+- The budget ran out in the 6th iteration. Only 42 games finished, the short
+  ones, and 57% of them were won, a biased sample that still got an update.
+  The trainer now skips the update when an iteration is cut short.
