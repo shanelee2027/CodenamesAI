@@ -4235,3 +4235,48 @@ the fix.
   vectors in the spymaster process.
 - Deploying it is a new model under the naming rule, then arena and suite
   games.
+
+## Is the listener as sure of its later picks as it should be?
+
+**Question** (Shane): the incumbent will clue something for 4 with pick-1
+probabilities like 95 / 3 / 1 / 1. The reward renormalises frozen scores after
+each pick (Plackett-Luce), so pick 1's confidence carries into picks 2-4.
+Are real guessers that predictable later in a turn?
+
+**Measured** (`scripts/tools/listener_step_calibration.py`, free). The GBT
+refitted with the incumbent's recipe, scored as the reward scores it: frozen
+scores, renormalised over the words left. "top pred" is the mean probability
+of the model's favourite; "acc" is how often it is the pick.
+
+| pick | val: top pred / acc | new boards | held-out words, gpt-oss | held-out words, Sonnet |
+|---|---|---|---|---|
+| 1 | 0.670 / 0.679 | 0.653 / 0.651 | 0.807 / 0.789 | 0.782 / 0.756 |
+| 2 | 0.435 / 0.401 | 0.431 / 0.403 | 0.685 / 0.561 | 0.647 / 0.594 |
+| 3 | 0.385 / 0.303 | 0.384 / 0.312 | 0.532 / 0.343 | 0.494 / 0.362 |
+| 4+ | 0.372 / 0.269 | 0.380 / 0.258 | 0.466 / 0.222 | 0.447 / 0.300 |
+
+- **Pick 1 is calibrated. Every later pick is overconfident, increasingly
+  so.** On held-out words the favourite at pick 3 is predicted 53% and picked
+  34%. At pick 4+ it is 47% against 22%.
+- **Temperature fitted on val per pick:** 0.95, 1.10, 1.25, 1.45. The
+  softmax should be progressively flatter.
+- **With those temperatures:**
+  - Sonnet's top-word ECE at pick 3 falls 0.133 -> 0.049 and R² rises
+    0.224 -> 0.247.
+  - On gpt-oss held-out words it falls 0.189 -> 0.088, but pick 2 is still
+    overconfident (0.64 against 0.56). Those boards carry real spymaster
+    clues, while val has many deliberately bad ones, so a temperature fitted
+    on val undershoots there.
+- **Re-scoring does not fix it.** The attention network re-runs on the words
+  left at every pick and is just as overconfident (pick 3 on held-out words:
+  0.530 against 0.363). The problem is not the IIA violation. The teacher's
+  later picks are genuinely noisier than its first, and one score scale
+  cannot express both.
+
+**Consequence for play.** The reward overvalues clues whose words after the
+first are weak. That is the "for 4" pattern Shane saw.
+
+**Next** (option A of the two discussed): per-pick temperatures in the
+reward. The exponential-clock closed form needs fixed scores, so the reward
+becomes an explicit enumeration over own-word paths (a wrong pick ends the
+turn). Then count how often the chosen clue or number changes, then games.
