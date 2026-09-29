@@ -3646,3 +3646,96 @@ changes.
 - The 11 refused boards are the ones where gpt-oss would not rank every entry
   around STOP. If those skew toward clues it wanted to pass, they are missing
   from the result.
+
+## gptoss_reward_policy: design
+
+**Goal (approved plan).** A spymaster that is a trained policy: pi(clue | board)
+over the incumbent's 10,674-clue pool, reading only raw clue-word evidence (no
+listener score, no expected_words probability), warm-started by imitating the
+incumbent and then fine-tuned by REINFORCE on the reward gpt-oss's guesses
+actually earn. The imitation-only policy is registered too, as the control for
+what RL adds. The case for it: the listener was fitted to clues someone else
+chose, and the search then goes looking for clues where the listener is
+overconfident; a policy trained on the guesser's response to its own clues
+cannot be fooled that way.
+
+**What I expect.** Imitation should get close to the incumbent without matching
+it: it has to rebuild the listener's 44 features' worth of evidence and the
+search in one network, from 25 raw inputs per pair. The RL stage has a small
+budget against a large action space and a noisy reward (an assassin costs 10),
+so its gain, if any, is more likely to come through the number chosen and
+through avoiding clues gpt-oss misreads than through new clues. A tie with the
+incumbent on Sonnet is the likely outcome; a loss for the imitation control is
+likely.
+
+Structural choices, two options each:
+
+**1. How the number is chosen and trained.**
+- (a) As planned literally: a head regressing the four scalar rewards r_1..r_4
+  (MSE). Breaks: the game's reward values get fitted into the head, against
+  design-decisions' "reward values are a scoring-time knob"; and four
+  correlated regressions on a heavy-tailed target (-10 for the assassin).
+- (b) An outcome head: a 13-way categorical over how the ranking plays out from
+  the top (j = 0..3 own words, then a neutral, opponent or assassin miss; or
+  K_max own in a row). One ranking is one category, and the category fixes the
+  reward for every k. Expected reward for any k and any role costs follows in
+  closed form, so the costs enter at scoring time. Breaks: during imitation
+  the incumbent supplies expected rewards, not outcome distributions, so the
+  head is fitted there through its implied expectations, which do not pin the
+  distribution down; the real categories only arrive with RL.
+- **Chosen: (b).** The number announced is argmax_k of its expected reward.
+  **Flag:** the clue head is still trained by REINFORCE on the game's reward,
+  so the risk appetite of *which clue* is baked in at the game's values
+  (neutral 0.2, opponent 1, assassin 10, the same as the incumbent's costs).
+  Changing the costs for this model means retraining the clue head. That part
+  of the plan does not fit the scoring-time-knob rule, and the rule is left as
+  it stands.
+
+**2. What number the gpt-oss prompt announces.**
+- (a) The policy's chosen k, as the arena does. Breaks: OpenAICompatGuesser
+  accepts a response that names only k + 2 words and fills the rest in board
+  order, so rewards for larger k could be read off fabricated entries, with no
+  way to tell after caching.
+- (b) No number ("rank ALL of the words"; the guesser then requires 80% of the
+  board named). Breaks: not the arena's prompt. But the prompt comparison
+  above found withholding the number indistinguishable from giving it (D =
+  0.011 at step 1, 0.012 at step 2, both CIs covering 0).
+- **Chosen: (b).** One call then gives a genuine ranking deep enough for every
+  k. These calls are cached under a key with no number, so they never collide
+  with arena entries.
+
+**3. The network.**
+- (a) A self-attention block over the 25 words, per clue. Lets words interact
+  (the cohesion a listener uses at k >= 3). Breaks: 25 x 25 per clue times
+  10,674 clues per board, with gradients, on every training board.
+- (b) DeepSets with order-statistic pooling: a per-(clue, word) encoder gives a
+  vector and a salience; per clue, the own words are sorted by salience and the
+  top four kept, each non-own role is max- and logsumexp-pooled, plus a mean
+  and the counts. A turn is decided by exactly these order statistics (does
+  the k-th own word beat the strongest dangerous one). Breaks: words interact
+  only through the clue.
+- **Chosen: (b).** (a) is the upgrade if imitation falls well short.
+
+**4. The imitation target.**
+- (a) The incumbent's pick only (cross-entropy on one clue per board). Breaks:
+  one label out of 10,674 per board, and nothing to train the outcome head on.
+- (b) The pick plus the incumbent's expected reward for every k of its 200
+  shortlisted clues (`clue_policy.incumbent_targets`). Breaks: the listener's
+  values become a training target. They are not an input, and nothing of the
+  listener runs at play time, so the plan's constraint holds.
+- **Chosen: (b).** Cross-entropy on the pick, plus MSE between the head's
+  expected rewards and the incumbent's on the shortlist.
+
+**Other settings.**
+- RL reward: the reward at the k the policy itself announces, not max_k (which
+  would be hindsight). All k train the outcome head.
+- Positions: training vocabulary only, 0-8 cards pre-revealed as /eval deals
+  them, team A on even seeds and team B on odd ones, and disjoint seed ranges
+  for imitation, RL and validation.
+- The guesser is `deepinfra:openai/gpt-oss-120b:low:temperature=1.0`, as
+  planned.
+- Legality: `is_legal_clue` rules a clue out word by word, so the board's mask
+  is the AND of a precomputed (word x clue) table. The test compares the mask
+  against `is_legal_clue` directly; 0.13% of pairs are illegal.
+- Inputs (`scripts/data/build_policy_features.py`): 25 per pair and 12 per
+  word, 213 MB at float16.

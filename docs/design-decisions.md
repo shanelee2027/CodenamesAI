@@ -91,17 +91,16 @@ can't be cited in a results table, swept over, or diffed between runs.
 
 ## Method decisions
 
-**The spymaster is a search, not a trained policy.** What is fitted is the
+**The listener models search against a fitted listener.** In
+`learned_listener` and `association_listener`, what is fitted is the
 *listener*: a model of which word a guesser picks for a clue, distilled
 from an LLM's rankings (`codenames/listener_training.py`). The spymaster
 then maximises expected reward under it, in closed form
-(`codenames/pl_reward.py`). The baselines fit nothing at all.
+(`codenames/pl_reward.py`). The baselines fit nothing at all. A spymaster
+may also be a trained policy that maps a board to a clue directly, fitted
+by imitation or from game outcomes.
 
-The outcome of a (board, clue, guesser) triple is directly simulable —
-full feedback on every action, unlimited times — so fitting is a
-supervised problem, not an RL one. RL would deliver the same information through policy gradients over
-a ~111k-action space, with high variance and no clean validation metric.
-Two rules worth not rediscovering: split
+Two rules worth not rediscovering, for anything fitted: split
 train/val by board seed rather than by row, since one board appears in
 many examples and a row-wise split leaks it across the split; and keep
 the reward values out of whatever gets fitted, per the section above.
@@ -113,7 +112,7 @@ working single-turn scorer, not instead of one.
 
 **Optimization of any small, fixed parameter set** — such as
 `expected_words`'s `sigma` — should use CMA-ES, Bayesian optimization, or
-grid search, not policy gradients.
+grid search.
 
 **Linear scoring is a baseline, not a candidate.** A weighted sum over
 roles composes to a single linear function, which cannot represent
