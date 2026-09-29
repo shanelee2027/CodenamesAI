@@ -48,6 +48,7 @@ import torch
 from torch import nn
 
 from codenames.clue_policy import (
+    GuesserMeter as Counter,
     RL_SEEDS,
     VAL_SEEDS,
     DeviceFeatures,
@@ -111,39 +112,6 @@ def forward(net, gf, boards, idx):
     logp = masked_log_policy(logits.float(), legal)
     olp = outcome_log_probs(outcome.float(), kmax)
     return logp, olp, expected_rewards(olp, kmax), legal, roles, present
-
-
-class Counter:
-    """Counts the guesser calls that miss every cache (the paid ones) and the
-    tokens they use. Cost is priced from the measured $0.000102 per call at
-    555 completion tokens (docs/log.md, "gpt-oss-120B as a cheap listener"),
-    scaled by the completion tokens actually used."""
-
-    PER_CALL, AT_TOKENS = 0.000102, 555
-
-    def __init__(self, guesser):
-        self.n, self.requests, self.prompt_tokens, self.completion_tokens = 0, 0, 0, 0
-        inner = guesser._query
-        create = guesser.client.chat.completions.create
-
-        def counted(*a, **k):
-            self.n += 1
-            return inner(*a, **k)
-
-        def metered(*a, **k):
-            resp = create(*a, **k)
-            self.requests += 1
-            if resp.usage:
-                self.prompt_tokens += resp.usage.prompt_tokens
-                self.completion_tokens += resp.usage.completion_tokens
-            return resp
-
-        guesser._query = counted
-        guesser.client.chat.completions.create = metered
-
-    @property
-    def dollars(self) -> float:
-        return self.PER_CALL * self.completion_tokens / self.AT_TOKENS
 
 
 def run_rollouts(guesser, pool: ThreadPoolExecutor, jobs: list[tuple], max_number: int) -> list:

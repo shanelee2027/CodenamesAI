@@ -73,7 +73,8 @@ class TestRegistry:
 
         entries = load_spymasters(DEFAULT_SPYMASTER_CONFIG)
         assert set(entries) == {"centroid", "expected_words", "learned_listener", "association_listener",
-                                "imitation_policy", "gptoss_reward_policy", "sonnet_spymaster"}
+                                "imitation_policy", "gptoss_reward_policy", "win_actor_critic",
+                                "sonnet_spymaster"}
 
     def test_the_paid_spymaster_is_never_picked_up_by_role(self):
         """Every game sonnet_spymaster plays costs money, so no arena may
@@ -96,7 +97,8 @@ class TestRegistry:
         from codenames.spymasters.registry import load_spymasters
 
         entries = load_spymasters()
-        assert {n for n, e in entries.items() if e.trained} == {"imitation_policy", "gptoss_reward_policy"}
+        assert {n for n, e in entries.items() if e.trained} == {"imitation_policy", "gptoss_reward_policy",
+                                                               "win_actor_critic"}
 
     def test_spec_is_a_class_and_kwargs_tuple(self):
         from codenames.spymasters.registry import load_spymasters

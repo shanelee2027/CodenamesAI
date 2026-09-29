@@ -3883,3 +3883,67 @@ The uncapped imitation data was not collected. Shane stopped it: the policy
 model as it stands is not the one to train next, because the objective is
 moving to win probability. The collector and trainer default to the uncapped
 files for whenever a policy is imitated again.
+
+## win_actor_critic: design
+
+**Goal.** Maximise the probability of beating the learned listener in full
+games. No hand-set per-turn reward values anywhere: the only reward is win
+(1) or loss (0) at the end of a game.
+
+**Shane's rule.** The model must never optimise against the learned
+listener's probabilities, or against any learned model of the guesser. It
+may start by imitating the listener's picks, as a guideline. The listener
+may be the opponent.
+
+**Two structural options** (discussed with Shane, 2026-09-29):
+1. **Model-free actor-critic.** A policy picks (clue, k). A critic V(board,
+   side to move) = P(mover wins) is learned by TD(lambda) from real gpt-oss
+   games against the listener. The actor is pushed by the change in win
+   probability its turn produced. Nothing predicts what a guesser does with
+   a clue. It is slow to learn: one real outcome per clue played.
+2. **Model-based.** The same critic, plus an outcome head, trained on real
+   gpt-oss rankings, that predicts how a clue's turn plays out. Clues are
+   chosen by searching that head against V. It is more sample-efficient,
+   but it optimises against a learned guesser model, which is the thing the
+   rule forbids.
+
+Chose 1.
+
+**What makes it affordable, within the rule:**
+- **Every k from one call.** On our turns gpt-oss ranks every unrevealed
+  word with no number announced (as in the per-turn run). That one real
+  ranking fixes the board after k = 1, 2, ... exactly. The critic scores
+  each of those real after-boards, so the k choice gets an exact expected
+  gradient: sum over k of pi(k) Q(k), with no sampling noise from k. No
+  guesser model is involved.
+- **Branching.** At each of our turns, B clues are sampled from the same
+  board and each is ranked for real. One branch continues the game; the rest
+  give leave-one-out comparisons on the same board. That targets the
+  one-noisy-sample-per-board problem that kept gptoss_reward_policy flat.
+
+**The actor.** The clue policy network (raw similarities, no listener
+outputs), with its outcome head replaced by a k head: pi(k | board, clue)
+over 1..min(own left, 9). It is warm-started by imitating the uncapped
+incumbent's (clue, k) picks only. The listener's expected values, which the
+first imitation_policy also regressed on, are left out.
+
+**The critic's inputs.** They keep magnitudes, gaps and each source
+separately, so the board nuances Shane raised stay representable. Per word:
+role relative to the side to move, and the word features the policy uses.
+Per pair of unrevealed words, for each of 9 similarity sources (5 embedding
+z-scores, SWOW forward and reverse, PMI, WordNet), taking the best legal
+clue for the pair (max over clues of the pair's weaker similarity):
+- that clue's level;
+- its margin over the nearest other unrevealed word of each role;
+- how many other words of each role sit within 0.5 sd of it.
+
+**The network.** Attention over the unrevealed words, with the pair
+features as attention biases and messages. The readout is pooled per role,
+plus counts and a flag for whether the side to move is our agent.
+
+**Flags.**
+- On our turns gpt-oss ranks with no number (what makes every-k exact). The
+  opponent's turns and the final evaluation announce the number.
+- V estimates the win probability against the learned listener only.
+- TD targets use V(next state) = 1 - V(state as the other side sees it):
+  the game is zero-sum, and timeouts are dropped.

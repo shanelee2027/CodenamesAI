@@ -75,6 +75,16 @@
    ]
   },
   {
+   "_comment": "A clue policy with a k head (no cap at 4). It imitates the uncapped incumbent's picks, then is trained by actor-critic on full games against learned_listener with gpt-oss-120b guessing. The only reward is the game's result, scored by a critic V(board) = P(win) learned from those games (scripts/pipeline/train_win_actor_critic.py, cache/win_policy.pt). Nothing reads the listener's probabilities. docs/versions/win_actor_critic.md.",
+   "name": "win_actor_critic",
+   "type": "win_actor_critic",
+   "params": {},
+   "trained": true,
+   "roles": [
+    "exploration"
+   ]
+  },
+  {
    "_comment": "Reference opponent, not a model of ours: Claude Sonnet 5 shown the board with roles and asked for a clue (codenames/spymasters/llm_spymaster.py). Role 'reference' is picked up by no script automatically -- every game it plays costs money, so it is only ever run by name (scripts/pipeline/run_eval_suite.py learned_listener sonnet_spymaster).",
    "name": "sonnet_spymaster",
    "type": "llm",

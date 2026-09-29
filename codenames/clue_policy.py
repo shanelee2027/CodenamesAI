@@ -306,6 +306,49 @@ class DeviceFeatures:
 # One guesser call
 
 
+class BudgetExhausted(RuntimeError):
+    """Raised instead of making a paid guesser call once the meter's budget is spent."""
+
+
+class GuesserMeter:
+    """Counts the guesser calls that miss every cache (the paid ones) and the
+    tokens they use. Cost is priced from the measured $0.000102 per call at
+    555 completion tokens (docs/log.md, "gpt-oss-120B as a cheap listener"),
+    scaled by the completion tokens actually used. With `limit_dollars` set,
+    a call that would start past the limit raises BudgetExhausted instead."""
+
+    PER_CALL, AT_TOKENS = 0.000102, 555
+
+    def __init__(self, guesser, limit_dollars: float | None = None, already_spent: float = 0.0):
+        """`already_spent` counts toward the limit: a resumed run passes what
+        the runs before it spent, so resuming never renews the budget."""
+        self.n, self.requests, self.prompt_tokens, self.completion_tokens = 0, 0, 0, 0
+        self.limit, self.already = limit_dollars, already_spent
+        inner = guesser._query
+        create = guesser.client.chat.completions.create
+
+        def counted(*a, **k):
+            if self.limit is not None and self.dollars >= self.limit:
+                raise BudgetExhausted(f"guesser budget ${self.limit:.2f} spent")
+            self.n += 1
+            return inner(*a, **k)
+
+        def metered(*a, **k):
+            resp = create(*a, **k)
+            self.requests += 1
+            if resp.usage:
+                self.prompt_tokens += resp.usage.prompt_tokens
+                self.completion_tokens += resp.usage.completion_tokens
+            return resp
+
+        guesser._query = counted
+        guesser.client.chat.completions.create = metered
+
+    @property
+    def dollars(self) -> float:
+        return self.already + self.PER_CALL * self.completion_tokens / self.AT_TOKENS
+
+
 def rollout(guesser, view, clue: str, max_number: int = POLICY_MAX_NUMBER) -> dict:
     """Ask `guesser` to rank the unrevealed words for `clue`, with no number
     announced (docs/log.md, "gptoss_reward_policy: design", choice 2), and score
@@ -329,10 +372,15 @@ def rollout(guesser, view, clue: str, max_number: int = POLICY_MAX_NUMBER) -> di
 
 
 def build_net(n_pair: int, n_word: int, width: int = 32, hidden: int = 64, trunk: int = 128,
-              max_number: int = MAX_CLUE_NUMBER):
+              max_number: int = MAX_CLUE_NUMBER, head: str = "outcome"):
     """`max_number` sets how many own words the pooling keeps and how many
     outcomes the head predicts. Its default is what every checkpoint trained
-    before the cap was lifted used, since their configs do not record it."""
+    before the cap was lifted used, since their configs do not record it.
+
+    `head` is what sits beside the clue logit: "outcome" (the per-turn
+    policies: a distribution over how the turn ends, priced by the game's
+    reward values) or "k" (win_actor_critic: pi(k | board, clue) directly,
+    logits over k = 1..max_number, masked by `masked_log_k`)."""
     import torch
     from torch import nn
 
@@ -340,7 +388,8 @@ def build_net(n_pair: int, n_word: int, width: int = 32, hidden: int = 64, trunk
         def __init__(self):
             super().__init__()
             self.config = dict(n_pair=n_pair, n_word=n_word, width=width, hidden=hidden, trunk=trunk,
-                               max_number=max_number)
+                               max_number=max_number, head=head)
+            self.head = head
             self.max_number = max_number
             self.phi = nn.Sequential(nn.Linear(n_pair + n_word + len(ROLE_ORDER), hidden), nn.GELU(),
                                      nn.Linear(hidden, hidden), nn.GELU(), nn.Linear(hidden, width))
@@ -348,11 +397,16 @@ def build_net(n_pair: int, n_word: int, width: int = 32, hidden: int = 64, trunk
             d = (max_number + len(MISS_ROLES)) * (width + 2) + width + len(ROLE_ORDER)
             self.rho = nn.Sequential(nn.Linear(d, trunk), nn.GELU(), nn.Linear(trunk, trunk), nn.GELU())
             self.logit = nn.Linear(trunk, 1)
-            self.outcome = nn.Linear(trunk, n_outcomes(max_number))
+            if head == "outcome":
+                self.outcome = nn.Linear(trunk, n_outcomes(max_number))
+            elif head == "k":
+                self.k = nn.Linear(trunk, max_number)
+            else:
+                raise ValueError(f"unknown head {head!r}")
 
         def forward(self, pair, word, roles, present):
             """pair (B, N, P, Fp), word (B, N, Fw), roles (B, N), present (B, N)
-            -> (policy logits (B, P), outcome logits (B, P, 13), trunk (B, P, T)).
+            -> (policy logits (B, P), head logits (B, P, n_outcomes or M), trunk (B, P, T)).
             Logits are not masked here; see `masked_log_policy`."""
             B, N, P, _ = pair.shape
             neg = torch.finfo(pair.dtype if pair.is_floating_point() else torch.float32).min
@@ -385,7 +439,8 @@ def build_net(n_pair: int, n_word: int, width: int = 32, hidden: int = 64, trunk
             counts = torch.stack([((roles == ROLE_ID[r]) & present).sum(1) for r in ROLE_ORDER], dim=1)
             parts.append((counts.to(h.dtype) / 9.0)[:, None, :].expand(-1, P, -1))
             t = self.rho(torch.cat(parts, dim=-1))
-            return self.logit(t).squeeze(-1), self.outcome(t), t
+            side = self.outcome(t) if self.head == "outcome" else self.k(t)
+            return self.logit(t).squeeze(-1), side, t
 
     return CluePolicyNet()
 
@@ -395,6 +450,17 @@ def masked_log_policy(logits, legal):
     import torch
 
     return torch.log_softmax(logits.masked_fill(~legal, float("-inf")), dim=-1)
+
+
+def masked_log_k(k_logits, kmax):
+    """log pi(k | board, clue) over k = 1..M, -inf where k > K_max. `k_logits`
+    is (..., M) with a leading batch dim matching `kmax` (B,)."""
+    import torch
+
+    M = k_logits.shape[-1]
+    ok = torch.arange(1, M + 1, device=k_logits.device)[None, :] <= kmax[:, None]
+    ok = ok.view(ok.shape[0], *([1] * (k_logits.dim() - 2)), M)
+    return torch.log_softmax(k_logits.masked_fill(~ok, float("-inf")), dim=-1)
 
 
 def outcome_log_probs(outcome_logits, kmax):

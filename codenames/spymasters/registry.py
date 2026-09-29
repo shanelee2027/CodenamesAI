@@ -13,9 +13,9 @@ Config format: {"spymasters": [{"name", "type", "params", "trained",
 `type` selects a class from SPYMASTER_CLASSES. `params` are passed as
 keyword args to that class's constructor. `trained` marks whether this
 entry expects a trained artifact (a checkpoint) to exist before it can be
-built. Only the clue policies do (`imitation_policy`, `gptoss_reward_policy`:
-checkpoints from scripts/pipeline/train_imitation_policy.py and
-train_reward_policy.py); the learned listener loads its booster from a fixed
+built. Only the clue policies do (`imitation_policy`, `gptoss_reward_policy`,
+`win_actor_critic`: checkpoints from scripts/pipeline/train_imitation_policy.py,
+train_reward_policy.py and train_win_actor_critic.py); the learned listener loads its booster from a fixed
 cache path, so every other entry is constructible straight from its params.
 
 `roles` is how a script says *which kind* of spymaster it wants without
@@ -48,6 +48,7 @@ from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaste
 from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import LearnedListenerSpymaster
 from codenames.spymasters.llm_spymaster import LLMSpymaster
+from codenames.spymasters.win_actor_critic import WinActorCriticSpymaster
 
 DEFAULT_SPYMASTER_CONFIG = Path(__file__).parent.parent.parent / "configs" / "spymasters.json"
 
@@ -59,6 +60,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "association_listener": AssociationListenerSpymaster,
     "imitation_policy": ImitationPolicySpymaster,
     "gptoss_reward_policy": GptossRewardPolicySpymaster,
+    "win_actor_critic": WinActorCriticSpymaster,
 }
 
 

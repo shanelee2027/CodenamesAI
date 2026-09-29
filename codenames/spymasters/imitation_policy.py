@@ -27,6 +27,7 @@ from codenames.clue_policy import (
     PolicyFeatures,
     expected_rewards,
     load_policy,
+    masked_log_k,
     masked_log_policy,
     outcome_log_probs,
     stack_inputs,
@@ -59,8 +60,10 @@ class ImitationPolicySpymaster(Spymaster):
                 cache_dir / AUX_FILE, cache_dir / FEATURES_FILE]
 
     def scores(self, board) -> tuple[np.ndarray, np.ndarray]:
-        """(log pi over the pool, -inf off the legal clues; expected reward
-        (n_pool, max_number), -inf beyond K_max)."""
+        """(log pi over the pool, -inf off the legal clues; per clue and k,
+        (n_pool, max_number), -inf beyond K_max: the expected reward for an
+        outcome-head policy, log pi(k | clue) for a k-head one. Either way
+        the number played is its argmax.)"""
         import torch
 
         b = self.feats.encode(board)
@@ -71,7 +74,10 @@ class ImitationPolicySpymaster(Spymaster):
             logits, outcome, _ = self.net(torch.as_tensor(pair, dtype=torch.float32),
                                           torch.as_tensor(word), roles_t, present_t)
             logp = masked_log_policy(logits, torch.as_tensor(legal))[0]
-            er = expected_rewards(outcome_log_probs(outcome, kmax), kmax)[0]
+            if self.net.head == "k":
+                er = masked_log_k(outcome, kmax)[0]
+            else:
+                er = expected_rewards(outcome_log_probs(outcome, kmax), kmax)[0]
         return logp.numpy(), er.numpy()
 
     def top_clues(self, ctx: TurnContext, sims: SimilarityTensor, k: int) -> list[tuple[str, int, float]]:

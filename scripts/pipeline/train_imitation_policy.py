@@ -3,12 +3,16 @@
     python scripts/pipeline/train_imitation_policy.py --epochs 12
 
 Data from scripts/data/collect_imitation_data.py (train and val splits,
-disjoint board seeds). Two terms, docs/log.md "gptoss_reward_policy: design":
+disjoint board seeds). Always: cross-entropy of pi(clue | board), over the
+legal pool, on the incumbent's pick. Then, by `--head`:
 
-- cross-entropy of pi(clue | board), over the legal pool, on the incumbent's
-  pick;
-- MSE between the outcome head's expected reward for each k and the
-  incumbent's, over its 200 shortlisted clues (weight --value-weight).
+- outcome (the per-turn policies, docs/log.md "gptoss_reward_policy:
+  design"): MSE between the outcome head's expected reward for each k and
+  the incumbent's, over its 200 shortlisted clues (weight --value-weight);
+- k (win_actor_critic, docs/log.md "win_actor_critic: design"):
+  cross-entropy of pi(k | board, clue) on the incumbent's number, at the
+  incumbent's clue (weight --value-weight). Only the incumbent's picks are
+  imitated, never its expected values.
 
 Reported on val each epoch: how often the policy's greedy clue is the
 incumbent's, how often it is inside the incumbent's shortlist, the
@@ -29,6 +33,7 @@ import torch
 from codenames.clue_policy import (
     POLICY_MAX_NUMBER,
     DeviceFeatures,
+    masked_log_k,
     PolicyFeatures,
     build_net,
     expected_rewards,
@@ -57,6 +62,12 @@ def losses(net, gf: DeviceFeatures, d: dict, idx: np.ndarray, value_weight: floa
     logp = masked_log_policy(logits, legal)
     pick = torch.as_tensor(d["pick"][idx], device=gf.device, dtype=torch.long)
     ce = -logp.gather(1, pick[:, None]).squeeze(1)
+    if net.head == "k":
+        rows = torch.arange(len(idx), device=gf.device)
+        logk = masked_log_k(outcome[rows, pick], kmax)                          # (B, M)
+        number = torch.as_tensor(d["number"][idx], device=gf.device, dtype=torch.long)
+        k_ce = -logk.gather(1, (number - 1)[:, None]).squeeze(1)
+        return ce.mean() + value_weight * k_ce.mean(), ce, k_ce.mean(), logp, outcome
 
     er = expected_rewards(outcome_log_probs(outcome, kmax), kmax)            # (B, P, M)
     short = torch.as_tensor(d["shortlist"][idx], device=gf.device, dtype=torch.long)
@@ -73,26 +84,41 @@ def losses(net, gf: DeviceFeatures, d: dict, idx: np.ndarray, value_weight: floa
 def evaluate(net, gf, d, batch: int, value_weight: float) -> dict:
     net.eval()
     n = len(d["pick"])
-    ce_all, mse_all, same, inside, k_same, regrets = [], [], 0, 0, 0, []
+    ce_all, mse_all, same, inside, k_same, regrets, k_given_clue = [], [], 0, 0, 0, [], []
     for s in range(0, n, batch):
         idx = np.arange(s, min(n, s + batch))
         _, ce, mse, logp, er = losses(net, gf, d, idx, value_weight)
         ce_all.append(ce.cpu())
         mse_all.append(float(mse) * len(idx))
         g = logp.argmax(1).cpu().numpy()
-        k = er[torch.arange(len(idx)), torch.as_tensor(g, device=gf.device)].argmax(-1).cpu().numpy() + 1
+        rows = torch.arange(len(idx), device=gf.device)
+        if net.head == "k":
+            # er holds the k logits here: mask k > K_max as training does,
+            # then take the argmax.
+            kmax = torch.as_tensor(np.minimum(((d["roles"][idx] == 0) & d["present"][idx]).sum(1),
+                                              net.max_number), device=gf.device)
+            k = masked_log_k(er[rows, torch.as_tensor(g, device=gf.device)], kmax).argmax(-1).cpu().numpy() + 1
+            k_at_pick = masked_log_k(er[rows, torch.as_tensor(d["pick"][idx], device=gf.device)],
+                                     kmax).argmax(-1).cpu().numpy() + 1
+            k_given_clue.extend((k_at_pick == d["number"][idx]).tolist())
+        else:
+            k = er[rows, torch.as_tensor(g, device=gf.device)].argmax(-1).cpu().numpy() + 1
         for i, row in enumerate(idx):
             same += int(g[i] == d["pick"][row])
             k_same += int(g[i] == d["pick"][row] and k[i] == d["number"][row])
             hit = np.flatnonzero(d["shortlist"][row] == g[i])
-            if hit.size:
-                inside += 1
+            inside += int(hit.size > 0)
+            if hit.size and net.head == "outcome":
                 v = d["net"][row, hit[0], k[i] - 1]
                 regrets.append(float(d["score"][row] - v) if np.isfinite(v) else np.nan)
     net.train()
-    return {"ce": float(torch.cat(ce_all).mean()), "value_mse": sum(mse_all) / n,
-            "same_clue": same / n, "same_clue_and_k": k_same / n, "in_shortlist": inside / n,
-            "regret_where_priced": float(np.nanmean(regrets)) if regrets else float("nan")}
+    out = {"ce": float(torch.cat(ce_all).mean()), "head_loss": sum(mse_all) / n,
+           "same_clue": same / n, "same_clue_and_k": k_same / n, "in_shortlist": inside / n}
+    if net.head == "k":
+        out["k_right_at_incumbent_clue"] = float(np.mean(k_given_clue))
+    else:
+        out["regret_where_priced"] = float(np.nanmean(regrets)) if regrets else float("nan")
+    return out
 
 
 def main() -> None:
@@ -104,6 +130,8 @@ def main() -> None:
     ap.add_argument("--width", type=int, default=32)
     ap.add_argument("--hidden", type=int, default=64)
     ap.add_argument("--trunk", type=int, default=128)
+    ap.add_argument("--head", choices=["outcome", "k"], default="outcome",
+                    help="what picks the number: see the module docstring")
     ap.add_argument("--max-number", type=int, default=POLICY_MAX_NUMBER,
                     help="highest number the policy may announce (the data must reach it)")
     ap.add_argument("--seed", type=int, default=0)
@@ -119,7 +147,8 @@ def main() -> None:
     tr, va = load_split(args.train_file), load_split(args.val_file)
     print(f"train {len(tr['pick'])} positions, val {len(va['pick'])}")
     net = build_net(len(feats.pair_names), len(feats.word_names), width=args.width,
-                    hidden=args.hidden, trunk=args.trunk, max_number=args.max_number).cuda()
+                    hidden=args.hidden, trunk=args.trunk, max_number=args.max_number,
+                    head=args.head).cuda()
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
     steps = args.epochs * math.ceil(len(tr["pick"]) / args.batch)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=steps, pct_start=0.05)
@@ -139,7 +168,7 @@ def main() -> None:
             run.append((float(ce.mean()), float(mse)))
         m = evaluate(net, gf, va, 32, args.value_weight)
         tr_ce, tr_mse = np.mean(run, axis=0)
-        m.update(epoch=epoch, train_ce=float(tr_ce), train_value_mse=float(tr_mse), minutes=(time.time() - t0) / 60)
+        m.update(epoch=epoch, train_ce=float(tr_ce), train_head_loss=float(tr_mse), minutes=(time.time() - t0) / 60)
         history.append(m)
         print(" ".join(f"{k} {v:.4f}" if isinstance(v, float) else f"{k} {v}" for k, v in m.items()), flush=True)
         if m["ce"] < best:
