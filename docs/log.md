@@ -3879,5 +3879,7 @@ On 30 fresh boards, uncapped the incumbent gave a 5 and a 6, and `assoc`
 gave three 5s and a 6. The pass models stay conservative: `assoc_pass`
 gave one 5 and `assoc_pass_strong` none.
 
-The imitation data is being recollected with the uncapped incumbent, into
-`*_uncapped.npz`. It will train `policy_imitation_uncapped.pt`.
+The uncapped imitation data was not collected. Shane stopped it: the policy
+model as it stands is not the one to train next, because the objective is
+moving to win probability. The collector and trainer default to the uncapped
+files for whenever a policy is imitated again.
