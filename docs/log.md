@@ -4320,3 +4320,39 @@ board 8 times against 19.
 - **A single temperature per pick** also flattens genuinely good multi-word
   clues. A pick-by-pick listener conditioned on the guessed words is the
   version that can tell them apart.
+
+## Screening a second cheap guesser: Nemotron-3-Super against gpt-oss
+
+**Question** (Shane): is there a model of similar size and price to gpt-oss,
+trained by a different lab, that could be a second evaluation guesser? The
+listener is distilled from gpt-oss and the RL runs play against it, so
+results may overfit to it, and Sonnet is expensive. Shane asked for a
+reasoning model, since gpt-oss reasons.
+
+**Candidate.** NVIDIA Nemotron-3-Super-120B-A12B: 120B parameters, 12B
+active (gpt-oss: 117B / 5B). DeepInfra lists it at $0.085 / $0.40 per
+million tokens, against $0.037 / $0.17. It reasons by default and accepts
+`reasoning_effort=low`, which does not visibly shorten its reasoning.
+
+**Screen** (`scripts/tools/screen_guessers.py`). 200 positions Sonnet
+already ranked on holdout_v1 boards (held-out words only), with Sonnet's exact
+clue, candidate order and number, run through the project's guesser code. The
+table compares each model's ranking with Sonnet's:
+
+| | first pick agrees | top-k overlap | same k words | Kendall tau | refused | completion tokens | $ per 1k rankings |
+|---|---|---|---|---|---|---|---|
+| gpt-oss-120b, low | 0.814 | 0.793 | 0.573 | 0.448 | 1 | 308 | 0.06 |
+| Nemotron-3-Super, low | 0.775 | 0.817 | 0.620 | 0.431 | 0 | 1,491 | 0.61 |
+
+- **Neither is clearly closer to Sonnet.** gpt-oss matches the first pick
+  more often. Nemotron matches the words a turn reads (top k) slightly more
+  often. At n = 200 both gaps are within noise (a proportion's standard error
+  is about 0.03).
+- **Nemotron is about 10x gpt-oss's cost per ranking,** because it reasons
+  about 5x longer at 2.4x the output price. It is also about 3x slower
+  wall-clock, and it throttles ("model busy", 429) above about 12 parallel
+  requests. The screen now retries those with backoff.
+- **It is still about 10x cheaper than Sonnet.** Its value would be
+  independence: a lab whose guesser nothing in the project was fitted to.
+
+Spend: about $0.15 (pilot plus screen).
