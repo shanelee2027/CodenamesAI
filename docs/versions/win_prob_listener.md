@@ -90,6 +90,25 @@ discarded where gpt-oss would not rank.
   - It picks lower numbers (2.43) than the frozen arm (2.62), as its flatter
     later picks imply. It has the most assassin losses (30).
 
+**Every booster under the same objective** (`model_path`,
+`turn_model=frozen`, against learned_listener, gpt-oss suite):
+
+| Booster + V | win% | boards won both ways | sign p | assassin losses |
+|---|---|---|---|---|
+| incumbent (44 features) | 51.5% | 17 vs 14 | 0.72 | 31 vs 9 |
+| isa (47) | 53.1% | 22 vs 16 | 0.42 | 31 vs 7 |
+| conceptnet (54, default) | 57.5% | 24 vs 10 | 0.024 | 25 vs 11 |
+| assoc (56) | **59.1%** | **28 vs 10** | **0.005** | 21 vs 10 |
+
+- **The objective alone is level.** It gains together with a better
+  listener, because it uses the listener's probabilities directly, not just
+  its ranking.
+- **Assassin losses fall with each listener step.**
+- **assoc passes Bonferroni for the five arms.** It is also the booster
+  most likely to be gpt-oss-specific.
+- **The earlier reading is corrected:** "the objective, not the listener,
+  was holding play back" is only half right.
+
 ## Open
 
 - **A second guesser.** A Nemotron run (about $0.86) would show whether the

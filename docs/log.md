@@ -4983,3 +4983,47 @@ win_prob's assassin rate by predicted risk:
   bad-word offset on recorded turns so that predicted endings match
   realised ones. This is the within-turn idea done as calibration of the
   whole turn, not of later picks.
+
+## win_prob_listener: every booster under the same objective
+
+Shane's comparison: V held fixed, the booster swapped
+(`--challenger-param model_path=...`, `turn_model=frozen`). Each is played
+against learned_listener (its own booster, the old objective) on
+holdout_v1_gptoss, about $0.10 each.
+
+| Booster + V | win% | boards won both ways | sign p | assassin losses | mean k | own% |
+|---|---|---|---|---|---|---|
+| incumbent (44 features) | 51.5% | 17 vs 14 | 0.72 | 31 vs 9 | 2.68 | 76.4% |
+| isa (47) | 53.1% | 22 vs 16 | 0.42 | 31 vs 7 | 2.63 | 77.3% |
+| conceptnet (54) | 57.5% | 24 vs 10 | 0.024 | 25 vs 11 | 2.62 | 77.5% |
+| assoc (56) | **59.1%** | **28 vs 10** | **0.005** | 21 vs 10 | 2.59 | 79.4% |
+
+**Reading.**
+- **This corrects the previous entry.** The objective alone is not the gain.
+  The incumbent's own booster under V is level with the incumbent (17 vs 14).
+  The win comes from the objective and a better listener together.
+- **Why they interact.** The old objective used the listener mostly to rank
+  clues. The new one uses its probabilities directly: how likely the turn
+  reaches k, and how likely it hits the assassin. That pushes the spymaster
+  toward bigger numbers, and a worse listener's errors on those bigger
+  numbers cost games.
+- **Assassin losses fall with every listener step:** 31, 31, 25, 21.
+  Meanwhile own% rises from 76.4% to 79.4%. The better listeners take
+  tempo with fewer blunders.
+- **The ladder is monotone in both win rate and listener fit.** This is the
+  comparison of listeners with the reward confound removed that the
+  objective was built for. The features that looked flat in games under the
+  old objective (conceptnet 24 vs 15, assoc 23 vs 17) matter under this
+  one.
+- **Significance.**
+  - Five win_prob arms have now been played: four boosters plus the
+    within-turn model.
+  - assoc's p = 0.005 survives a Bonferroni threshold of 0.01.
+  - conceptnet's 0.024 does not.
+  - The arms share boards, so the ladder itself is suggestive, not tested.
+- **Caveat on assoc:** its features are gpt-oss's own associations, and the
+  guesser here is gpt-oss. The top rung is the one most likely to be
+  guesser-specific (docs/versions/assoc_feature_listener.md: no lead under
+  Nemotron with the old objective).
+- **Confound in the bottom rung:** the incumbent's booster is an older
+  recipe on less data. The other three share one recipe and split.
