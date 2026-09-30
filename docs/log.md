@@ -4831,3 +4831,85 @@ both ways were 13 vs 16, sign p = 0.71, and assassin losses were 15 vs 14.
 - A listener feature derived from the evaluation guesser is a risk worth
   remembering. It improves the fit exactly where the fit is measured
   against that same guesser.
+
+## win_prob_listener: design
+
+**Question (Shane).** Replace the objective with the probability of winning,
+using the GBT listener to estimate it. With one objective fixed, listeners
+can be compared without the reward confounding them. The opponent is fixed
+as the incumbent throughout.
+
+**The earlier rule is lifted.** The 2026-09-29 rule, "never optimise
+against the listener's probabilities", was scoped by Shane as "NLP before
+game theory". The NLP side has now had its run, so that order is done. This
+is the model-based design that was set aside then.
+
+**Two structural options:**
+- **A:** V from the score position only, P(win | own left, opponent left,
+  side to move), estimated from recorded games.
+  - Cheap: an ending for k has at most about 20 distinct score positions.
+  - It captures tempo.
+  - **What breaks:** it is blind to which words remain.
+- **B:** a board-reading V, such as win_actor_critic's critic.
+  - **What breaks:** speed. There are hundreds of thousands of distinct
+    after-boards per move.
+  - That critic was also trained on the RL policy's games, not on the
+    search spymaster's.
+
+**Chose A first.**
+
+**Why not solve the game with the listener as the guesser.** With a perfect
+guesser model and infinite compute, backward induction would solve it. The
+state is Markov: the LLM guesser sees only the clue, the unrevealed words
+and the number (codenames/guessers/llm.py). Two things stand in the way:
+- search amplifies the model's errors, the optimiser's curse, and more so
+  the deeper it goes;
+- the listener is weakest at later picks.
+
+So the design is a one-turn search with the listener and an empirical V
+after it. That keeps one part of the objective tied to real outcomes.
+
+**Built.**
+- **V** (`scripts/data/build_win_value.py`, `cache/win_value.npz`):
+  - from 10,266 finished games, 86,287 turn states;
+  - the games are the incumbent against cost and outside-option variants of
+    itself, plus the gpt-oss suite, all with gpt-oss guessing;
+  - each cell's rate is shrunk toward a logistic fit (prior weight 20
+    games), then projected onto monotone tables by weighted 2-D isotonic
+    regression.
+- **Why the projection matters.** Raw corners break the order: V(9, 2) =
+  0.16 against V(8, 2) = 0.01, from games where a side still had 9 words
+  because it was losing on luck. A non-monotone V would reward hitting
+  fewer own words. The projection moves the game-weighted mean by 0.0005.
+- **What V shows:**
+  - the first mover at 9 against 8 wins 0.48;
+  - 2 against 2 is 0.79 to the mover;
+  - 4 against 4 is 0.70.
+
+  Tempo is worth a lot.
+- **The objective** (`codenames/win_value.py`) is the sum over turn endings
+  of P(ending) × W(ending). The ending probabilities come from the
+  spymaster's own reward model, through its `_gain_and_penalty` called with
+  indicator costs (opponent words, then the assassin). So it works for
+  frozen scores and for the within-turn model alike.
+  - Tests check it against exact enumeration of pick sequences.
+  - pl_reward's grid approximation is within 0.0003 of exact.
+- **The spymaster** (`codenames/spymasters/win_prob_listener.py`) uses
+  conceptnet_listener's booster by default.
+  - `model_path` swaps the booster, and `turn_model=frozen|within_turn`
+    swaps the model of later picks.
+  - learned_listener gained a `_clue_values` hook, which does nothing for
+    the incumbent.
+  - The k=1 tie-break tolerance, 0.1 own words, is converted to win
+    probability by what one own word is worth at the current score.
+
+**Clue choice, before any games** (600 validation positions, against
+conceptnet_listener: the same listener, the old objective):
+- mean number 2.38 → **2.74**;
+- clues for 4 rise from 105 to 187;
+- nearly every change is upward (2→3 ×83, 3→4 ×52, 2→4 ×37).
+
+Some new picks look like the optimiser's curse on the frozen model's
+overconfident later picks ("institutional 4", "sacked 4", "drivers 4").
+The within-turn model corrects exactly that. So both turn models are
+played against the incumbent.

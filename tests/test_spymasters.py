@@ -76,7 +76,8 @@ class TestRegistry:
                                 "imitation_policy", "gptoss_reward_policy", "win_actor_critic",
                                 "sonnet_spymaster", "pick_temperature_listener",
                                 "isa_listener", "conceptnet_listener",
-                                "within_turn_listener", "assoc_feature_listener"}
+                                "within_turn_listener", "assoc_feature_listener",
+                                "win_prob_listener"}
 
     def test_the_paid_spymaster_is_never_picked_up_by_role(self):
         """Every game sonnet_spymaster plays costs money, so no arena may

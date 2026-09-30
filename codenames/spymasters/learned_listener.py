@@ -335,9 +335,8 @@ class LearnedListenerSpymaster(Spymaster):
         flat = self.bundle.booster.predict(np.vstack(rows), raw_score=True)
         S = np.asarray(flat, dtype=np.float64).reshape(len(keep), n_scored)
         S, s_out = self._split_outside(S, n_board)
-        gain, penalty = self._gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max, s_out,
-                                               words=candidates)
-        net = gain - penalty                                 # (n_keep, K_max)
+        net, tie_unit = self._clue_values(S[:, :n_own], S[:, n_own:], roles, costs, K_max, s_out,
+                                          words=candidates)  # (n_keep, K_max)
         best_m = np.argmax(net, axis=1)
         idx = np.asarray(keep)
         scores[idx] = np.take_along_axis(net, best_m[:, None], axis=1)[:, 0]
@@ -345,13 +344,25 @@ class LearnedListenerSpymaster(Spymaster):
 
         if self.k1_tiebreak:
             sub = self._swap_k1(sims, board, words=candidates, own_n=n_own,
-                                scores=scores, best_n=best_n, S=S, keep=keep)
+                                scores=scores, best_n=best_n, S=S, keep=keep, tie_unit=tie_unit)
             if sub is not None:
                 scores, best_n = sub
         # Margin exists only for the arena's tie-break; reuse the first stage's,
         # which is on a stable scale and is not part of the ranking here.
         margin[idx] = g_margin[idx]
         return best_n, scores, margin
+
+    def _clue_values(self, s_own: np.ndarray, s_bad: np.ndarray, roles: list[Role], costs: np.ndarray,
+                     max_k: int, s_out: np.ndarray | None,
+                     words: list[str] | None = None) -> tuple[np.ndarray, float]:
+        """`(values, tie_unit)`: what the search maximises, `(n_clues, max_k)`
+        with column m for k = m + 1, and what one own word is worth on that
+        scale (the k=1 tie-break's tolerance is in own words). Here: expected
+        own words minus the role costs, so the unit is 1. A subclass can
+        replace the objective (spymasters/win_prob_listener.py) without
+        copying the search."""
+        gain, penalty = self._gain_and_penalty(s_own, s_bad, costs, max_k, s_out, words=words)
+        return gain - penalty, 1.0
 
     def _gain_and_penalty(self, s_own: np.ndarray, s_bad: np.ndarray, costs: np.ndarray, max_k: int,
                           s_out: np.ndarray | None, words: list[str] | None = None) -> tuple[np.ndarray, np.ndarray]:
@@ -403,7 +414,7 @@ class LearnedListenerSpymaster(Spymaster):
         return {"words": candidates, "roles": roles, "scores": S[0],
                 "outside": None if s_out is None else float(s_out[0])}
 
-    def _swap_k1(self, sims, board, words, own_n, scores, best_n, S, keep):
+    def _swap_k1(self, sims, board, words, own_n, scores, best_n, S, keep, tie_unit: float = 1.0):
         """When the best clue is a k=1 clue, break the tie among near-optimal
         clues by raw similarity to the word it means.
 
@@ -473,7 +484,7 @@ class LearnedListenerSpymaster(Spymaster):
         if ti is None:
             return None
 
-        cutoff = float(scores[best]) - self.k1_tie_tolerance
+        cutoff = float(scores[best]) - self.k1_tie_tolerance * tie_unit
         tie = []
         for ci in order:                                  # descending, so stop at the cutoff
             ci = int(ci)

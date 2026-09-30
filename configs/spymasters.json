@@ -172,6 +172,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "conceptnet_listener's listener with a new objective: the probability of winning after the turn, not expected words minus role costs. Each way the turn can end (the listener's distribution) leaves a score position, valued by V(a, b), the incumbent's win probability with a own and b opponent words left, estimated from 10,266 recorded gpt-oss games (scripts/data/build_win_value.py, cache/win_value.npz). No costs. `model_path` swaps the booster and `turn_model` (frozen | within_turn) the model of later picks, so listeners can be compared under one fixed objective. docs/versions/win_prob_listener.md.",
+   "name": "win_prob_listener",
+   "type": "win_prob_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }
