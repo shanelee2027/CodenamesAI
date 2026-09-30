@@ -142,6 +142,15 @@ FEATURE_NAMES: list[str] = [
     # other. See scripts/data/build_lexical_sims.py.
     "orth_contains", "orth_prefix", "orth_suffix", "orth_trigram",
     "gloss_c_in_w", "gloss_w_in_c", "gloss_jaccard",
+    # tier 2: DIRECTIONAL is-a membership (scripts/data/build_isa_sims.py).
+    # wn_wup is symmetric, so Moon scores well for "planet" through their
+    # shared "celestial body", and the category probe found the listener
+    # ranking Pie above real fruit for "fruit". isa asks whether w is a KIND
+    # OF the clue, isa_rev the other way round, and isa_n counts the board
+    # words that are: with three fruit on the board, a word that is not one
+    # is the explained-away associate. Appended last so every booster fitted
+    # before them reads the same leading columns (see booster_columns).
+    "isa", "isa_rev", "isa_n",
 ]
 
 N_FEATURES = len(FEATURE_NAMES)
@@ -397,6 +406,24 @@ def _cohesion(
     return out
 
 
+def isa_count(isa_col: np.ndarray) -> float:
+    """How many candidates are a kind of the clue; NaN when WordNet has no
+    evidence for any of them (the clue is not a noun there)."""
+    return float((isa_col > 0).sum()) if np.isfinite(isa_col).any() else np.nan
+
+
+def booster_columns(booster) -> list[int]:
+    """The columns of an extract() matrix this booster was fitted on, by name.
+    Features are only ever appended, so an older booster reads a prefix, and
+    one fitted on a block subset (train_listener.py --blocks) reads its own
+    selection; either way nothing it never saw reaches it."""
+    names = booster.feature_name()
+    missing = [n for n in names if n not in FEATURE_NAMES]
+    if missing:
+        raise ValueError(f"booster wants features extract() does not make: {missing}")
+    return [FEATURE_NAMES.index(n) for n in names]
+
+
 def extract(
     clue: str,
     candidates: list[str],
@@ -412,6 +439,7 @@ def extract(
     norms: "WordNorms | None" = None,
     wordnet: "ExtraSims | None" = None,
     lexical: "ExtraSims | None" = None,
+    isa: "ExtraSims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -558,6 +586,16 @@ def extract(
         for key in ("orth_contains", "orth_prefix", "orth_suffix", "orth_trigram",
                     "gloss_c_in_w", "gloss_w_in_c", "gloss_jaccard"):
             cols.append(lexical.row(key, ci, lcols))
+
+    if isa is None:
+        for _ in range(3):
+            cols.append(np.full(n, np.nan))
+    else:
+        icols = np.array([isa.board_pos.get(w.lower(), -1) for w in candidates])
+        down = isa.row("isa", ci, icols)
+        cols.append(down)
+        cols.append(isa.row("isa_rev", ci, icols))
+        cols.append(np.full(n, isa_count(down)))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

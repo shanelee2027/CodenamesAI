@@ -116,6 +116,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "The incumbent's spymaster with a listener that knows 'is a kind of': three WordNet hypernym features (isa, isa_rev, isa_n; scripts/data/build_isa_sims.py) added to the current listener recipe (cache/listener_gbt_isa.txt). Aimed at category clues, where the incumbent's listener let associates (Pie for fruit, Moon for planet) take the members' probability. docs/versions/isa_listener.md.",
+   "name": "isa_listener",
+   "type": "isa_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

@@ -102,8 +102,10 @@ def gbt_scores(booster, positions: list[dict]) -> list[np.ndarray]:
     """Per position, the GBT's raw score for every row. Features are the
     full-board rows at every step (load_positions without refresh), so one
     vector per position serves all its steps, as in build_groups."""
+    from codenames.listener_features import booster_columns
+
     X = np.vstack([p["x"] for p in positions])
-    s = booster.predict(X, raw_score=True)
+    s = booster.predict(X[:, booster_columns(booster)], raw_score=True)
     return np.split(s, np.cumsum([p["n"] for p in positions])[:-1])
 
 

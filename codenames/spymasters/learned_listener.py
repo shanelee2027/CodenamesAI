@@ -45,7 +45,9 @@ from codenames.listener_features import (
     SwowTables,
     WordNorms,
     WordStats,
+    booster_columns,
     extract,
+    isa_count,
 )
 from codenames.pl_reward import gain_and_penalty
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
@@ -71,6 +73,8 @@ OUTSIDE_N = 0
 # one the k=1 tiebreak reads raw cosines from.
 NB_SPACE = 1
 NCAND = FEATURE_NAMES.index("n_candidates")
+ISA, ISA_N = FEATURE_NAMES.index("isa"), FEATURE_NAMES.index("isa_n")
+FEATURE_BLOCK_TAXONOMY = ("isa", "isa_rev", "isa_n")
 
 
 @dataclass(frozen=True)
@@ -92,6 +96,8 @@ class ListenerBundle:
     norms: WordNorms | None
     wordnet: ExtraSims | None
     lexical: ExtraSims | None
+    isa: ExtraSims | None = None
+    columns: list[int] | None = None
 
     @classmethod
     def load(cls, cache_dir: Path, model_path: Path) -> "ListenerBundle":
@@ -110,8 +116,15 @@ class ListenerBundle:
                 "A partial load would leave those features NaN and quietly produce a "
                 "different model than the one that was fitted; see scripts/data/."
             )
+        booster = lgb.Booster(model_file=str(model_path))
+        columns = booster_columns(booster)
+        # Only a booster that reads the is-a features needs their table, so
+        # the incumbent loads (and scores) exactly as before without it.
+        uses_isa = any(FEATURE_NAMES[c] in FEATURE_BLOCK_TAXONOMY for c in columns)
+        if uses_isa and not (cache_dir / "isa_sims.npz").exists():
+            raise FileNotFoundError("isa_sims.npz missing; run scripts/data/build_isa_sims.py")
         return cls(
-            booster=lgb.Booster(model_file=str(model_path)),
+            booster=booster,
             word_stats=WordStats.load(cache_dir / "word_stats.npz"),
             swow=maybe(SwowTables.load, "swow.npz"),
             entity=maybe(EntitySims.load, "entity_sims.npz"),
@@ -120,6 +133,8 @@ class ListenerBundle:
             norms=maybe(WordNorms.load, "word_norms.npz"),
             wordnet=maybe(ExtraSims.load, "wordnet_sims.npz"),
             lexical=maybe(ExtraSims.load, "lexical_sims.npz"),
+            isa=maybe(ExtraSims.load, "isa_sims.npz") if uses_isa else None,
+            columns=columns,
         )
 
 
@@ -231,16 +246,18 @@ class LearnedListenerSpymaster(Spymaster):
         b = self.bundle
         feats = extract(clue, candidates, number, sims, self.clue_stats, b.word_stats,
                         self._clue_index, b.swow, b.entity, b.pmi, b.extra, b.norms,
-                        b.wordnet, b.lexical)
+                        b.wordnet, b.lexical, b.isa)
         if feats is None:
             return None
         if n_board is not None:
             # Outside words are not board words. extract() counts whatever list
             # it is given, and training overwrote this the same way -- leaving
             # it would feed `outside_n` in as a feature the model never saw.
+            # isa_n is a count over the list too, so it gets the same fix.
             feats = np.array(feats, dtype=np.float64)
             feats[:, NCAND] = n_board
-        return feats
+            feats[:, ISA_N] = isa_count(feats[:n_board, ISA])
+        return feats[:, b.columns] if b.columns is not None else feats
 
     def _listener_scores(
         self, clue: str, candidates: list[str], number: int, sims: SimilarityTensor,

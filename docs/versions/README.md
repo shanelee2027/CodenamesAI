@@ -16,6 +16,10 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
 - [`win_actor_critic`](win_actor_critic.md): a clue policy trained by
   actor-critic on full games against the incumbent, with win/loss as the only
   reward.
+- [`pick_temperature_listener`](pick_temperature_listener.md): the incumbent
+  with per-pick listener temperatures in its reward.
+- [`isa_listener`](isa_listener.md): the incumbent with a listener that has
+  directional WordNet is-a features.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.

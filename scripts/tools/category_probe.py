@@ -25,6 +25,9 @@ Reported per case and role, averaged over boards:
   (1 = it gives this clue), and how often stage one (the Gaussian shortlist)
   let it through at all.
 
+With --model, another listener booster is probed in place of the
+incumbent's (the learned_listener spymaster around it is unchanged).
+
 With --llm N, gpt-oss also ranks the words for the first N boards of each
 case (associate neutral), a few cents at most, to show what the real guesser
 does with the same clue.
@@ -90,13 +93,15 @@ def build(case_i: int, rep: int, assoc_role: str, control: bool):
     return Board(cards=tuple(cards), seed=-1), clue, members, fourth
 
 
-def _init() -> None:
+def _init(model: str | None) -> None:
+    from pathlib import Path
+
     from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
     from codenames.spymasters.registry import spymaster_spec
 
     _W["sims"] = SimilarityTensor.load(DEFAULT_CACHE_DIR)
     cls, kw = spymaster_spec("learned_listener")
-    _W["sm"] = cls(**kw)
+    _W["sm"] = cls(**kw, **({"model_path": Path(model)} if model else {}))
 
 
 def _run(job) -> dict:
@@ -146,11 +151,12 @@ def main() -> None:
     ap.add_argument("--boards", type=int, default=20)
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--llm", type=int, default=0)
+    ap.add_argument("--model", default=None, help="another listener booster in place of cache/listener_gbt.txt")
     args = ap.parse_args()
 
     jobs = [(c, r, role, ctl) for c in range(len(CASES)) for role in ROLE_NAMES
             for r in range(args.boards) for ctl in (False, True)]
-    with ProcessPoolExecutor(args.workers, initializer=_init) as ex:
+    with ProcessPoolExecutor(args.workers, initializer=_init, initargs=(args.model,)) as ex:
         rows = list(ex.map(_run, jobs, chunksize=4))
 
     print(f"{args.boards} boards per case and role; 'ctl' = the associate swapped for a filler of the same role")

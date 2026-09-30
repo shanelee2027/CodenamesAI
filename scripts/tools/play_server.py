@@ -86,6 +86,7 @@ from codenames.spymasters.association_listener import AssociationListenerSpymast
 from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaster
 from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import ListenerBundle, LearnedListenerSpymaster
+from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
@@ -155,6 +156,13 @@ SPYMASTERS: dict[str, dict] = {
         "cls": PickTemperatureListenerSpymaster, "kwargs": {"outside_n": 0},
         "about": "The incumbent, but later picks are scored flatter (temperatures 1.0, 1.1, "
                  "1.3, 1.5), since the listener is overconfident after its first pick."},
+    # The incumbent's search with a listener that has WordNet is-a features
+    # (codenames/spymasters/isa_listener.py): its own booster and table.
+    "isa": {
+        "label": "Is-a listener", "model": "listener_gbt_isa.txt", "outside_n": 0,
+        "cls": IsaListenerSpymaster, "kwargs": {"outside_n": 0}, "needs": ["isa_sims.npz"],
+        "about": "The incumbent's search, but its listener knows 'is a kind of' (WordNet), "
+                 "so for 'fruit' it no longer rates Pie like an orange."},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).
@@ -173,7 +181,7 @@ SPYMASTERS: dict[str, dict] = {
 # Uncapped twins: the same model allowed to announce every own word left
 # rather than at most 4 (max_number=None). The listener's k feature was only
 # ever trained on 1-4, so above that its numbers are an extrapolation.
-for _key in ("incumbent", "pick_temperature", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
+for _key in ("incumbent", "pick_temperature", "isa", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
     _spec = SPYMASTERS[_key]
     SPYMASTERS[f"{_key}_uncapped"] = {
         **_spec, "label": f"{_spec['label']}, uncapped",

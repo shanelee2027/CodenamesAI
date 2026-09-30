@@ -44,6 +44,7 @@ reads the same variable.
 | `expected_words` | guesser = similarity z-score + Gaussian noise N(0, σ²); exact expected reward by conditioning on the strongest distractor ([paper](docs/clue-selection-theory.pdf), [doc](docs/versions/expected_words.md)) | baseline, and stage one of the incumbent |
 | `learned_listener` | shortlists 200 clues with `expected_words` (σ=1.5), then scores them with the distilled listener's exact Plackett–Luce expected reward ([paper](docs/clue-selection-learned.pdf), [doc](docs/versions/learned_listener.md)) | **the incumbent** |
 | `pick_temperature_listener` | `learned_listener` with the listener's confidence set per pick (softmax(score / τ_j), τ = 1.0, 1.1, 1.3, 1.5), because frozen scores are overconfident after the first pick ([doc](docs/versions/pick_temperature_listener.md)) | challenger |
+| `isa_listener` | `learned_listener` whose listener also knows "is a kind of" (three WordNet hypernym features), so an associate like Pie no longer competes with the fruit for "fruit" ([doc](docs/versions/isa_listener.md)) | challenger |
 
 All of these are entries in `configs/spymasters.json`; a script picks spymasters
 by registry name, never by import.
