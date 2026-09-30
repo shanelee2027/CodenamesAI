@@ -4456,3 +4456,72 @@ so it belongs in predicting the arena, not in choosing clues.
   Rock), king -> Greece. They are sense and entity associations the features
   miss, plus sampling noise. The picked word was first in the prompt 14% of
   the time among the worst 100, against 6% by chance.
+
+## Category clues: members against associates
+
+**The question.** On Tiger, Whale, Octopus (ours) and Africa (not ours), a
+person reads "animal 3" as exactly the three animals. Africa is close to
+"animal" in every embedding space, though. Does the listener rate it a likely
+pick, price "animal 3" as risky and never give it? The same question applies
+to "country" with Field beside America, China and Russia.
+
+**Expected.** Some leak of probability onto the associate. Unknown: whether
+it was enough to change which clue gets given.
+
+**Probe** (`scripts/tools/category_probe.py`, free apart from 50 gpt-oss
+calls, well under a cent):
+- Ten cases. Tiger and Russia are not board words, so Bear and Germany stand
+  in.
+- Each case uses 20 boards. The three members are ours. The associate is
+  neutral, opponent or the assassin. The other 21 words are fillers from
+  outside every case's theme.
+- Each board has a control: the same board with the associate swapped for a
+  filler of the same role.
+
+**Results.** The incumbent's listener (cache/listener_gbt.txt), with
+P(3 members) the frozen-score probability that the first three picks are
+exactly the members:
+
+| clue (members \| associate) | p(associate) pick 1 | control filler | P(3 members) | control | incumbent gives it (associate neutral) |
+|---|---|---|---|---|---|
+| animal (Bear/Whale/Octopus \| Africa) | 0.082 | 0.008 | 0.14 | 0.23 | 0/20 |
+| animal (… \| Forest) | 0.065 | 0.028 | 0.16 | 0.22 | 1/20 |
+| country (America/China/Germany \| Field) | 0.091 | 0.004 | 0.43 | 0.70 | 0/20 |
+| country (America/China/India \| Berlin) | 0.023 | 0.002 | 0.62 | 0.67 | 0/20 |
+| planet (Mercury/Saturn/Jupiter \| Moon) | 0.142 | 0.001 | 0.34 | 0.77 | 1/20 |
+| fruit (Orange/Lemon/Apple \| Pie) | 0.141 | 0.001 | 0.25 | 0.83 | 0/20 |
+| instrument (Piano/Flute/Organ \| Concert) | 0.058 | 0.001 | 0.58 | 0.83 | 7/20 |
+| metal (Iron/Gold/Copper \| Mine) | 0.008 | 0.001 | 0.59 | 0.63 | 1/20 |
+| city (London/Tokyo/Rome \| England) | 0.058 | 0.001 | 0.26 | 0.44 | 6/20 |
+| continent (Europe/Africa/Antarctica \| Egypt) | 0.018 | 0.000 | 0.78 | 0.90 | 12/20 |
+
+On the same boards, with the associate neutral and the number 3, **gpt-oss
+put the three members first on 50 of 50 boards.** The associate came 4th on
+half of them and was never above a member.
+
+- **The listener mixes up "is a kind of" and "goes with".** It ranks Pie above
+  at least one fruit on average (Pie's mean rank 2.2), and Moon (3.0) and
+  Africa (3.4) likewise. Across the ten cases, the associate cuts P(3 members)
+  from 0.62 to 0.41 on average. For fruit it falls from 0.83 to 0.25, and for
+  planet from 0.77 to 0.34. The guesser's ordering makes the true figure
+  close to 1 in all of them.
+- **The listener undervalues category clues even without an associate.**
+  "animal" for Bear/Whale/Octopus gets P(3 members) 0.22 on control boards,
+  against gpt-oss's 10/10. The members' total first-pick mass is 0.8, and the
+  rest is spread over unrelated fillers.
+- **The cost is paid where it matters.** With the associate as the assassin,
+  the clue's value at 3 goes negative in 8 of 10 cases (fruit -5.2, planet
+  -4.0). Stage one, the Gaussian shortlist, often drops it before the
+  listener sees it. Planet with Moon as an opponent is shortlisted on 0/20
+  boards, against 20/20 when Moon is neutral.
+- **What the incumbent gives instead** is often a near-synonym that carries
+  the same risk: marine, overseas, asia, juice, metallic, continental. It is
+  sometimes junk from the fillers (uranium 4, compassion 4, pasta 2).
+
+**Takeaway.** The failure the user described is real and large for this
+listener, and gpt-oss does not share it. No current feature says "c is a
+kind of w". Wu-Palmer similarity is symmetric and embedding cosine is
+thematic. That makes the WordNet hypernym and ConceptNet IsA features the
+next thing to try. Caveats:
+- These are ten hand-built cases, not a sample of real play.
+- How often a real board offers a clean category is unmeasured.
