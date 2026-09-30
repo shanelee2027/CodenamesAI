@@ -4781,3 +4781,12 @@ The same ordering holds on new boards and Sonnet. Fitted values:
 - Clue choice against conceptnet_listener on 300 positions: the same clue
   and number 65% of the time, with mean number 2.39 vs 2.41. It picks
   different clues, not more cautious ones.
+- **Games** (holdout_v1_gptoss, 96 boards, about $0.10):
+  - assoc_feature_listener vs the incumbent: 53.1% vs 46.9%, boards won
+    both ways 23 vs 17, sign p = 0.43, mean k 2.19 vs 2.29;
+  - conceptnet_listener for comparison: 54.7%, 24 vs 15.
+- **Not as expected:** the listener's largest R² gain so far buys no
+  visible extra win rate. Every listener-feature challenger lands in the
+  same 52–55% band, never significant. Either 100 boards cannot resolve a
+  few points, or the myopic reward limits play (within_turn_listener points
+  that way).
