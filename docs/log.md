@@ -4525,3 +4525,43 @@ thematic. That makes the WordNet hypernym and ConceptNet IsA features the
 next thing to try. Caveats:
 - These are ten hand-built cases, not a sample of real play.
 - How often a real board offers a clean category is unmeasured.
+
+## isa_listener: directional is-a features for the listener
+
+**Expected.** The category probe showed the listener confusing "is a kind of"
+with "goes with". The prediction was that directional WordNet features
+would fix most of that on the probe boards and give a small R² gain overall,
+since category clues with members on the board are a minority.
+
+**Built.**
+- `scripts/data/build_isa_sims.py` builds `cache/isa_sims.npz` in 8 s.
+- Three features follow the noun hypernym and instance-hypernym tree:
+  - `isa`: the board word is a kind of the clue, scored 1/(1+d);
+  - `isa_rev`: the reverse direction;
+  - `isa_n`: how many candidates are members.
+- They are appended to FEATURE_NAMES. Every listener spymaster now selects
+  its booster's own columns by name (`booster_columns`), so the incumbent and
+  every older booster score exactly as before. All 450 tests pass.
+- A spot-check on the probe cases separates members from associates on all
+  of them: Pie, Moon, Africa and Field score 0, and Berlin reaches "country"
+  only via its "area" sense at d = 5, against d = 2 for China.
+
+**Results** (full tables in docs/versions/isa_listener.md):
+- **Fit,** same recipe with and without the features, on identical rows:
+  - R² on new boards 0.3425 → 0.3448, held-out words 0.5475 → 0.5492, Sonnet
+    0.5456 → 0.5469, val +0.0002.
+  - On events whose clue is a category of a candidate: +0.003 to +0.012.
+  - Calibration is unchanged.
+- **Probe:** P(3 members) with the associate present rises 0.41 → 0.57, and
+  on controls 0.62 → 0.74. A same-recipe booster without the features gets
+  0.43, so the gain is the features', not the newer recipe's. "planet" is
+  given on 10 of 20 Moon boards, against 1.
+- **Games,** holdout_v1_gptoss over 94 boards: 52.1% vs 47.9%, boards won
+  both ways 19 vs 15, sign p = 0.61. Level with the incumbent. It cost about
+  $0.10; six boards are discarded because gpt-oss refused to rank.
+
+**Reading.** The flaw was real and is largely fixed, but it decides few
+games. isa_listener is a better model of the guesser at no measurable cost,
+and not a measurable win. The larger remaining gap is that the listener
+spreads ~15% of pick-1 mass over unrelated words even for a clean category,
+where gpt-oss is certain.
