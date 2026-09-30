@@ -4939,3 +4939,47 @@ holdout_v1_gptoss, against learned_listener, about $0.10 per arm:
     against the realised rate (free);
   - run Nemotron (about $0.86);
   - re-estimate V from the new model's own games (policy iteration step 2).
+
+## win_prob_listener: are the extra assassins a price or an error?
+
+`scripts/tools/check_turn_calibration.py` (free, 5 s) rebuilds every turn
+of the gpt-oss suite matchup. For each turn it asks the listener of the
+spymaster that gave the clue what it predicted for the number announced,
+and compares that with what gpt-oss did.
+
+| Per turn | win_prob predicted | win_prob actual | incumbent predicted | incumbent actual |
+|---|---|---|---|---|
+| P(assassin) | 0.0255 | 0.0338 (25 / 740) | 0.0131 | 0.0155 (11 / 710) |
+| P(ends on an opponent word) | 0.147 | 0.180 | 0.118 | 0.137 |
+| own words | 1.85 | 1.72 | 1.81 | 1.68 |
+
+win_prob's assassin rate by predicted risk:
+
+| Predicted risk | turns | predicted | actual |
+|---|---|---|---|
+| < 1% | 312 | 0.3% | 0 |
+| 1–3% | 229 | 1.9% | 2.6% (6) |
+| **3–6%** | **116** | **4.3%** | **8.6% (10)** |
+| ≥ 6% | 83 | 10.3% | 10.8% (9) |
+
+**Reading.**
+- **Mostly a price, partly an error.**
+  - win_prob chose clues its listener rated twice as risky (0.0255
+    against 0.0131 per turn). That accounts for about 9.6 of the 14 extra
+    assassin hits: a deliberate trade.
+  - The rest is under-prediction. There were 25 hits against 18.9
+    expected, Poisson p = 0.10. The incumbent's listener shows the same
+    lean more mildly (11 against 9.3, p = 0.33).
+- **The optimiser's curse is visible in the middle bin.** At 3–6% predicted
+  risk there were 10 hits against 5.0 expected (p = 0.03). Clues the
+  listener rates moderately risky are the ones where its errors most often
+  favour the argmax. The top bin is calibrated.
+- **Both listeners are overconfident across the board.** Own words are
+  over-predicted by 0.13 per turn, and opponent endings under-predicted by
+  about 20%. The search leans on these numbers directly, not just on their
+  ranking, so this matters more now than it did under the old objective.
+- **Possible fix:** recalibrate the listener's turn-ending probabilities
+  before the objective uses them. For example, fit one temperature or one
+  bad-word offset on recorded turns so that predicted endings match
+  realised ones. This is the within-turn idea done as calibration of the
+  whole turn, not of later picks.

@@ -95,9 +95,16 @@ discarded where gpt-oss would not rank.
 - **A second guesser.** A Nemotron run (about $0.86) would show whether the
   gain holds beyond gpt-oss. V was estimated from gpt-oss games, so the
   tempo it rewards is gpt-oss's.
-- **Is the assassin rate a listener error or the right price?** Compare the
-  listener's predicted P(assassin) for the clues it chose with the realised
-  rate. This is free, from the recorded games.
+- **Is the assassin rate a listener error or the right price?** Checked
+  (`scripts/tools/check_turn_calibration.py`; docs/log.md).
+  - It is mostly a price. The chosen clues were rated twice as risky as the
+    incumbent's, which accounts for about 9.6 of the 14 extra assassin hits.
+  - The rest is under-prediction: 25 hits against 18.9 predicted, p = 0.10.
+    It is worst at 3–6% predicted risk (10 against 5.0, p = 0.03), the
+    optimiser's curse.
+  - Both listeners over-predict own words by about 0.13 per turn.
+  - Next: recalibrate the turn-ending probabilities on recorded turns
+    before the objective uses them.
 - **Policy iteration step 2.** Re-estimate V from win_prob_listener's own
   games (it has played 186 so far), then play again.
 - **Method B.** A V that reads the board: the assassin's neighbourhood, and
