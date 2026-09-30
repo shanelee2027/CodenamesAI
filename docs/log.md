@@ -5027,3 +5027,47 @@ holdout_v1_gptoss, about $0.10 each.
   Nemotron with the old objective).
 - **Confound in the bottom rung:** the incumbent's booster is an older
   recipe on less data. The other three share one recipe and split.
+
+## Does the board predict wins beyond the score? (method B go/no-go)
+
+`scripts/tools/eval_board_value.py` (free, about 12 minutes; features cached
+in `cache/training_data/board_value_features.npz`).
+- **Data:** 93,612 turn states from 700 boards, from the same games as
+  V(a, b). The gpt-oss suite has grown since V was built, so this now
+  includes the win_prob challengers' suite games; one side is always the
+  incumbent.
+- **Folds:** 5, grouped by board.
+- **Board features:** from the clue policy's clue × word tables, with
+  s = mean z over five embedding spaces and only legal clues counted. Per
+  side:
+  - `best_k`: the cleanest k-clue's margin over the best non-own word;
+  - `worst_word`, `mean_word`: one-word margins;
+  - `assassin_pair`: how easily an own word and the assassin share a clue.
+
+| Arm (out of fold) | log-loss | Brier |
+|---|---|---|
+| count table (rebuilt per fold) | 0.5072 | 0.1714 |
+| GBT on counts | 0.5072 | 0.1714 |
+| GBT on counts + board | **0.5033** | **0.1698** |
+
+- **The board adds a little, and significantly:** log-loss +0.0039 per
+  state, 95% [+0.0011, +0.0070] over boards. The share of a constant
+  prediction's loss explained goes 0.267 → 0.273.
+- **A methodological catch on the way.** The first run early-stopped on a
+  by-row split inside the training folds. Boards recur across games, so the
+  trees memorised boards unchecked, and the board model came out worse
+  (0.5167). Splitting early stopping by board fixed it.
+- **Decision relevance is larger than the log-loss gain suggests.** Within
+  a score cell, the board term moves V by sd 0.048. It is over 0.05 for 25%
+  of states and over 0.10 for 5%. Within one move, after-boards with the
+  same score differ only by this term. A shift of 0.05 is about a third of
+  one own word's value, and larger than the gap between top clues. Some of
+  the spread is estimation noise.
+- **The most-used features are assassin closeness** for both sides, then
+  the best 2-clue margins.
+- **Verdict: go, cautiously.** The board carries a real but modest signal,
+  mainly about the assassin. Plugging it in needs:
+  - the subset DP to output P(own words found, ending word) per clue;
+  - after-board features batched on the GPU. The per-state loop here runs
+    at about 7 ms per state, far too slow for about 4,000 after-boards per
+    move.
