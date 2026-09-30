@@ -4727,3 +4727,57 @@ The same ordering holds on new boards and Sonnet. Fitted values:
   "`'NoneType' object cannot be interpreted as an integer`" inside
   multiprocessing's send. It looks like a manager shutdown race. The rerun
   with `--max-workers 2` resumed cleanly, and the game store lost nothing.
+
+## Free associations and clue senses as listener features
+
+**Expected.**
+- **gpt-oss's free associations** (five lists of 25 words per clue, the clue
+  shown alone) would help. They are the guesser's own associative memory,
+  which no embedding reproduces exactly. They were already in the cache as
+  association_listener's training target, but only for about 9,500 teacher
+  clues. A feature must exist for every clue the spymaster can give.
+- **Sense agreement** would help a little. It asks whether a word shares its
+  best WordNet sense of the clue with the board's other strong candidates
+  (the "bank": River vs Money case).
+
+**Built.**
+- `collect_associations.py --pool` bought the lists for the rest of the clue
+  pool: 8,400 lists, 61 refused (mostly profanity), about $0.20. Every pool
+  clue now has lists.
+- `build_assoc_sims.py` gives `assoc_share` (share of lists naming the word)
+  and `assoc_rank` (mean 1/position). Only 0.83% of (clue, board word) pairs
+  are named at all.
+- `build_wordnet_senses.py` stores the best clue sense per pair (62.7% have
+  one). `listener_features._sense_agreement` gives `sense_agree` and
+  `sense_spread`.
+- Ablation: `eval_feature_blocks.py --arms senses_assoc`, each arm
+  conceptnet_listener's recipe plus the named block, on identical rows. It
+  now reports a paired bootstrap over boards itself.
+
+**Result** (R² gain over conceptnet_listener's recipe, 95% interval):
+
+| Set | + senses | + assoc | + both |
+|---|---|---|---|
+| val | −0.0002 [−0.0008, +0.0004] | **+0.0043** [+0.0029, +0.0057] | +0.0039 [+0.0025, +0.0054] |
+| new boards | −0.0006 [−0.0017, +0.0006] | **+0.0046** [+0.0023, +0.0071] | +0.0039 [+0.0014, +0.0063] |
+| held-out words (gpt-oss) | +0.0008 [−0.0003, +0.0019] | **+0.0118** [+0.0088, +0.0148] | +0.0126 [+0.0098, +0.0154] |
+| held-out words (Sonnet) | +0.0003 [−0.0007, +0.0014] | **+0.0034** [+0.0007, +0.0062] | +0.0042 [+0.0014, +0.0070] |
+
+**Reading.**
+- **Associations are the largest single feature gain since ConceptNet.**
+  On held-out words it is three times ConceptNet's gain. Pick-1 accuracy
+  rises 0.805 → 0.814 there, and top-pick calibration error falls
+  0.077 → 0.067.
+- **It is not only gpt-oss predicting itself.** Sonnet's rankings improve
+  too (+0.0034, interval clear of 0). The gain is about a third of the
+  gpt-oss gain, as expected when the lists come from the guesser being
+  predicted.
+- **Sense agreement buys nothing,** here and in the within-turn model.
+  Numberbatch's cohesion features probably already carry "the strong
+  candidates agree".
+- The model built from this is **assoc_feature_listener**: conceptnet_listener
+  + assoc, without senses. The name keeps it apart from association_listener,
+  which used such lists as a training target, not as inputs.
+- Clue choice against conceptnet_listener on 300 positions: the same clue
+  and number 65% of the time, with mean number 2.39 vs 2.41. It picks
+  different clues, not more cautious ones.

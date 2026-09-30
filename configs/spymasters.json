@@ -158,6 +158,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "conceptnet_listener plus gpt-oss's free associations as listener INPUTS: assoc_share (share of 5 lists per clue naming the word) and assoc_rank (mean 1/position); lists for the whole clue pool (collect_associations.py --pool, build_assoc_sims.py). Booster cache/listener_gbt_assoc_features.txt, same recipe and split. Not association_listener, which used such lists as a training target. docs/versions/assoc_feature_listener.md.",
+   "name": "assoc_feature_listener",
+   "type": "assoc_feature_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

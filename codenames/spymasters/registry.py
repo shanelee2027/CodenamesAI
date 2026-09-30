@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from codenames.spymasters.association_listener import AssociationListenerSpymaster
+from codenames.spymasters.assoc_feature_listener import AssocFeatureListenerSpymaster
 from codenames.spymasters.conceptnet_listener import ConceptnetListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
@@ -64,6 +65,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "association_listener": AssociationListenerSpymaster,
     "isa_listener": IsaListenerSpymaster,
     "conceptnet_listener": ConceptnetListenerSpymaster,
+    "assoc_feature_listener": AssocFeatureListenerSpymaster,
     "within_turn_listener": WithinTurnListenerSpymaster,
     "imitation_policy": ImitationPolicySpymaster,
     "gptoss_reward_policy": GptossRewardPolicySpymaster,
