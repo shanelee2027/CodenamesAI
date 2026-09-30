@@ -45,8 +45,8 @@ reads the same variable.
 | `learned_listener` | shortlists 200 clues with `expected_words` (σ=1.5), then scores them with the distilled listener's exact Plackett–Luce expected reward ([paper](docs/clue-selection-learned.pdf), [doc](docs/versions/learned_listener.md)) | **the incumbent** |
 | `pick_temperature_listener` | `learned_listener` with the listener's confidence set per pick (softmax(score / τ_j), τ = 1.0, 1.1, 1.3, 1.5), because frozen scores are overconfident after the first pick ([doc](docs/versions/pick_temperature_listener.md)) | challenger |
 | `isa_listener` | `learned_listener` whose listener also knows "is a kind of" (three WordNet hypernym features), so an associate like Pie no longer competes with the fruit for "fruit" ([doc](docs/versions/isa_listener.md)) | challenger |
-| `conceptnet_listener` | `isa_listener` plus ConceptNet's typed relations and phrase lexicon (Donald Duck, firefly) ([doc](docs/versions/conceptnet_listener.md)) | challenger |
-| `assoc_feature_listener` | `conceptnet_listener` plus gpt-oss's free associations to the clue as listener inputs (share of lists naming the word, mean 1/position) ([doc](docs/versions/assoc_feature_listener.md)) | challenger |
+| `conceptnet_listener` | `isa_listener` plus ConceptNet's typed relations and phrase lexicon (Donald Duck, firefly); leads the incumbent under both gpt-oss and Nemotron, neither significant alone ([doc](docs/versions/conceptnet_listener.md)) | challenger (best supported) |
+| `assoc_feature_listener` | `conceptnet_listener` plus gpt-oss's free associations to the clue as listener inputs (share of lists naming the word, mean 1/position); best listener fit, but no lead under Nemotron ([doc](docs/versions/assoc_feature_listener.md)) | challenger |
 | `within_turn_listener` | `conceptnet_listener` whose reward models picks 2+ of a turn as their own choices (flatter as strong words run out, pulled toward the words already picked); fits later picks far better, loses to the incumbent 11 vs 27 boards ([doc](docs/versions/within_turn_listener.md)) | challenger (lost) |
 
 All of these are entries in `configs/spymasters.json`; a script picks spymasters
