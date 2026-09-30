@@ -4396,3 +4396,63 @@ Sign test on the 36 decisive boards: p = 0.41.
 - **So the conclusion stands:** calibrating later picks, with the costs
   unchanged, does not help. The costs need re-tuning for this reward, or the
   objective needs to value tempo.
+
+## Where the listener's unexplained variance is
+
+Free diagnostics (`scripts/tools/listener_diagnostics.py`) on the refitted
+GBT, out of sample.
+
+**1. Invented tails in the labels.** The parser appends words the guesser did
+not name in prompt order, and the store keeps only the parsed ranking. So an
+invented tail is a suffix in prompt order; one of 4 or more occurs by chance
+with probability 1/24. The check counts positions where such a tail reaches
+into the first k picks, the ones the listener trains on:
+
+| set | positions affected | GBT R² on them | on the rest |
+|---|---|---|---|
+| train | 322 (1.7%) | | |
+| val | 92 (1.5%) | 0.235 | 0.367 |
+| new boards | 43 (2.3%) | 0.247 | 0.346 |
+| held-out words (gpt-oss) | 8 (0.3%) | 0.186 | 0.540 |
+| held-out words (Sonnet) | 95 (2.3%) | **-0.743** | **0.595** |
+
+- **gpt-oss.** These are probably answers stored before the rule that a
+  usable answer must name k + 2 words. They are noise in the training labels
+  at 1.5-2%.
+- **Sonnet.** The Anthropic guesser (`LLMGuesser._query`) has no such rule.
+  When Sonnet names fewer than k words, the rest of its "ranking" is board
+  order. Excluding those positions raises the listener's Sonnet held-out R²
+  from 0.546 to 0.595, so every Sonnet R² reported so far understates the
+  listener.
+- **Consequence for games:** in the frozen Sonnet suite, a turn where Sonnet
+  named fewer than k words kept guessing in board order. Sonnet was
+  effectively passing, and the game turned that into random guesses. That
+  affects about 2% of turns, and more for spymasters that announce high
+  numbers.
+
+**2. Prompt position.** Board order is random with respect to meaning, so
+this effect is not confounded with the clue. At pick 1, words in the first
+fifth of the list are picked 1.17-1.18x as often as chance and words in the
+last fifth 0.85-0.91x, for gpt-oss and Sonnet alike. At later picks the effect
+is weak. Adding position to the GBT score (per-pick coefficients fitted on
+val) gains +0.003 R² on new boards and +0.004 on held-out words (gpt-oss),
+almost all at pick 1. It is real but small. It is also a quirk of the model,
+so it belongs in predicting the arena, not in choosing clues.
+
+**3. Error analysis** (val + new boards):
+- **By pick,** R² is 0.585, 0.264, 0.149 and 0.087 for picks 1-4. Most of
+  the unexplained variance is in later picks, and how much of it is
+  explainable at all (gpt-oss's own consistency) is unmeasured.
+- **By clue part of speech** (pick 1): noun 0.616, verb 0.593, adjective
+  0.560, adverb 0.406. **Clues not in WordNet score 0.335** (5% of first
+  picks). They are mostly proper nouns and plurals: greeks, oxford, midwest,
+  romania, connecticut. Their WordNet features are missing and nothing
+  replaces them.
+- **Multi-word targets** (Ice cream, New york): 0.441 against 0.587, on 95
+  events.
+- **Announced number and clue rarity:** no effect.
+- **The worst first picks are real choices,** not garbled labels. Their
+  rankings are complete, not prompt-ordered: greeks -> Pan, movie -> Rock (The
+  Rock), king -> Greece. They are sense and entity associations the features
+  miss, plus sampling noise. The picked word was first in the prompt 14% of
+  the time among the worst 100, against 6% by chance.
