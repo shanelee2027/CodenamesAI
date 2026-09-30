@@ -96,5 +96,5 @@ class PickTemperatureListenerSpymaster(LearnedListenerSpymaster):
         super().__init__(*args, **kwargs)
         self.pick_temperatures = tuple(float(t) for t in pick_temperatures)
 
-    def _gain_and_penalty(self, s_own, s_bad, costs, max_k, s_out):
+    def _gain_and_penalty(self, s_own, s_bad, costs, max_k, s_out, words=None):
         return tempered_gain_and_penalty(s_own, s_bad, costs, max_k, self.pick_temperatures, s_out)

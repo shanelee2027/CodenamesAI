@@ -56,3 +56,17 @@ it is the only thing making past evaluations reproducible. Back it up.
 - Flag design choices the user might not notice. This is a graded project
   that will be defended orally; every file needs to be explicable by the
   author.
+
+## Hard limits (security and money)
+
+- **Never read or change files outside this project directory.** The only
+  exceptions are the agent's own memory folder and session scratchpad.
+- **Never spend money that was not explicitly granted.** Using existing
+  DeepInfra credits within a stated budget is fine. Using the card on file,
+  refilling or topping up any account, or enabling auto-recharge is never
+  allowed. If credits run out, stop and report.
+- Follow ordinary security practice:
+  - never print or move keys or secrets;
+  - never change account, billing or permission settings;
+  - never send project data to new outside services;
+  - never weaken a safeguard to finish a task.

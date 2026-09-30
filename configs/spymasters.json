@@ -144,6 +144,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "conceptnet_listener with the guesser's picks 2+ modelled as their own choices: at pick j the logits are alpha*s + beta*(max similarity to a word already picked), alpha = exp(a + b*(best score left - best score picked)), fitted on the stored rankings' later picks (codenames/sequential_listener.py, cache/sequential_listener.json). The reward is exact over which own words have been picked. docs/versions/within_turn_listener.md.",
+   "name": "within_turn_listener",
+   "type": "within_turn_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

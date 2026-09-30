@@ -27,6 +27,11 @@ cache/associations.db; nothing touches llm_store.db.
 
     python scripts/data/collect_associations.py --limit 20 --samples 2   # pilot
     python scripts/data/collect_associations.py --samples 5
+    python scripts/data/collect_associations.py --samples 5 --pool   # + every clue the spymaster may give
+
+`--pool` adds the spymaster's whole clue pool (rarity <= 10), so the lists can
+serve as a listener FEATURE: a feature must exist for every clue scored at
+play time, not only for the clues the teacher was asked about.
 """
 
 from __future__ import annotations
@@ -61,6 +66,17 @@ def teacher_clues() -> list[str]:
     return clues
 
 
+def pool_clues(max_rarity: float = 10.0) -> list[str]:
+    """The clue pool every learned-listener spymaster searches (max_rarity=10)."""
+    import numpy as np
+
+    from codenames.clue_stats import ClueStats
+    from codenames.similarity import DEFAULT_CACHE_DIR
+
+    stats = ClueStats.load(DEFAULT_CACHE_DIR)
+    return [stats.clue_words[i].lower() for i in np.flatnonzero(stats.rarity_percentile <= max_rarity)]
+
+
 def parse(text: str) -> list[str]:
     m = re.search(r"\[.*\]", text, re.DOTALL)
     try:
@@ -82,9 +98,12 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=OUT_DB)
     ap.add_argument("--max-workers", type=int, default=16)
     ap.add_argument("--temperature", type=float, default=1.0)
+    ap.add_argument("--pool", action="store_true", help="also every clue in the spymaster's pool")
     args = ap.parse_args()
 
     clues = teacher_clues()
+    if args.pool:
+        clues = sorted(set(clues) | set(pool_clues()))
     if args.limit:
         clues = clues[:: max(1, len(clues) // args.limit)][: args.limit]
     args.out.parent.mkdir(parents=True, exist_ok=True)

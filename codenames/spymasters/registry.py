@@ -43,6 +43,7 @@ from pathlib import Path
 from codenames.spymasters.association_listener import AssociationListenerSpymaster
 from codenames.spymasters.conceptnet_listener import ConceptnetListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
+from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
 from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
@@ -63,6 +64,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "association_listener": AssociationListenerSpymaster,
     "isa_listener": IsaListenerSpymaster,
     "conceptnet_listener": ConceptnetListenerSpymaster,
+    "within_turn_listener": WithinTurnListenerSpymaster,
     "imitation_policy": ImitationPolicySpymaster,
     "gptoss_reward_policy": GptossRewardPolicySpymaster,
     "win_actor_critic": WinActorCriticSpymaster,

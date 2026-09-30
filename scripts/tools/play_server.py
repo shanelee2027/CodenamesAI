@@ -88,6 +88,7 @@ from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import ListenerBundle, LearnedListenerSpymaster
 from codenames.spymasters.conceptnet_listener import ConceptnetListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
+from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
 from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
@@ -172,6 +173,14 @@ SPYMASTERS: dict[str, dict] = {
         "needs": ["isa_sims.npz", "conceptnet_sims.npz"],
         "about": "The is-a listener, plus ConceptNet's typed relations and phrases "
                  "(Donald Duck, firefly)."},
+    # The ConceptNet listener with picks 2+ modelled as their own choices
+    # (codenames/spymasters/within_turn_listener.py).
+    "within_turn": {
+        "label": "Within-turn listener", "model": "listener_gbt_conceptnet.txt", "outside_n": 0,
+        "cls": WithinTurnListenerSpymaster, "kwargs": {"outside_n": 0},
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "sequential_listener.json", "word_vectors.npz"],
+        "about": "The ConceptNet listener, but after the first pick the guesser is modelled as "
+                 "flatter and pulled toward words like the ones it already picked (Cap, then Glove)."},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).
@@ -190,7 +199,7 @@ SPYMASTERS: dict[str, dict] = {
 # Uncapped twins: the same model allowed to announce every own word left
 # rather than at most 4 (max_number=None). The listener's k feature was only
 # ever trained on 1-4, so above that its numbers are an extrapolation.
-for _key in ("incumbent", "pick_temperature", "isa", "conceptnet", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
+for _key in ("incumbent", "pick_temperature", "isa", "conceptnet", "within_turn", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
     _spec = SPYMASTERS[_key]
     SPYMASTERS[f"{_key}_uncapped"] = {
         **_spec, "label": f"{_spec['label']}, uncapped",
@@ -277,7 +286,7 @@ class Engine:
         # the value shown is the one the clue was chosen on.
         gain, penalty = sm._gain_and_penalty(
             s[None, :n_own], s[None, n_own:], np.array([sm.costs[r] for r in roles[n_own:]]),
-            clue_number_cap(n_own, sm.max_number), s_out)
+            clue_number_cap(n_own, sm.max_number), s_out, words=words)
         value = float((gain - penalty)[0, number - 1])
         entries = [(w, ROLE_CODE[r], float(x)) for w, r, x in zip(words, roles, s)]
         if got["outside"] is not None:

@@ -39,7 +39,7 @@ from codenames.clue_search import is_legal_clue
 from codenames.clue_stats import ClueStats
 from codenames.game import role_costs
 from codenames.listener_features import (
-    CONCEPTNET_FEATURES,
+    APPENDED_TABLES,
     FEATURE_NAMES,
     EntitySims,
     ExtraSims,
@@ -75,7 +75,6 @@ OUTSIDE_N = 0
 NB_SPACE = 1
 NCAND = FEATURE_NAMES.index("n_candidates")
 ISA, ISA_N = FEATURE_NAMES.index("isa"), FEATURE_NAMES.index("isa_n")
-FEATURE_BLOCK_TAXONOMY = ("isa", "isa_rev", "isa_n")
 
 
 @dataclass(frozen=True)
@@ -97,8 +96,7 @@ class ListenerBundle:
     norms: WordNorms | None
     wordnet: ExtraSims | None
     lexical: ExtraSims | None
-    isa: ExtraSims | None = None
-    conceptnet: ExtraSims | None = None
+    appended: dict | None = None     # extract() keyword -> table, for the tables this booster reads
     columns: list[int] | None = None
 
     @classmethod
@@ -123,12 +121,12 @@ class ListenerBundle:
         # Only a booster that reads the newer tables' features needs them, so
         # the incumbent loads (and scores) exactly as before without them.
         used = {FEATURE_NAMES[c] for c in columns}
-        uses_isa = bool(used & set(FEATURE_BLOCK_TAXONOMY))
-        uses_cn = bool(used & set(CONCEPTNET_FEATURES))
-        for flag, name, script in ((uses_isa, "isa_sims.npz", "build_isa_sims.py"),
-                                   (uses_cn, "conceptnet_sims.npz", "build_conceptnet_sims.py")):
-            if flag and not (cache_dir / name).exists():
-                raise FileNotFoundError(f"{name} missing; run scripts/data/{script}")
+        appended = {}
+        for key, (name, feats) in APPENDED_TABLES.items():
+            if used & set(feats):
+                if not (cache_dir / name).exists():
+                    raise FileNotFoundError(f"{name} missing from {cache_dir}; see scripts/data/")
+                appended[key] = ExtraSims.load(cache_dir / name)
         return cls(
             booster=booster,
             word_stats=WordStats.load(cache_dir / "word_stats.npz"),
@@ -139,8 +137,7 @@ class ListenerBundle:
             norms=maybe(WordNorms.load, "word_norms.npz"),
             wordnet=maybe(ExtraSims.load, "wordnet_sims.npz"),
             lexical=maybe(ExtraSims.load, "lexical_sims.npz"),
-            isa=maybe(ExtraSims.load, "isa_sims.npz") if uses_isa else None,
-            conceptnet=maybe(ExtraSims.load, "conceptnet_sims.npz") if uses_cn else None,
+            appended=appended,
             columns=columns,
         )
 
@@ -253,7 +250,7 @@ class LearnedListenerSpymaster(Spymaster):
         b = self.bundle
         feats = extract(clue, candidates, number, sims, self.clue_stats, b.word_stats,
                         self._clue_index, b.swow, b.entity, b.pmi, b.extra, b.norms,
-                        b.wordnet, b.lexical, b.isa, b.conceptnet)
+                        b.wordnet, b.lexical, **(b.appended or {}))
         if feats is None:
             return None
         if n_board is not None:
@@ -338,7 +335,8 @@ class LearnedListenerSpymaster(Spymaster):
         flat = self.bundle.booster.predict(np.vstack(rows), raw_score=True)
         S = np.asarray(flat, dtype=np.float64).reshape(len(keep), n_scored)
         S, s_out = self._split_outside(S, n_board)
-        gain, penalty = self._gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max, s_out)
+        gain, penalty = self._gain_and_penalty(S[:, :n_own], S[:, n_own:], costs, K_max, s_out,
+                                               words=candidates)
         net = gain - penalty                                 # (n_keep, K_max)
         best_m = np.argmax(net, axis=1)
         idx = np.asarray(keep)
@@ -356,9 +354,11 @@ class LearnedListenerSpymaster(Spymaster):
         return best_n, scores, margin
 
     def _gain_and_penalty(self, s_own: np.ndarray, s_bad: np.ndarray, costs: np.ndarray, max_k: int,
-                          s_out: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
+                          s_out: np.ndarray | None, words: list[str] | None = None) -> tuple[np.ndarray, np.ndarray]:
         """The reward model, as a method so a subclass can replace it
-        (spymasters/pick_temperature_listener.py) without copying the search.
+        (spymasters/pick_temperature_listener.py, within_turn_listener.py)
+        without copying the search. `words` are the board words in column
+        order, own first, for a reward that depends on which words they are.
         Here: Plackett-Luce on frozen scores, codenames/pl_reward.py."""
         return gain_and_penalty(s_own, s_bad, costs, max_k, s_out=s_out)
 

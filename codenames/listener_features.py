@@ -160,9 +160,36 @@ FEATURE_NAMES: list[str] = [
     # cn_isa is kept apart from WordNet's isa: crowd-sourced, and noisier
     # ("moon IsA planet").
     "cn_isa", "cn_isa_rev", "cn_part", "cn_typed", "cn_any", "cmp_cw", "cmp_wc",
+    # tier 2: which READING of the clue a word connects through
+    # (scripts/data/build_wordnet_senses.py). A guesser commits to one sense
+    # of an ambiguous clue, the one its strong candidates share; a word close
+    # to the clue only in a reading nothing else on the board supports should
+    # be discounted. sense_agree: the weight of the other strong candidates
+    # (top COHESION_TOP by numberbatch z) whose best clue sense is w's own;
+    # sense_spread: how many senses those candidates use (a board constant).
+    "sense_agree", "sense_spread",
+    # tier 2: the teacher's own free associations to the clue, with no board
+    # shown (scripts/data/collect_associations.py --pool, tabled by
+    # scripts/data/build_assoc_sims.py): the share of 5 sampled 25-word lists
+    # naming w, and its mean reciprocal position in them. This is what gpt-oss
+    # knows about the clue that no corpus statistic carries -- "movie" ->
+    # Rock (The Rock) -- so it is also the feature most specific to gpt-oss,
+    # and is checked against Sonnet's picks and a second guesser's games.
+    "assoc_share", "assoc_rank",
 ]
 
 CONCEPTNET_FEATURES = ("cn_isa", "cn_isa_rev", "cn_part", "cn_typed", "cn_any", "cmp_cw", "cmp_wc")
+
+# The appended side tables: extract() keyword -> (file under cache/, the
+# features it feeds). A listener loads a table only if its booster reads one
+# of those features (learned_listener.ListenerBundle), so every older booster
+# runs exactly as it did before the table existed.
+APPENDED_TABLES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "isa": ("isa_sims.npz", ("isa", "isa_rev", "isa_n")),
+    "conceptnet": ("conceptnet_sims.npz", CONCEPTNET_FEATURES),
+    "senses": ("wordnet_senses.npz", ("sense_agree", "sense_spread")),
+    "assoc": ("assoc_sims.npz", ("assoc_share", "assoc_rank")),
+}
 
 N_FEATURES = len(FEATURE_NAMES)
 
@@ -417,6 +444,25 @@ def _cohesion(
     return out
 
 
+def _sense_agreement(sense: np.ndarray, wup: np.ndarray, z_nb: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per word, the share of the other strong candidates' Wu-Palmer weight
+    that sits on the word's own best clue sense; and the number of distinct
+    senses among the strong candidates. NaN without sense evidence."""
+    n = len(sense)
+    have = np.isfinite(sense) & (sense >= 0) & np.isfinite(wup)
+    top = [int(t) for t in np.argsort(-z_nb)[: COHESION_TOP + 1] if have[t]]
+    spread = np.full(n, float(len({int(sense[t]) for t in top[:COHESION_TOP]})) if top else np.nan)
+    agree = np.full(n, np.nan)
+    for i in range(n):
+        if not have[i]:
+            continue
+        others = [t for t in top if t != i][:COHESION_TOP]
+        tot = sum(float(wup[t]) for t in others)
+        if tot > 0:
+            agree[i] = sum(float(wup[t]) for t in others if sense[t] == sense[i]) / tot
+    return agree, spread
+
+
 def isa_count(isa_col: np.ndarray) -> float:
     """How many candidates are a kind of the clue; NaN when WordNet has no
     evidence for any of them (the clue is not a noun there)."""
@@ -452,6 +498,8 @@ def extract(
     lexical: "ExtraSims | None" = None,
     isa: "ExtraSims | None" = None,
     conceptnet: "ExtraSims | None" = None,
+    senses: "ExtraSims | None" = None,
+    assoc: "ExtraSims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -616,6 +664,21 @@ def extract(
         ccols = np.array([conceptnet.board_pos.get(w.lower(), -1) for w in candidates])
         for key in CONCEPTNET_FEATURES:
             cols.append(conceptnet.row(key, ci, ccols))
+
+    if senses is None:
+        cols.extend([np.full(n, np.nan), np.full(n, np.nan)])
+    else:
+        scols = np.array([senses.board_pos.get(w.lower(), -1) for w in candidates])
+        agree, spread = _sense_agreement(senses.row("sense", ci, scols), senses.row("sense_wup", ci, scols), z[:, 1])
+        cols.append(agree)
+        cols.append(spread)
+
+    if assoc is None:
+        cols.extend([np.full(n, np.nan), np.full(n, np.nan)])
+    else:
+        acols = np.array([assoc.board_pos.get(w.lower(), -1) for w in candidates])
+        cols.append(assoc.row("assoc_share", ci, acols))
+        cols.append(assoc.row("assoc_rank", ci, acols))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)
