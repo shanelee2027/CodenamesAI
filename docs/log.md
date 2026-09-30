@@ -4642,3 +4642,88 @@ bootstrap over boards):
 - **Games,** holdout_v1_gptoss over 96 boards: 54.7% vs 45.3%, boards won both
   ways 24 vs 15, sign p = 0.20. This is the best result against the incumbent
   so far, but not significant. Cost about $0.10.
+
+## Picks within a turn: within_turn_listener
+
+**Question (Shane's).** Two outcomes are treated as the same:
+- clue for 2, and the guesser picks A and then B;
+- clue for 1, the guesser picks A; then a new clue on the same board with A
+  revealed, and it picks B.
+
+The reward treats pick 2 as pick 1 with A removed and the same scores
+renormalised. The ceiling above says that is where the listener is weakest.
+
+**Expected.**
+- A per-pick model would fit later picks much better.
+- The reward would claim fewer words on clues whose later words are weak,
+  and more on coherent sets.
+- Whether that wins against gpt-oss was doubtful from the start: every
+  earlier lever that made the spymaster more cautious lost to it.
+
+**Built** (`codenames/sequential_listener.py`,
+`scripts/pipeline/train_sequential_listener.py`,
+`codenames/spymasters/within_turn_listener.py`). At pick j ≥ 2 the logits are
+
+    alpha_j * s + beta_j * fit(w, picked) [+ gamma_j * same_sense]
+
+with alpha_j = exp(a_j + b_j * drop). Here:
+- `drop` is the best score left minus the best score picked;
+- `fit` is the maximum cosine to a word already picked;
+- `same_sense` uses the new `cache/wordnet_senses.npz`.
+
+There are three parameters per pick (2, 3, and 4+), fitted on val by LBFGS.
+The reward stays exact: every term depends on the set of own words picked,
+so the subset DP of pick_temperature_listener still applies with per-state
+logits. It is checked against brute-force enumeration in
+`tests/test_sequential_listener.py`.
+
+**Fit** (McFadden R² on later picks; held-out words, gpt-oss):
+
+| Arm | pick 2 | pick 3 | pick 4+ |
+|---|---|---|---|
+| frozen (today) | 0.416 | 0.167 | 0.044 |
+| temperature per pick | 0.428 | 0.208 | 0.117 |
+| + drop | 0.442 | 0.217 | 0.127 |
+| + fit | **0.461** | **0.235** | **0.147** |
+| + sense | 0.461 | 0.235 | 0.148 |
+| fit only (alpha = 1) | 0.428 | 0.174 | 0.051 |
+
+The same ordering holds on new boards and Sonnet. Fitted values:
+- beta ≈ 5 at every pick, a strong pull toward the words already picked;
+- a runs −0.24, −0.44, −0.58, so later picks get flatter;
+- sense adds nothing once fit is in.
+
+**Clue choice.** Against conceptnet_listener on 600 positions:
+- the same clue and number 56% of the time;
+- mean number 2.38 → 2.10, and clues for 4 fall from 105 to 43.
+
+**Games** (holdout_v1_gptoss, against learned_listener, about $0.10 each):
+
+| Challenger | win% | boards won both ways | sign p | mean k |
+|---|---|---|---|---|
+| conceptnet_listener (old reward, for reference) | 54.7% | 24 vs 15 | 0.20 | 2.19 |
+| within_turn_listener (+ fit arm) | **41.6%** | **11 vs 27** | **0.014** | 2.00 |
+| within_turn_listener, fit only | 49.0% | 17 vs 19 | 0.87 | 2.19 |
+
+**Reading.**
+- **A better model of the guesser made a worse spymaster against it.** The
+  loss comes from the flattening terms: they lower k, as every cautious
+  lever has, and the result is the same significant loss.
+- **The coherence term alone is neutral.** It keeps k at 2.19. It does not
+  keep conceptnet_listener's lead, but 17–19 against 24–15 is inside the
+  noise.
+- **So the reward is the bottleneck, not the listener.** The reward is
+  myopic: expected own words minus role costs, for this turn only. It
+  cannot see tempo. The old model's overconfidence at later picks inflated
+  high-k clues, and that was, in effect, paying for tempo.
+- Pricing a turn correctly needs a value of the position it leaves. That is
+  the win-rate actor-critic direction. The within-turn model is the right
+  description of the guesser for it to use, even though it cannot help
+  inside today's reward.
+- **Human guessers stop when unsure,** and for them the flatter later picks
+  may be right. The arena cannot say.
+- **An infrastructure bug seen on the way.** A small retry pass (8 boards
+  across 6 × 16 threads) crashed in two_team_arena's task queue with
+  "`'NoneType' object cannot be interpreted as an integer`" inside
+  multiprocessing's send. It looks like a manager shutdown race. The rerun
+  with `--max-workers 2` resumed cleanly, and the game store lost nothing.

@@ -22,6 +22,8 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
   directional WordNet is-a features.
 - [`conceptnet_listener`](conceptnet_listener.md): isa_listener plus ConceptNet
   relations and phrases.
+- [`within_turn_listener`](within_turn_listener.md): conceptnet_listener with
+  later picks of a turn modelled separately in the reward.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.

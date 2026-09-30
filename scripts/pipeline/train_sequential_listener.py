@@ -17,11 +17,19 @@ words (gpt-oss) and held-out words (Sonnet). Twelve parameters against
 - + fit: similarity to the words already picked (beta_j);
 - + sense: sharing a picked word's clue sense (gamma_j).
 
+And one arm outside the nesting, **fit only** (beta_j with alpha fixed at 1).
+The temperature terms make later picks flatter, so the spymaster claims
+fewer words, and gpt-oss punishes every such caution (docs/log.md, role costs
+and the outside option). The fit term instead changes WHICH clue wins:
+coherent sets gain. `--arm "fit only"` saves that arm alone, to test the two
+effects apart in play.
+
 Per pick, the same metrics as every listener table (train_listener_net.metrics
 definitions): R², accuracy with ties credited 1/n, and the favourite's mean
 predicted probability against how often it is picked.
 
     python scripts/pipeline/train_sequential_listener.py [--booster cache/listener_gbt_conceptnet.txt]
+    python scripts/pipeline/train_sequential_listener.py --arm "fit only" --out cache/sequential_listener_fit_only.json
 """
 
 from __future__ import annotations
@@ -42,7 +50,7 @@ from codenames.sequential_listener import N_STEP_PARAMS, SequentialParams, pair_
 
 N = 25
 ARMS = [("frozen", ()), ("temperature", ("a",)), ("+ drop", ("a", "b")),
-        ("+ fit", ("a", "b", "beta")), ("+ sense", ("a", "b", "beta", "gamma"))]
+        ("+ fit", ("a", "b", "beta")), ("+ sense", ("a", "b", "beta", "gamma")), ("fit only", ("beta",))]
 OUT = Path("cache/sequential_listener.json")
 
 
@@ -123,6 +131,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--booster", type=Path, default=Path("cache/listener_gbt_conceptnet.txt"))
     ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--arm", default="+ fit", choices=[a for a, _ in ARMS], help="the arm to save")
     args = ap.parse_args()
 
     import lightgbm as lgb
@@ -150,9 +159,10 @@ def main() -> None:
             print(f"  {arm:12s} " + "   ".join(f"{r[j][0]:7.4f} {r[j][1]:6.3f} {r[j][2]:6.3f} {'':>4s}"
                                                for j in (2, 3, 4)))
     # The sense term bought nothing on any set (docs/log.md), so the saved
-    # model is the "+ fit" arm: gamma stays 0 and play needs no sense table.
-    full = SequentialParams(*(thetas["+ fit"][n].numpy() for n in ("a", "b", "beta", "gamma")))
-    print("\nsaved model, the '+ fit' arm, fitted on val (picks 2 / 3 / 4+):")
+    # model is the "+ fit" arm by default: gamma stays 0 and play needs no
+    # sense table.
+    full = SequentialParams(*(thetas[args.arm][n].numpy() for n in ("a", "b", "beta", "gamma")))
+    print(f"\nsaved model, the '{args.arm}' arm, fitted on val (picks 2 / 3 / 4+):")
     for n in ("a", "b", "beta", "gamma"):
         print(f"  {n:6s} " + "  ".join(f"{v:+.3f}" for v in getattr(full, n)))
     args.out.write_text(json.dumps({"booster": str(args.booster), **full.to_dict()}, indent=1))
