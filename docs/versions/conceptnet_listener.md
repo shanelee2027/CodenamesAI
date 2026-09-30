@@ -70,10 +70,22 @@ challenger so far (isa_listener 19 vs 15, pick_temperature 8 vs 19), but it
 is not significant. Four boards are discarded because gpt-oss would not rank
 a clue on them.
 
+**Second guesser** (holdout_v1_nemotron: the same 100 boards, NVIDIA
+Nemotron-3-Super guessing, no project model fitted to it, about $0.86):
+
+| Model | win% | 95% CI | boards won both ways | assassin losses | mean k | own% |
+|---|---|---|---|---|---|---|
+| conceptnet_listener | 54.5% | [0.48, 0.61] | 19 | 8 | 2.19 | 80.4% |
+| learned_listener | 45.5% | [0.39, 0.52] | 10 | 12 | 2.24 | 79.5% |
+
+- Sign test p = 0.14. The lead holds with the same size under a guesser
+  from another lab.
+- Pooling both guessers gives 43 vs 25 boards, p = 0.04. But the two suites
+  share their boards, so this is not an independent test. It is suggestive,
+  not significant.
+
 ## Open
 
-- A second guesser (Nemotron suite, ~$0.86) would say whether the lead
-  holds beyond gpt-oss.
 - The listener's pick-2 accuracy is 0.41 against a ceiling of 0.68–0.75
   (docs/log.md, "How much is left to explain"). Features of the single clue
   and word cannot close that gap; a model of picks within a turn can.

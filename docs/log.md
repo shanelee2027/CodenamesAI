@@ -4790,3 +4790,19 @@ The same ordering holds on new boards and Sonnet. Fitted values:
   same 52–55% band, never significant. Either 100 boards cannot resolve a
   few points, or the myopic reward limits play (within_turn_listener points
   that way).
+
+## conceptnet_listener with Nemotron guessing
+
+The overnight retry loop (`cache/training_data/nemotron_retry_loop.sh`)
+finished in its first pass, taking 91 minutes through the host's intermittent
+overload. Every board was played, and the cost was about $0.86.
+- **Nemotron:** conceptnet_listener 54.5% vs learned_listener 45.5%, boards
+  won both ways 19 vs 10, sign p = 0.14. Assassin losses 8 vs 12.
+- **gpt-oss, same boards:** 54.7%, 24 vs 15, p = 0.20.
+
+**Reading.** The lead is the same size under a guesser that nothing in the
+project was fitted to. That makes "it only helps against gpt-oss" unlikely.
+Pooled over both guessers the count is 43 vs 25 (p = 0.04). The suites share
+boards, so a board that favours one model counts twice. Read the pooled
+figure as suggestive, not as a test. This is the first challenger with a
+consistent lead across two guessers.
