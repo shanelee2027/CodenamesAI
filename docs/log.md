@@ -4806,3 +4806,28 @@ Pooled over both guessers the count is 43 vs 25 (p = 0.04). The suites share
 boards, so a board that favours one model counts twice. Read the pooled
 figure as suggestive, not as a test. This is the first challenger with a
 consistent lead across two guessers.
+
+## assoc_feature_listener with Nemotron guessing
+
+**Result.** On the same 100 boards (about $0.86, one pass, 47 minutes),
+assoc_feature_listener won 48.5% against the incumbent's 51.5%. Boards won
+both ways were 13 vs 16, sign p = 0.71, and assassin losses were 15 vs 14.
+
+| Guesser | conceptnet_listener | + gpt-oss associations |
+|---|---|---|
+| gpt-oss | 24 vs 15 | 23 vs 17 |
+| Nemotron | 19 vs 10 | 13 vs 16 |
+
+**Reading.**
+- Adding the associations lost the lead under the second guesser and
+  gained nothing under gpt-oss.
+- This matches the fit table: the R² gain was 0.012 on gpt-oss's rankings
+  and a third of that on Sonnet's. So the features teach the listener
+  gpt-oss in particular more than they teach it guessing in general.
+- Each cell is noisy, and the change from 19–10 to 13–16 is not itself
+  significant.
+- conceptnet_listener stays the better-supported challenger: the only one
+  with a lead under both guessers.
+- A listener feature derived from the evaluation guesser is a risk worth
+  remembering. It improves the fit exactly where the fit is measured
+  against that same guesser.

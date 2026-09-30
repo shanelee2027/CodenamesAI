@@ -72,6 +72,23 @@ Sign test p = 0.43. This is about the same as conceptnet_listener's 54.7%
 larger lead at this sample size. The assassin count, 10 vs 5, is Fisher
 p = 0.29.
 
+**Second guesser** (holdout_v1_nemotron, the same 100 boards, about $0.86):
+
+| Model | win% | 95% CI | boards won both ways | assassin losses | mean k | own% |
+|---|---|---|---|---|---|---|
+| assoc_feature_listener | 48.5% | [0.42, 0.55] | 13 | 15 | 2.22 | 79.8% |
+| learned_listener | 51.5% | [0.45, 0.58] | 16 | 14 | 2.25 | 80.5% |
+
+- Sign test p = 0.71: no lead at all under Nemotron.
+- conceptnet_listener, which is this model without the association
+  features, led 19 vs 10 on the same boards.
+- So adding gpt-oss's associations lost the lead that conceptnet_listener
+  held under a second guesser. The gpt-oss lead did not grow either.
+- Both games results are noisy. Even so, the most direct reading matches the
+  fit table: the associations mainly teach the listener gpt-oss in
+  particular. The Sonnet R² gain was a third of the gpt-oss gain.
+- **conceptnet_listener stays the better-supported challenger.**
+
 ## Open
 
 - The listener keeps improving (is-a, then ConceptNet, then associations),
