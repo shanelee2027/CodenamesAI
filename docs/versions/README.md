@@ -24,6 +24,8 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
   relations and phrases.
 - [`assoc_feature_listener`](assoc_feature_listener.md): conceptnet_listener
   plus gpt-oss's free associations as listener features.
+- [`win_prob_listener`](win_prob_listener.md): the probability of winning as the
+  objective, with any listener booster.
 - [`within_turn_listener`](within_turn_listener.md): conceptnet_listener with
   later picks of a turn modelled separately in the reward.
 

@@ -4913,3 +4913,29 @@ Some new picks look like the optimiser's curse on the frozen model's
 overconfident later picks ("institutional 4", "sacked 4", "drivers 4").
 The within-turn model corrects exactly that. So both turn models are
 played against the incumbent.
+
+## win_prob_listener: games
+
+holdout_v1_gptoss, against learned_listener, about $0.10 per arm:
+
+| Challenger | win% | boards won both ways | sign p | assassin losses | mean k |
+|---|---|---|---|---|---|
+| win_prob, `turn_model=frozen` | **57.5%** | **24 vs 10** | **0.024** | 25 vs 11 | 2.62 vs 2.33 |
+| win_prob, `turn_model=within_turn` | 55.7% | 22 vs 11 | 0.080 | 30 vs 9 | 2.43 vs 2.31 |
+| conceptnet_listener (same listener, old objective) | 54.7% | 24 vs 15 | 0.20 | 11 vs 10 | 2.19 vs 2.27 |
+
+**Reading.**
+- **The first significant win over the incumbent on the gpt-oss suite.** It
+  is 0.048 after Bonferroni for the two arms.
+- **The objective was the bottleneck.** The same listener gains once the
+  reward values tempo.
+- **It pays in assassins,** more than twice the incumbent's rate. That is
+  the ass=2 trade from the role-cost sweep, now reached without a
+  hand-tuned cost.
+- **The within-turn model buys nothing here.** Its lead is slightly smaller
+  and its assassin count the highest. The difference is noise-level.
+- **Next:**
+  - check the listener's predicted assassin probability on the chosen clues
+    against the realised rate (free);
+  - run Nemotron (about $0.86);
+  - re-estimate V from the new model's own games (policy iteration step 2).
