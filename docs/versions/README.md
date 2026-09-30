@@ -20,6 +20,8 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
   with per-pick listener temperatures in its reward.
 - [`isa_listener`](isa_listener.md): the incumbent with a listener that has
   directional WordNet is-a features.
+- [`conceptnet_listener`](conceptnet_listener.md): isa_listener plus ConceptNet
+  relations and phrases.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.

@@ -86,6 +86,7 @@ from codenames.spymasters.association_listener import AssociationListenerSpymast
 from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaster
 from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import ListenerBundle, LearnedListenerSpymaster
+from codenames.spymasters.conceptnet_listener import ConceptnetListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 
@@ -163,6 +164,14 @@ SPYMASTERS: dict[str, dict] = {
         "cls": IsaListenerSpymaster, "kwargs": {"outside_n": 0}, "needs": ["isa_sims.npz"],
         "about": "The incumbent's search, but its listener knows 'is a kind of' (WordNet), "
                  "so for 'fruit' it no longer rates Pie like an orange."},
+    # isa_listener plus ConceptNet relations and phrases
+    # (codenames/spymasters/conceptnet_listener.py).
+    "conceptnet": {
+        "label": "ConceptNet listener", "model": "listener_gbt_conceptnet.txt", "outside_n": 0,
+        "cls": ConceptnetListenerSpymaster, "kwargs": {"outside_n": 0},
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz"],
+        "about": "The is-a listener, plus ConceptNet's typed relations and phrases "
+                 "(Donald Duck, firefly)."},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).
@@ -181,7 +190,7 @@ SPYMASTERS: dict[str, dict] = {
 # Uncapped twins: the same model allowed to announce every own word left
 # rather than at most 4 (max_number=None). The listener's k feature was only
 # ever trained on 1-4, so above that its numbers are an extrapolation.
-for _key in ("incumbent", "pick_temperature", "isa", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
+for _key in ("incumbent", "pick_temperature", "isa", "conceptnet", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
     _spec = SPYMASTERS[_key]
     SPYMASTERS[f"{_key}_uncapped"] = {
         **_spec, "label": f"{_spec['label']}, uncapped",

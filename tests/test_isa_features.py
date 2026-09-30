@@ -24,12 +24,13 @@ def _booster(names: list[str]) -> lgb.Booster:
 
 
 def test_an_older_booster_reads_the_leading_columns() -> None:
-    names = [n for n in FEATURE_NAMES if not n.startswith("isa")]
+    # Everything before the first appended block: what the incumbent was fitted on.
+    names = FEATURE_NAMES[: FEATURE_NAMES.index("isa")]
     assert booster_columns(_booster(names)) == list(range(len(names)))
 
 
 def test_a_block_subset_reads_its_own_columns() -> None:
-    names = ["z_glove", "isa", "wn_wup"]
+    names = ["z_glove", "isa", "cmp_cw", "wn_wup"]
     assert booster_columns(_booster(names)) == [FEATURE_NAMES.index(n) for n in names]
 
 

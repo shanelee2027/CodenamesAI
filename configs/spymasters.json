@@ -130,6 +130,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "isa_listener plus ConceptNet 5.7: seven features for its typed relations (is-a both ways, part-whole, specific relations, any edge) and its phrase lexicon (clue and word form a phrase: Donald Duck, firefly); scripts/data/build_conceptnet_sims.py. Booster cache/listener_gbt_conceptnet.txt, same recipe and split. docs/versions/conceptnet_listener.md.",
+   "name": "conceptnet_listener",
+   "type": "conceptnet_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

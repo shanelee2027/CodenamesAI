@@ -151,7 +151,18 @@ FEATURE_NAMES: list[str] = [
     # is the explained-away associate. Appended last so every booster fitted
     # before them reads the same leading columns (see booster_columns).
     "isa", "isa_rev", "isa_n",
+    # tier 2: ConceptNet's typed edges and its phrase lexicon
+    # (scripts/data/build_conceptnet_sims.py). Numberbatch already carries
+    # ConceptNet as a blur; these say WHICH relation holds (Porsche IsA sports
+    # car, wheel PartOf car) and whether clue and word form a phrase (Donald
+    # Duck, firefly), which is how first-name, brand and abbreviation clues
+    # work -- the clues WordNet does not know and the listener fits worst.
+    # cn_isa is kept apart from WordNet's isa: crowd-sourced, and noisier
+    # ("moon IsA planet").
+    "cn_isa", "cn_isa_rev", "cn_part", "cn_typed", "cn_any", "cmp_cw", "cmp_wc",
 ]
+
+CONCEPTNET_FEATURES = ("cn_isa", "cn_isa_rev", "cn_part", "cn_typed", "cn_any", "cmp_cw", "cmp_wc")
 
 N_FEATURES = len(FEATURE_NAMES)
 
@@ -440,6 +451,7 @@ def extract(
     wordnet: "ExtraSims | None" = None,
     lexical: "ExtraSims | None" = None,
     isa: "ExtraSims | None" = None,
+    conceptnet: "ExtraSims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -596,6 +608,14 @@ def extract(
         cols.append(down)
         cols.append(isa.row("isa_rev", ci, icols))
         cols.append(np.full(n, isa_count(down)))
+
+    if conceptnet is None:
+        for _ in CONCEPTNET_FEATURES:
+            cols.append(np.full(n, np.nan))
+    else:
+        ccols = np.array([conceptnet.board_pos.get(w.lower(), -1) for w in candidates])
+        for key in CONCEPTNET_FEATURES:
+            cols.append(conceptnet.row(key, ci, ccols))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

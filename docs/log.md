@@ -4565,3 +4565,80 @@ games. isa_listener is a better model of the guesser at no measurable cost,
 and not a measurable win. The larger remaining gap is that the listener
 spreads ~15% of pick-1 mass over unrelated words even for a clean category,
 where gpt-oss is certain.
+
+## How much is left to explain: the ceiling
+
+**Question.** How much of gpt-oss's choice could any listener predict? It
+bounds what more features can buy.
+
+**Method** (`scripts/tools/listener_ceiling.py`, free). It reuses
+cache/prompt_variants.db: 8 rankings per position at temperature 1 under the
+training prompt, with the identical prompt every time, for 300 clean-holdout
+positions. The spread between the draws is the guesser's own randomness, so
+it bounds what any listener can do:
+- **Plug-in:** the draws scored on themselves, an upper bound.
+- **Leave-one-out:** each draw predicted from the other seven. This is
+  achievable, so the ceiling is at least this.
+
+At default temperature, which is how the training labels were bought,
+identical prompts come back byte-identical. So the near-greedy labels are, if
+anything, more predictable than these draws.
+
+**Result.**
+
+| | ceiling, plug-in | ceiling, leave-one-out | incumbent listener | isa listener |
+|---|---|---|---|---|
+| pick 1 accuracy | 0.854 | 0.825 | 0.678 | 0.681 |
+| pick 1 R² | 0.873 | 0.609 | 0.612 | 0.614 |
+| pick 2 accuracy | 0.747 | 0.681 | 0.398 | 0.411 |
+| pick 2 R² | 0.780 | 0.470 | 0.286 | 0.290 |
+
+Pick 2 is conditioned on the modal first word; 283 positions.
+
+**Reading.**
+- Accuracy brackets the ceiling tightly. The leave-one-out R² with add-0.5
+  smoothing is a crude predictor, so the R² bracket is wide.
+- There is about 15 points of accuracy left at pick 1, and about 30 at pick
+  2. The second pick is where the listener is furthest from the guesser, the
+  same place the per-pick calibration found overconfidence.
+- That is a structural gap, not a feature gap. Pick 2 is modelled as pick 1
+  with the first word removed, while gpt-oss's second list entry follows the
+  reading its first entry committed to (docs/log.md, the prompt comparison:
+  "A list stays on the reading its first word committed to").
+
+## ConceptNet and phrase features: conceptnet_listener
+
+**Expected.**
+- ConceptNet's typed edges would add a little beyond WordNet is-a, since
+  numberbatch already blurs ConceptNet in.
+- Its phrase lexicon would help the clues WordNet does not know. Those are
+  mostly first names, brands and abbreviations (william, donald, porsche,
+  nyc, youtube), and they work through phrases: Donald Duck, William
+  Shakespeare.
+
+**Built.**
+- The public ConceptNet 5.7 assertions dump (498 MB, free) was filtered to
+  3.4M English-English edges in 34 s.
+- `scripts/data/build_conceptnet_sims.py` builds seven clue × board tables in
+  26 s: is-a both ways, part-whole, specific relations, any edge, and phrase
+  "clue word" / "word clue".
+- They are appended to FEATURE_NAMES. Every booster still reads its own
+  columns by name, and 450 tests pass.
+- ConceptNet's is-a is noisy ("moon IsA planet"), so it is kept apart from
+  WordNet's.
+
+**Results** (docs/versions/conceptnet_listener.md; ablation
+`scripts/tools/eval_feature_blocks.py`, same recipe, identical rows, paired
+bootstrap over boards):
+- **R² gains, both sources together:** new boards +0.0028 [+0.0008, +0.0047],
+  held-out words +0.0040 [+0.0018, +0.0061], Sonnet +0.0052
+  [+0.0029, +0.0074].
+- The sources are additive: ConceptNet alone gives +0.0007, +0.0028 and
+  +0.0035; is-a alone gives +0.0023, +0.0019 and +0.0013.
+- **All-pick accuracy** rises by +0.5 to +1.0 points.
+- **Not as expected:** the non-WordNet clues did not improve (0.197 →
+  0.193). The phrase and any-edge features help ordinary clues. ConceptNet's
+  is-a and part-whole features are nearly unused.
+- **Games,** holdout_v1_gptoss over 96 boards: 54.7% vs 45.3%, boards won both
+  ways 24 vs 15, sign p = 0.20. This is the best result against the incumbent
+  so far, but not significant. Cost about $0.10.

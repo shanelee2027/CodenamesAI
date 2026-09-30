@@ -39,6 +39,7 @@ from codenames.clue_search import is_legal_clue
 from codenames.clue_stats import ClueStats
 from codenames.game import role_costs
 from codenames.listener_features import (
+    CONCEPTNET_FEATURES,
     FEATURE_NAMES,
     EntitySims,
     ExtraSims,
@@ -97,6 +98,7 @@ class ListenerBundle:
     wordnet: ExtraSims | None
     lexical: ExtraSims | None
     isa: ExtraSims | None = None
+    conceptnet: ExtraSims | None = None
     columns: list[int] | None = None
 
     @classmethod
@@ -118,11 +120,15 @@ class ListenerBundle:
             )
         booster = lgb.Booster(model_file=str(model_path))
         columns = booster_columns(booster)
-        # Only a booster that reads the is-a features needs their table, so
-        # the incumbent loads (and scores) exactly as before without it.
-        uses_isa = any(FEATURE_NAMES[c] in FEATURE_BLOCK_TAXONOMY for c in columns)
-        if uses_isa and not (cache_dir / "isa_sims.npz").exists():
-            raise FileNotFoundError("isa_sims.npz missing; run scripts/data/build_isa_sims.py")
+        # Only a booster that reads the newer tables' features needs them, so
+        # the incumbent loads (and scores) exactly as before without them.
+        used = {FEATURE_NAMES[c] for c in columns}
+        uses_isa = bool(used & set(FEATURE_BLOCK_TAXONOMY))
+        uses_cn = bool(used & set(CONCEPTNET_FEATURES))
+        for flag, name, script in ((uses_isa, "isa_sims.npz", "build_isa_sims.py"),
+                                   (uses_cn, "conceptnet_sims.npz", "build_conceptnet_sims.py")):
+            if flag and not (cache_dir / name).exists():
+                raise FileNotFoundError(f"{name} missing; run scripts/data/{script}")
         return cls(
             booster=booster,
             word_stats=WordStats.load(cache_dir / "word_stats.npz"),
@@ -134,6 +140,7 @@ class ListenerBundle:
             wordnet=maybe(ExtraSims.load, "wordnet_sims.npz"),
             lexical=maybe(ExtraSims.load, "lexical_sims.npz"),
             isa=maybe(ExtraSims.load, "isa_sims.npz") if uses_isa else None,
+            conceptnet=maybe(ExtraSims.load, "conceptnet_sims.npz") if uses_cn else None,
             columns=columns,
         )
 
@@ -246,7 +253,7 @@ class LearnedListenerSpymaster(Spymaster):
         b = self.bundle
         feats = extract(clue, candidates, number, sims, self.clue_stats, b.word_stats,
                         self._clue_index, b.swow, b.entity, b.pmi, b.extra, b.norms,
-                        b.wordnet, b.lexical, b.isa)
+                        b.wordnet, b.lexical, b.isa, b.conceptnet)
         if feats is None:
             return None
         if n_board is not None:
