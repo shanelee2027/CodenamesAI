@@ -5093,3 +5093,49 @@ vs 2.37.
   wins.
 - **The assassin price persists under Nemotron,** roughly double the
   incumbent's rate. That motivates the calibration step next.
+
+## win_prob_listener: turn calibration
+
+**Why.** The listener was optimistic on the clues win_prob chose:
+- own words over-predicted;
+- opponent endings and assassin hits under-predicted, worst at the
+  moderate risks the search likes.
+
+The objective uses these probabilities directly, so they need correcting.
+
+**Design.** Every listener score becomes s′ = α·s + β_role, with
+β_neutral = 0.
+- α corrects overall confidence.
+- The role offsets correct the search's selection bias. The guesser cannot
+  see roles, but on chosen clues the listener's errors line up with role:
+  the search picks the clues whose own words it overrates and whose bad
+  words it underrates.
+- The fit must therefore use turns that the calibrated policy itself chose,
+  and never the eval suite's games.
+
+**Data.** `calib_winprob_assoc_v1`: win_prob with the assoc booster against
+the incumbent on training boards (seeds 0–299, full vocabulary), with
+gpt-oss guessing. The first 300 games gave 1,169 win_prob turns on 171
+boards, 44 of them ending on the assassin. Collection continues to 600
+games; those games are also the data for policy iteration round 2.
+
+**Fit** (`scripts/pipeline/fit_turn_calibration.py`, maximum likelihood of
+the actual pick sequences, out of fold over 5 board-grouped folds):
+
+| Arm | NLL / pick | P(assassin) pred / actual | P(opponent end) pred / actual | own words pred / actual |
+|---|---|---|---|---|
+| uncalibrated | 1.3085 | 0.0270 / 0.0376 | 0.128 / 0.161 | 1.865 / 1.760 |
+| α only | 1.3040 | 0.0298 / 0.0376 | 0.141 / 0.161 | 1.789 / 1.760 |
+| α + role offsets | **1.3018** | **0.0364 / 0.0376** | **0.156 / 0.161** | **1.726 / 1.760** |
+
+**Saved** (`cache/turn_calibration_assoc.json`, fitted on all turns):
+α = 0.977, β_own = −0.264, β_opponent = +0.077, β_assassin = +0.188.
+
+**Reading.**
+- The confidence was about right (α ≈ 1). The error is selection: own
+  words on chosen clues are overrated by about a quarter of a logit.
+- With the offsets, every turn-level rate matches out of fold.
+- The likelihood gain per pick is small; the gain on the turn outcomes the
+  objective prices is large.
+- The assassin is still under-predicted in the top risk bin: 0.138
+  calibrated against 0.159 actual, 23 events.
