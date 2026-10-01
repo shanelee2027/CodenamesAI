@@ -129,9 +129,17 @@ objective had none.
   - Both listeners over-predict own words by about 0.13 per turn.
   - Next: recalibrate the turn-ending probabilities on recorded turns
     before the objective uses them.
-- **Policy iteration step 2.** Re-estimate V from win_prob_listener's own
-  games (it has played 186 so far), then play again.
+- **Policy iteration step 2: done, no gain.** V2
+  (`cache/win_value_vs_winprob.npz`) was re-estimated from 530 win_prob
+  games, counting only positions with the incumbent to move. It is 0.10–0.15
+  lower than V1 near the diagonal. With the assoc booster it went 19 vs 14
+  against learned_listener (p = 0.49) and 11 vs 13 against V1 directly
+  (p = 0.84). V1 stays the default (docs/log.md).
 - **Method B.** A V that reads the board: the assassin's neighbourhood, and
   how hard the leftover words are to clue.
-- **A head-to-head of the two turn models** under this objective, to settle
-  whether within-turn modelling helps once the reward values tempo.
+- **Head-to-heads of the listeners: done, both level** (docs/log.md).
+  - Within-turn vs frozen, both on the conceptnet booster: 16 vs 18
+    (p = 0.86).
+  - Within-turn conceptnet vs the incumbent's booster: 17 vs 14 (p = 0.72).
+  - The turn model does not change play. The ladder's booster gaps did not
+    show up in a direct game.

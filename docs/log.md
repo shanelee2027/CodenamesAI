@@ -5164,3 +5164,72 @@ the actual pick sequences, out of fold over 5 board-grouped folds):
   - **V is blind to the board,** which method B addresses.
 - **Calibration is not adopted.** The uncalibrated assoc + V stays the
   leader. `calibration_path` stays available as a parameter.
+
+## win_prob_listener: turn-model head-to-heads and policy iteration round 2 (2026-10-01)
+
+**Question.** Under the win-probability objective, which listener is
+better when they play each other directly, not each against the
+incumbent? The objective is the same on both sides, so only the listener
+differs. Two tests, on holdout_v1_gptoss:
+- **A:** within-turn vs frozen turn model, both on the conceptnet booster.
+  Only the turn model differs.
+- **B:** within-turn on the conceptnet booster vs frozen on the
+  incumbent's booster (`cache/listener_gbt.txt`). The whole listener
+  differs (booster and turn model), so this cannot say which change matters.
+
+**Expected.** The within-turn model fits picks 2+ better out of sample, and
+the ladder against learned_listener had conceptnet + V at 24 vs 10 and
+incumbent + V at 17 vs 14. So A level or slightly positive, B positive.
+
+| Test | Boards | win% | boards won both ways | sign p | assassin losses | mean k |
+|---|---|---|---|---|---|---|
+| A: within-turn vs frozen (conceptnet) | 96 | 49.0% | 16 vs 18 | 0.86 | 24 vs 29 | 2.62 vs 2.75 |
+| B: within-turn conceptnet vs incumbent booster | 98 | 51.5% | 17 vs 14 | 0.72 | 24 vs 29 | 2.62 vs 2.80 |
+
+**Reading.**
+- **The turn model makes no difference to play** (A). Its better fit on
+  later picks does not reach the clue choice. The within-turn model stays
+  a parameter, not the default.
+- **B is not significant either.** The ladder's gap between the boosters
+  (24 vs 10 against 17 vs 14) did not show in a direct game. Both results
+  are compatible with a real but modest booster effect that 100 boards
+  cannot resolve, so a direct game is the stricter test and the ladder
+  should not be read as a ranking.
+
+**Policy iteration round 2.** V2 (`cache/win_value_vs_winprob.npz`,
+`scripts/data/build_win_value.py --label calib_winprob_assoc_v1 --no-suite
+--mover learned_listener --prior-table cache/win_value.npz`):
+- built from the 530 calibration games of win_prob (assoc) against the
+  incumbent;
+- counts only positions with the incumbent to move: after our turn, the
+  incumbent always moves next, so this is the table the objective reads;
+- shrunk toward V1, then made monotone.
+
+V2 is lower than V1 near the diagonal by 0.10–0.15, e.g. (3,3) −0.11,
+(4,4) −0.15, (6,6) −0.13. The incumbent wins less against win_prob than
+against itself.
+
+**Expected.** If V1 undervalued tempo because it assumed the incumbent on
+our side too, V2 should play more aggressively and win more.
+
+| assoc + V, against | Boards | win% | boards won both ways | sign p | assassin losses | mean k |
+|---|---|---|---|---|---|---|
+| learned_listener, V1 (earlier) | 99 | 59.1% | 28 vs 10 | 0.005 | 21 vs 10 | 2.59 |
+| learned_listener, V2 | 96 | 52.6% | 19 vs 14 | 0.49 | 23 vs 11 | 2.54 |
+| V1 directly, V2 | 96 | 49.0% | 11 vs 13 | 0.84 | 22 vs 29 | 2.71 vs 2.77 |
+
+**Reading.**
+- **Not as expected: V2 is no better than V1.** Head to head it is level,
+  with only 24 decisive boards. It did not raise the number (2.54 against
+  2.59).
+- Against learned_listener V2 looks worse (19 vs 14 against 28 vs 10), but
+  the direct game does not confirm a gap. The difference is within the
+  noise of two separate 100-board runs.
+- The likely reason it changes little: V2 lowers V roughly evenly across
+  the positions a turn can lead to, so the differences between endings,
+  which are all the clue choice reads, barely move.
+- **V1 stays the default.** Policy iteration on the count-only V has
+  converged as far as this suite can tell. Further gains from V would have
+  to come from the board (method B), not from re-estimating the counts.
+
+Cost: four 100-board runs on gpt-oss, about $0.40.
