@@ -86,9 +86,13 @@ class BoardIndex(list):
 
 
 HOLDOUT_BOARD_BASE = 3_000_000
+# Generated positions on held-out-vocabulary boards (scripts/data/collect_listener_data.py
+# --vocab holdout), a test set only. Seeds are the boards' real seeds.
+HOLDOUT_COLLECTED_BASE = 5_000_000
 
 
-def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0) -> BoardIndex:
+def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
+                 holdout_collected: int = 0) -> BoardIndex:
     """(seed, word set) for every board a cached response could have come from.
 
     Three sources, built with different vocabularies and disjoint seed ranges:
@@ -101,6 +105,8 @@ def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0) -> 
     vocabulary=load_holdout_wordlist())` for s < holdout_boards, tagged
     HOLDOUT_BOARD_BASE + s. Every word on them is a held-out word, so they are
     for scoring only; off by default so no training set picks them up.
+    `holdout_collected` adds the generated held-out-vocabulary boards, seeds
+    HOLDOUT_COLLECTED_BASE + i, also for scoring only.
     """
     from codenames.board import load_holdout_wordlist, load_training_wordlist
 
@@ -114,6 +120,11 @@ def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0) -> 
         vocab = load_holdout_wordlist()
         out += [(HOLDOUT_BOARD_BASE + s, frozenset(w.lower() for w in Board.generate(seed=s, vocabulary=vocab).words))
                 for s in range(holdout_boards)]
+    if holdout_collected:
+        vocab = load_holdout_wordlist()
+        out += [(HOLDOUT_COLLECTED_BASE + i,
+                 frozenset(w.lower() for w in Board.generate(seed=HOLDOUT_COLLECTED_BASE + i, vocabulary=vocab).words))
+                for i in range(holdout_collected)]
     return BoardIndex(out)
 
 
@@ -204,7 +215,8 @@ def scored_path(steps: list[dict]) -> list[str]:
 
 def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                    refresh_features: bool = False, decoys: Path | None = None,
-                   soft_labels: dict | None = None, seed_filter=None, holdout_boards: int = 0):
+                   soft_labels: dict | None = None, seed_filter=None, holdout_boards: int = 0,
+                   holdout_collected: int = 0):
     """Positions for training.
 
     `refresh_features` decides what a step-2+ row means. Off (the default and
@@ -263,7 +275,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
           f"   conceptnet: {'loaded' if conceptnet else 'ABSENT'}"
           f"   senses: {'loaded' if senses else 'ABSENT'}"
           f"   assoc: {'loaded' if assoc else 'ABSENT'}")
-    boards = board_lookup(max_seed, collected, holdout_boards)
+    boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = conn.execute(

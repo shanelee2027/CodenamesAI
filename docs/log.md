@@ -5465,3 +5465,62 @@ non-embedding links take 2.0% between them, most of it SWOW two hops.
 - **Similarity to the most recent pick** is the most used history feature.
   The within-turn model only has the maximum over all picked words; a
   recency term is a cheap addition if later picks are revisited.
+
+## A generated held-out-words test set (2026-10-01)
+
+**Why (Shane).** The held-out-words R² (about 0.55) is far above new boards'
+(about 0.34), which makes held-out words look easier, not harder. But the
+two sets differ in more than vocabulary:
+- `new boards` are generated positions (collect_listener_data.py): 40%
+  clues for own words, the rest aimed at the opponent, the assassin,
+  neutrals or nothing, with k drawn from 1-4;
+- `held-out words` are gpt-oss's rankings from the eval games, where every
+  clue was a spymaster's best, so the picks are far easier to predict.
+
+So the two R²s say nothing about overfitting. A held-out set generated
+exactly like new boards does.
+
+**Built.** `collect_listener_data.py --vocab holdout`: the same generator
+(mix, reveals, k), boards from the 150 held-out words only, seeds from
+5,000,000 (`listener_training.HOLDOUT_COLLECTED_BASE`). 1,899 planned,
+44 refusals, $0.19. Loaded as `held-out words, generated` (1,807
+positions, 4,491 events), added to the cached sets without rebuilding the
+others, so earlier numbers stay comparable. Compared by
+`scripts/tools/compare_vocab_gap.py`.
+
+The two sets match in shape: mean k 2.54 vs 2.49, 15.1 vs 15.4 words, 39%
+vs 40% of events at pick 1.
+
+**Expected.** A gap of a few hundredths if the per-word features memorise
+anything, larger for boosters with more word-level features.
+
+| Booster | new boards R² [95% CI] | held-out generated R² [95% CI] | gap | pick 1: new / held-out | picks 2+: new / held-out |
+|---|---|---|---|---|---|
+| incumbent (deployed) | 0.3362 [0.320, 0.353] | 0.3186 [0.302, 0.336] | −0.018 | 0.551 / 0.556 | 0.189 / 0.149 |
+| 44 features, current recipe | 0.3425 [0.326, 0.359] | 0.3212 [0.305, 0.339] | −0.021 | 0.556 / 0.559 | 0.196 / 0.151 |
+| + within-turn | 0.3672 [0.354, 0.382] | 0.3491 [0.334, 0.363] | −0.018 | 0.556 / 0.559 | 0.238 / 0.199 |
+| isa | 0.3448 [0.328, 0.361] | 0.3231 [0.305, 0.340] | −0.022 | 0.558 / 0.561 | 0.198 / 0.154 |
+| conceptnet | 0.3453 [0.329, 0.363] | 0.3235 [0.305, 0.340] | −0.022 | 0.560 / 0.562 | 0.198 / 0.153 |
+| assoc | 0.3499 [0.334, 0.366] | 0.3340 [0.317, 0.351] | −0.016 | 0.566 / 0.577 | 0.202 / 0.161 |
+
+**Reading.**
+- **The earlier contrast was clue quality, not vocabulary.** On generated
+  positions, held-out words score a little *below* training words, not 0.2
+  above.
+- **The gap is small and lives entirely in picks 2+.** Pick 1 is the same or
+  slightly higher on held-out words for every booster (+0.003 to +0.011).
+  Picks 2+ fall by about 0.04 for all of them. The pooled gap (−0.016 to
+  −0.022) is within each set's interval, but the same sign for every
+  booster.
+- **So pick 1, which drives clue choice, shows no sign of overfitting the
+  training words.** Whatever is lost on new words is in the later picks,
+  for every listener alike, including the within-turn model. It may be
+  memorisation through the board-level features or a property of the
+  held-out boards; this set cannot separate the two.
+- **The boosters keep their order on new words.** assoc is best on both
+  sets and has the smallest gap; its pick-1 lead over conceptnet grows on
+  held-out words (+0.015 vs +0.006). The gpt-oss associations generalise
+  to new words rather than memorising old ones.
+- **Use this set, not `held-out words`, when an R² is compared with new
+  boards.** The game-ranking sets remain the right check for the clues play
+  actually gives.

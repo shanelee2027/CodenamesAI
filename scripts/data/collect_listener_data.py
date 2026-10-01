@@ -37,6 +37,9 @@ Usage:
     # ~10k positions, gentle on the machine, safe to leave running
     python scripts/data/collect_listener_data.py --n 10000
 
+    # a test set on the held-out words, generated exactly like the rest
+    python scripts/data/collect_listener_data.py --vocab holdout --n 2100
+
     # check how much is already bought without spending anything
     python scripts/data/collect_listener_data.py --n 10000 --dry-run
 """
@@ -56,7 +59,7 @@ import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-from codenames.board import Board, Role, is_legal_clue, load_training_wordlist
+from codenames.board import Board, Role, is_legal_clue, load_holdout_wordlist, load_training_wordlist
 from codenames.clue_stats import ClueStats
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
@@ -66,6 +69,15 @@ DB = CACHE / "llm_store.db"
 # Board seeds start far above anything the arenas use (0..~300), so generated
 # training boards can never collide with a board an evaluation was run on.
 SEED_BASE = 1_000_000
+
+# `--vocab holdout`: the same generator on the 150 held-out words, for a TEST
+# set only (docs/log.md, "A generated held-out-words test set"). The rankings
+# from the eval suites' games are all on clues a spymaster chose, so they are
+# far easier than generated positions and their R² cannot be compared with
+# the generated "new boards" set. Positions made here differ from those only
+# in vocabulary, so the gap between the two measures overfitting to the
+# training words. Own seed range, far from every other source.
+from codenames.listener_training import HOLDOUT_COLLECTED_BASE as HOLDOUT_SEED_BASE  # noqa: E402
 
 # How clues are chosen. The point of the non-"own" rows is that a spymaster's
 # search has to reject these, which it cannot learn to do from a training set
@@ -105,10 +117,11 @@ def clue_near(
     return int(pool[rng.choice(top.tolist())])
 
 
-def make_position(i: int, sims, stats, pool: np.ndarray, space_i: int, mix: dict, vocab: list[str]):
+def make_position(i: int, sims, stats, pool: np.ndarray, space_i: int, mix: dict, vocab: list[str],
+                  seed_base: int = SEED_BASE):
     """One (clue, candidates, k) to buy. Deterministic in `i`."""
-    rng = random.Random((SEED_BASE + i) * 2654435761 % (2**63))
-    board = Board.generate(seed=SEED_BASE + i, vocabulary=vocab)
+    rng = random.Random((seed_base + i) * 2654435761 % (2**63))
+    board = Board.generate(seed=seed_base + i, vocabulary=vocab)
 
     # Reveal a random slice of the board, so positions span the whole arc of a
     # game rather than only fresh 25-word boards -- agreement with the teacher
@@ -161,6 +174,9 @@ def main() -> None:
                          "while you are using the machine")
     ap.add_argument("--max-rarity", type=float, default=10.0, help="same clue pool the spymaster searches")
     ap.add_argument("--space", default="numberbatch")
+    ap.add_argument("--vocab", choices=("training", "holdout"), default="training",
+                    help="board words: the training list, or the held-out list for a test set only "
+                         "(seeds from HOLDOUT_SEED_BASE)")
     ap.add_argument("--dry-run", action="store_true", help="plan and report coverage; buy nothing")
     ap.add_argument("--nice", type=int, default=10, help="process niceness, so this yields to your work")
     args = ap.parse_args()
@@ -174,14 +190,17 @@ def main() -> None:
     stats = ClueStats.load(DEFAULT_CACHE_DIR)
     pool = build_clue_pool(stats, args.max_rarity)
     space_i = sims.spaces.index(args.space)
-    vocab = load_training_wordlist()
+    if args.vocab == "holdout":
+        vocab, seed_base = load_holdout_wordlist(), HOLDOUT_SEED_BASE
+    else:
+        vocab, seed_base = load_training_wordlist(), SEED_BASE
     print(f"clue pool: {len(pool)} of {len(stats.clue_words)} at rarity<={args.max_rarity}")
-    print(f"board vocabulary: {len(vocab)} training words (holdout excluded)")
+    print(f"board vocabulary: {len(vocab)} {args.vocab} words, seeds from {seed_base + args.start}")
 
     print(f"planning {args.n} positions...", flush=True)
     positions, kinds = [], Counter()
     for i in range(args.n):
-        p = make_position(args.start + i, sims, stats, pool, space_i, DEFAULT_MIX, vocab)
+        p = make_position(args.start + i, sims, stats, pool, space_i, DEFAULT_MIX, vocab, seed_base)
         if p is not None:
             positions.append(p)
             kinds[p["kind"]] += 1

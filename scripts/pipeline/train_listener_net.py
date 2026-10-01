@@ -18,6 +18,13 @@ the LightGBM one on the same choice events.
   No candidate on them occurs in any training board.
 - `held-out words, Sonnet`: the same boards with Sonnet's rankings from
   holdout_v1, the guesser nothing here was trained on.
+- `held-out words, generated`: positions generated exactly like `new boards`
+  (collect_listener_data.py's clue mix, reveals and k) but on boards of the
+  held-out words (`--vocab holdout`). The two sets above are rankings of
+  clues a spymaster chose, which are far easier to predict, so only this
+  set's R² is comparable with `new boards`: the gap between them is the
+  cost of new vocabulary. Added to the cached sets without rebuilding the
+  others, so their numbers stay comparable with earlier runs.
 
 Metric: McFadden R^2 per choice event, pooled and at step 1, as
 listener_training.mcfadden_on computes it.
@@ -54,6 +61,8 @@ K_MAX = 9
 
 
 SETS_CACHE = CACHE / "training_data" / "listener_net_sets.pkl"
+GENERATED = "held-out words, generated"
+GENERATED_BOARDS = 5000          # seeds searched when resolving them (2,200 collected)
 
 
 def load_sets(reload: bool = False) -> dict[str, list[dict]]:
@@ -64,6 +73,9 @@ def load_sets(reload: bool = False) -> dict[str, list[dict]]:
         sets = pickle.loads(SETS_CACHE.read_bytes())
     else:
         sets = _load_sets()
+        SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
+    if GENERATED not in sets:
+        sets[GENERATED] = _load_generated_holdout()
         SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
     for k, v in sets.items():
         print(f"  {k:24s} {len(v):6d} positions {sum(min(p['k'], p['n'] - 1) for p in v):6d} events")
@@ -80,10 +92,18 @@ def _load_sets() -> dict[str, list[dict]]:
         "train": tr,
         "val": va,
         "new boards": [p for p in pos if NEW_BOARDS <= p["seed"] < T.HOLDOUT_BOARD_BASE],
-        "held-out words": [p for p in pos if p["seed"] >= T.HOLDOUT_BOARD_BASE],
+        "held-out words": [p for p in pos if T.HOLDOUT_BOARD_BASE <= p["seed"] < T.HOLDOUT_COLLECTED_BASE],
         "held-out words, Sonnet": [p for p in son if p["seed"] >= T.HOLDOUT_BOARD_BASE],
     }
     return sets
+
+
+def _load_generated_holdout() -> list[dict]:
+    pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 60, 45000, holdout_boards=100,
+                                    holdout_collected=GENERATED_BOARDS,
+                                    seed_filter=lambda s: s >= T.HOLDOUT_COLLECTED_BASE)
+    print(f"held-out words, generated: {len(pos)} positions, dropped {dropped}")
+    return pos
 
 
 def pkey(p: dict) -> tuple:
