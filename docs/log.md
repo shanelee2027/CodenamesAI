@@ -5330,3 +5330,30 @@ incumbent does not have either).
 - **Conclusion for both arms:** retraining the booster around the
   within-turn model does not help. The post-hoc fit is the whole gain, and
   that gain does not reach play (test A).
+
+**Shared objective** (`--arm temperature --theta-on train`, 6 rounds; the
+fix proposed for the drift: temperatures fitted on the train events with the
+booster's own weights, so both steps lower one loss).
+
+**Not as expected: it diverges, the other way.** Fitted on train, the
+later-pick temperatures come out *above* 1 from the start (1.57 / 1.41 /
+1.22 on the control) and grow every round, to 6.8 / 5.6 / 4.4 by round 6.
+The booster shrinks to match (2,590 trees to 1,076) and its scores flatten.
+Out of sample everything collapses:
+
+| Set | control + temperatures (val-fitted) | joint, round 6 | joint, temperatures refit on val | pick 1, control → joint |
+|---|---|---|---|---|
+| new boards | 0.3469 | 0.2397 | 0.2794 | 0.5557 → 0.4353 |
+| held-out words (gpt-oss) | 0.5592 | 0.3442 | 0.4635 | 0.7591 → 0.6391 |
+
+**Why.** On its own training rows the booster has memorised which words were
+picked, later picks included. So in sample, sharpening later picks pays,
+and the temperature fit rewards that memorisation. Each round then lets the
+booster leave more of the later picks to the temperatures and flatten its
+scores, which costs pick 1. "One shared loss" is only sound on scores that
+are not in sample. The correct version fits the temperatures on cross-fitted
+(out-of-fold) train scores, at 4 booster fits per round.
+
+**Conclusion.** Not pursued further. Three forms of the joint refit (with the
+pull, temperature only on val, temperature only on train) gave nothing at
+pick 1, and the within-turn model's post-hoc gain does not reach play.

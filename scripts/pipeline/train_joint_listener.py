@@ -29,6 +29,17 @@ then how much flatter each later pick is than the first.
   is held at the previous booster's value for the whole round.
 - Repeat for `--rounds` rounds.
 
+**Where the parameters are fitted (`--theta-on`).**
+- `val` (the first runs): the parameters on val, the booster on train. The
+  two steps then optimise different objectives, and the temperature-only arm
+  drifted: each round the booster sharpened and the temperatures fell to
+  match, with pick 1 getting worse.
+- `train`: the parameters on the train events with the booster's 0.75-per-
+  pick weights, the very loss the booster minimises. Each step then lowers
+  one shared objective (up to early stopping, which still watches val).
+  The final booster's parameters are also refitted on val, since in-sample
+  scores are sharper than the ones play will see; both are reported.
+
 **Held fixed, so only the objective differs from the control:** the
 features (the incumbent's 44 by default), the rows and split
 (train_listener_net.load_sets), the recipe (listener_training.train's
@@ -41,6 +52,7 @@ model's gain over the control with post-hoc parameters.
 
     python scripts/pipeline/train_joint_listener.py --name 44 --rounds 3
     python scripts/pipeline/train_joint_listener.py --name 44 --rounds 3 --arm temperature
+    python scripts/pipeline/train_joint_listener.py --name 44 --rounds 6 --arm temperature --theta-on train
 """
 
 from __future__ import annotations
@@ -56,7 +68,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_listener_net import gbt_scores, load_sets  # noqa: E402
-from train_sequential_listener import events as seq_events, fit as seq_fit  # noqa: E402
+from train_sequential_listener import events as seq_events, fit as seq_fit, logp as seq_logp  # noqa: E402
 
 import codenames.listener_training as T  # noqa: E402
 from codenames.listener_features import FEATURE_NAMES  # noqa: E402
@@ -165,9 +177,28 @@ def train_booster(tr: Events, va: Events, cols: list[int], names: list[str], tr_
                      callbacks=[lgb.early_stopping(100, verbose=False)])
 
 
-def fit_theta(booster, val_positions: list[dict], vw, arm: tuple[str, ...]) -> SequentialParams:
-    E = seq_events(val_positions, gbt_scores(booster, val_positions), vw, None, {})
-    th = seq_fit(E, arm)
+def fit_theta(booster, positions: list[dict], vw, arm: tuple[str, ...], weighted: bool = False) -> SequentialParams:
+    """Maximum likelihood of the picks 2+ in `positions`. `weighted` applies
+    the booster's per-pick weights (listener_training.STEP_DECAY), so that on
+    train the fit minimises the booster's own loss."""
+    E = seq_events(positions, gbt_scores(booster, positions), vw, None, {})
+    if not weighted:
+        th = seq_fit(E, arm)
+    else:
+        w = torch.tensor(T.STEP_DECAY ** (E["pick"] - 1), dtype=torch.float64)
+        th = {n: torch.zeros(N_STEP_PARAMS, dtype=torch.float64, requires_grad=n in arm)
+              for n in ("a", "b", "beta", "gamma")}
+        opt = torch.optim.LBFGS([th[n] for n in arm], max_iter=500, line_search_fn="strong_wolfe")
+
+        def closure():
+            opt.zero_grad()
+            lp = seq_logp(E, th).gather(1, E["t"][:, None])[:, 0]
+            loss = -(w * lp).sum() / w.sum()
+            loss.backward()
+            return loss
+
+        opt.step(closure)
+        th = {n: v.detach() for n, v in th.items()}
     return SequentialParams(*(th[n].numpy() for n in ("a", "b", "beta", "gamma")))
 
 
@@ -184,6 +215,8 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--arm", choices=list(ARMS), default="+ fit",
                     help="which within-turn terms: the deployed model, or the per-pick temperature only")
+    ap.add_argument("--theta-on", choices=("val", "train"), default="val",
+                    help="where the within-turn parameters are fitted during the alternation")
     args = ap.parse_args()
 
     import lightgbm as lgb
@@ -198,7 +231,8 @@ def main() -> None:
 
     out_control = CACHE / f"listener_gbt_control{args.name}.txt"
     arm = ARMS[args.arm]
-    tag = "" if args.arm == "+ fit" else "_temperature"
+    tag = ("" if args.arm == "+ fit" else "_temperature") + ("_shared" if args.theta_on == "train" else "")
+    shared = args.theta_on == "train"
     out_joint = CACHE / f"listener_gbt_joint{args.name}{tag}.txt"
     seq_control = CACHE / f"sequential_listener_control{args.name}{tag}.json"
     seq_joint = CACHE / f"sequential_listener_joint{args.name}{tag}.json"
@@ -215,13 +249,15 @@ def main() -> None:
     theta_control = fit_theta(control, sets["val"], vw, arm)
     seq_control.write_text(json.dumps({"booster": str(out_control), **theta_control.to_dict()}, indent=1))
 
-    booster, theta, history = control, theta_control, [("control", theta_control)]
+    start = fit_theta(control, sets["train"], vw, arm, weighted=True) if shared else theta_control
+    booster, theta, history = control, start, [("control", start)]
     for r in range(1, args.rounds + 1):
         drops = {s: ev[s].drop(scores_by_position(booster, sets[s])) for s in ("train", "val")}
         tr_t = ev["train"].transform(theta, drops["train"])
         va_t = ev["val"].transform(theta, drops["val"])
         booster = train_booster(ev["train"], ev["val"], cols, names, tr_t, va_t, args.seed)
-        theta = fit_theta(booster, sets["val"], vw, arm)
+        theta = (fit_theta(booster, sets["train"], vw, arm, weighted=True) if shared
+                 else fit_theta(booster, sets["val"], vw, arm))
         history.append((f"round {r}", theta))
         print(f"round {r}: {booster.num_trees()} trees; theta "
               + "  ".join(f"{n} " + "/".join(f"{v:+.3f}" for v in getattr(theta, n)) for n in arm)
@@ -239,6 +275,11 @@ def main() -> None:
     incumbent = lgb.Booster(model_file=str(CACHE / "listener_gbt.txt"))
     arms = [("incumbent, frozen", incumbent, None), ("control, frozen", control, None),
             ("control + within-turn", control, theta_control), ("joint", booster, theta)]
+    if shared:
+        theta_val = fit_theta(booster, sets["val"], vw, arm)
+        print("  joint, refitted on val: alpha at drop 0 " + "/".join(f"{np.exp(v):.2f}" for v in theta_val.a)
+              + "   beta " + "/".join(f"{v:.2f}" for v in theta_val.beta))
+        arms.append(("joint, refit on val", booster, theta_val))
     rng = np.random.default_rng(0)
     for s in ("val", "new boards", "held-out words", "held-out words, Sonnet"):
         e = ev[s]
