@@ -5071,3 +5071,25 @@ in `cache/training_data/board_value_features.npz`).
   - after-board features batched on the GPU. The per-state loop here runs
     at about 7 ms per state, far too slow for about 4,000 after-boards per
     move.
+
+## win_prob_listener + assoc booster with Nemotron guessing
+
+holdout_v1_nemotron, all 100 boards, about $0.86, 67 minutes at 6 × 4
+concurrency (5 boards refused in pass 1 for "Model busy" and retried in pass
+2). Against learned_listener: **59.5% vs 40.5%, boards won both ways 28 vs
+9, sign p = 0.003.** Assassin losses 35 vs 18 (Fisher p = 0.02). Mean k 2.58
+vs 2.37.
+
+| assoc booster | gpt-oss | Nemotron |
+|---|---|---|
+| old objective (assoc_feature_listener) | 23 vs 17, p = 0.43 | 13 vs 16, p = 0.71 |
+| win-probability objective | 28 vs 10, p = 0.005 | **28 vs 9, p = 0.003** |
+
+**Reading.**
+- **The lead holds under a guesser nothing was fitted to,** and is as
+  large as on gpt-oss.
+- The associations looked gpt-oss-specific under the old objective. Under
+  V they carry over. The objective is what lets a better listener turn into
+  wins.
+- **The assassin price persists under Nemotron,** roughly double the
+  incumbent's rate. That motivates the calibration step next.

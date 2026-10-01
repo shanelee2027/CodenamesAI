@@ -109,6 +109,11 @@ discarded where gpt-oss would not rank.
 - **The earlier reading is corrected:** "the objective, not the listener,
   was holding play back" is only half right.
 
+**Second guesser** (holdout_v1_nemotron, assoc booster, 100 boards): 59.5% vs
+40.5%, boards won both ways 28 vs 9, p = 0.003, assassin losses 35 vs 18.
+The lead holds as large as on gpt-oss, where the same booster with the old
+objective had none.
+
 ## Open
 
 - **A second guesser.** A Nemotron run (about $0.86) would show whether the
