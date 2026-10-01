@@ -5233,3 +5233,69 @@ our side too, V2 should play more aggressively and win more.
   to come from the board (method B), not from re-estimating the counts.
 
 Cost: four 100-board runs on gpt-oss, about $0.40.
+
+## Joint refit of the booster and the within-turn model (2026-10-01)
+
+**Question (Shane).** The booster is trained on every pick of a turn under
+the frozen model, so its scores compromise between pick 1 and the flatter
+later picks. The within-turn parameters, fitted afterwards, repair picks 2+
+but not that compromise. If the booster is retrained knowing how later picks
+will be read (pick 1 at temperature 1, pick j at alpha_j * s + beta_j * fit),
+does it get better, at pick 1 in particular?
+
+**Built.** `scripts/pipeline/train_joint_listener.py`. Alternation:
+- fit (a, b, beta) on val with the current booster's scores;
+- retrain the booster from scratch with them fixed, through a custom
+  objective whose gradient for a later pick's row is alpha * (p - y);
+- three rounds.
+
+Everything else is held at the control's values: the incumbent's 44
+features, the rows and split of train_listener_net.load_sets, the recipe of
+listener_training.train, and the 0.75-per-pick weights.
+
+**The control is a fresh booster, not the incumbent's.** The deployed
+`cache/listener_gbt.txt` has an older recipe (380 trees) and was trained on
+val too, which is why its val R² below is inflated. The control is the same
+recipe on the same rows with the frozen objective, so the comparison
+isolates the objective.
+
+**Expected.** A small gain at pick 1, and picks 2+ at least as good as the
+control with post-hoc within-turn parameters.
+
+**Convergence.** The parameters settle by round 2:
+
+| | alpha at drop 0 (picks 2 / 3 / 4+) | beta |
+|---|---|---|
+| control, post hoc | 0.79 / 0.65 / 0.56 | 5.15 / 5.82 / 4.11 |
+| round 3 | 0.74 / 0.59 / 0.49 | 5.99 / 6.57 / 4.87 |
+
+**Fit** (McFadden R²; the last line is the joint model's gain over control +
+within-turn, 95% board bootstrap):
+
+| Set | control, frozen | control + within-turn | joint | pick 1, control → joint | joint gain |
+|---|---|---|---|---|---|
+| val | 0.3643 | 0.3867 | 0.3889 | 0.5938 → 0.5948 | +0.0022 [+0.0012, +0.0031] |
+| new boards | 0.3425 | 0.3672 | 0.3696 | 0.5557 → 0.5544 | +0.0023 [+0.0006, +0.0040] |
+| held-out words (gpt-oss) | 0.5482 | 0.5746 | 0.5735 | 0.7591 → 0.7580 | −0.0011 [−0.0022, +0.0001] |
+| held-out words (Sonnet) | 0.5456 | 0.5627 | 0.5619 | 0.7227 → 0.7199 | −0.0008 [−0.0020, +0.0004] |
+
+**Reading.**
+- **Not as expected: pick 1 does not improve.** It is unchanged within
+  0.003 on every set. The compromise in the frozen booster's scores was
+  already negligible, probably because the 0.75-per-pick weights already let
+  pick 1 dominate its training.
+- The joint model gains a little at picks 2+ on training-vocabulary boards
+  (+0.002) and loses as little on held-out words. Its later picks are
+  flatter and pull harder toward the picked words than the post-hoc fit's.
+  The retrained booster hands more of the later picks to the within-turn
+  terms, which helps where the vocabulary is familiar and not on new words.
+- Almost all of the within-turn gain (+0.025 on new boards, +0.026 on
+  held-out words) comes from fitting the parameters after the fact. Joint
+  training adds nothing to it that transfers.
+- Test A already showed that the post-hoc within-turn model does not
+  change play. With pick 1 unchanged, there is nothing here for the clue
+  choice to use, so no game was played and the assoc booster was not
+  refitted.
+- A side result: the control, the current recipe on the 44 features, is
+  slightly better than the deployed incumbent booster on new boards (0.3425
+  against 0.3362) and equal on held-out words.
