@@ -5299,3 +5299,34 @@ within-turn, 95% board bootstrap):
 - A side result: the control, the current recipe on the 44 features, is
   slightly better than the deployed incumbent booster on new boards (0.3425
   against 0.3362) and equal on held-out words.
+
+**Temperature only** (`--arm temperature`, Shane's question as asked: per-pick
+temperatures, no drop slope and no pull toward the picked words, which the
+incumbent does not have either).
+
+| | temperature at picks 2 / 3 / 4+ |
+|---|---|
+| control, post hoc | 0.91 / 0.79 / 0.70 |
+| round 1 | 0.83 / 0.70 / 0.61 |
+| round 2 | 0.79 / 0.66 / 0.57 |
+| round 3 | 0.76 / 0.63 / 0.54 |
+
+| Set | control, frozen | control + temperatures | joint | pick 1, control → joint | joint gain |
+|---|---|---|---|---|---|
+| val | 0.3643 | 0.3683 | 0.3693 | 0.5938 → 0.5930 | +0.0010 [+0.0002, +0.0018] |
+| new boards | 0.3425 | 0.3469 | 0.3457 | 0.5557 → 0.5500 | −0.0012 [−0.0028, +0.0003] |
+| held-out words (gpt-oss) | 0.5482 | 0.5592 | 0.5610 | 0.7591 → 0.7569 | +0.0019 [+0.0006, +0.0030] |
+| held-out words (Sonnet) | 0.5456 | 0.5523 | 0.5518 | 0.7227 → 0.7185 | −0.0005 [−0.0018, +0.0004] |
+
+- **Pick 1 gets slightly worse, not better,** on every set (−0.002 to
+  −0.006). So the temperature compromise was not holding pick 1 back.
+- **The alternation does not settle.** Each round the booster sharpens and
+  the later-pick temperatures fall to match. Pick 1 should anchor the scale,
+  but its pull is weak against the later picks' (60% of events), and the
+  booster drifts toward serving them. More rounds would not help pick 1.
+- Post-hoc temperatures alone buy +0.004 to +0.011 R², under half of what
+  the temperatures plus the pull buy (+0.025). Most of the within-turn gain
+  is the pull toward picked words, not the flattening.
+- **Conclusion for both arms:** retraining the booster around the
+  within-turn model does not help. The post-hoc fit is the whole gain, and
+  that gain does not reach play (test A).

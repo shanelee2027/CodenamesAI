@@ -40,6 +40,7 @@ parameters) and the joint model, with a 95% board bootstrap on the joint
 model's gain over the control with post-hoc parameters.
 
     python scripts/pipeline/train_joint_listener.py --name 44 --rounds 3
+    python scripts/pipeline/train_joint_listener.py --name 44 --rounds 3 --arm temperature
 """
 
 from __future__ import annotations
@@ -63,7 +64,8 @@ from codenames.listener_net import WordVectors  # noqa: E402
 from codenames.sequential_listener import N_STEP_PARAMS, SequentialParams, pair_similarity  # noqa: E402
 
 CACHE = T.CACHE
-SEQ_ARM = ("a", "b", "beta")          # the deployed "+ fit" arm; the sense term stays 0
+ARMS = {"+ fit": ("a", "b", "beta"),   # the deployed within-turn model; the sense term stays 0
+        "temperature": ("a",)}         # a per-pick temperature only: no drop slope, no pull
 
 
 class Events:
@@ -163,9 +165,9 @@ def train_booster(tr: Events, va: Events, cols: list[int], names: list[str], tr_
                      callbacks=[lgb.early_stopping(100, verbose=False)])
 
 
-def fit_theta(booster, val_positions: list[dict], vw) -> SequentialParams:
+def fit_theta(booster, val_positions: list[dict], vw, arm: tuple[str, ...]) -> SequentialParams:
     E = seq_events(val_positions, gbt_scores(booster, val_positions), vw, None, {})
-    th = seq_fit(E, SEQ_ARM)
+    th = seq_fit(E, arm)
     return SequentialParams(*(th[n].numpy() for n in ("a", "b", "beta", "gamma")))
 
 
@@ -180,6 +182,8 @@ def main() -> None:
     ap.add_argument("--name", default="44", help="output suffix: cache/listener_gbt_{control,joint}<name>.txt")
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--arm", choices=list(ARMS), default="+ fit",
+                    help="which within-turn terms: the deployed model, or the per-pick temperature only")
     args = ap.parse_args()
 
     import lightgbm as lgb
@@ -193,9 +197,11 @@ def main() -> None:
     print(f"{len(names)} features from {args.features_from}; events built ({time.time() - t0:.0f}s)")
 
     out_control = CACHE / f"listener_gbt_control{args.name}.txt"
-    out_joint = CACHE / f"listener_gbt_joint{args.name}.txt"
-    seq_control = CACHE / f"sequential_listener_control{args.name}.json"
-    seq_joint = CACHE / f"sequential_listener_joint{args.name}.json"
+    arm = ARMS[args.arm]
+    tag = "" if args.arm == "+ fit" else "_temperature"
+    out_joint = CACHE / f"listener_gbt_joint{args.name}{tag}.txt"
+    seq_control = CACHE / f"sequential_listener_control{args.name}{tag}.json"
+    seq_joint = CACHE / f"sequential_listener_joint{args.name}{tag}.json"
 
     if out_control.exists():
         control = lgb.Booster(model_file=str(out_control))
@@ -206,7 +212,7 @@ def main() -> None:
         control = train_booster(ev["train"], ev["val"], cols, names, ident, ident_va, args.seed)
         control.save_model(str(out_control))
         print(f"round 0: control, {control.num_trees()} trees -> {out_control} ({time.time() - t0:.0f}s)")
-    theta_control = fit_theta(control, sets["val"], vw)
+    theta_control = fit_theta(control, sets["val"], vw, arm)
     seq_control.write_text(json.dumps({"booster": str(out_control), **theta_control.to_dict()}, indent=1))
 
     booster, theta, history = control, theta_control, [("control", theta_control)]
@@ -215,10 +221,10 @@ def main() -> None:
         tr_t = ev["train"].transform(theta, drops["train"])
         va_t = ev["val"].transform(theta, drops["val"])
         booster = train_booster(ev["train"], ev["val"], cols, names, tr_t, va_t, args.seed)
-        theta = fit_theta(booster, sets["val"], vw)
+        theta = fit_theta(booster, sets["val"], vw, arm)
         history.append((f"round {r}", theta))
         print(f"round {r}: {booster.num_trees()} trees; theta "
-              + "  ".join(f"{n} " + "/".join(f"{v:+.3f}" for v in getattr(theta, n)) for n in SEQ_ARM)
+              + "  ".join(f"{n} " + "/".join(f"{v:+.3f}" for v in getattr(theta, n)) for n in arm)
               + f" ({time.time() - t0:.0f}s)")
     booster.save_model(str(out_joint))
     seq_joint.write_text(json.dumps({"booster": str(out_joint), **theta.to_dict()}, indent=1))
