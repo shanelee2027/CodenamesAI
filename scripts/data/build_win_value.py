@@ -42,6 +42,16 @@ hard the leftover words are to clue.
 - V(a, 0) = 0: the other side has already won.
 
     python scripts/data/build_win_value.py
+
+**Policy iteration, round 2** (docs/log.md, "win_prob_listener: V for the
+incumbent facing it"). win_prob_listener reads V only at positions where the
+incumbent is about to move, so the round-2 table is the incumbent's win
+probability when moving against win_prob. It is estimated from games
+between the two on training boards, counting only the incumbent's turns,
+and shrunk toward the round-1 table instead of a logistic fit:
+
+    python scripts/data/build_win_value.py --label calib_winprob_assoc_v1 --no-suite \
+        --mover learned_listener --prior-table cache/win_value.npz --out cache/win_value_vs_winprob.npz
 """
 
 from __future__ import annotations
@@ -60,27 +70,37 @@ SUITE_GPTOSS = "93f5a196b26054d1"
 MAX_WORDS = 9
 
 
-def tally(db: Path) -> tuple[np.ndarray, np.ndarray, int]:
+def tally(db: Path, label_prefixes: tuple[str, ...] = LABEL_PREFIXES, include_suite: bool = True,
+          mover: str | None = None) -> tuple[np.ndarray, np.ndarray, int]:
     """(games, wins) per (mover's words left, other's words left), counted
-    at the start of every turn of every finished game."""
+    at the start of every turn of every finished game. With `mover`, only the
+    turns of the seat whose spymaster name starts with it (read from the
+    label's "|A=...,B=..." tail)."""
     n = np.zeros((MAX_WORDS + 1, MAX_WORDS + 1))
     w = np.zeros_like(n)
     games = 0
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     for label, suite, board, turns, winner in conn.execute(
             "SELECT label, suite_id, board, turns, winner FROM game_records"):
-        if not ((label or "").startswith(LABEL_PREFIXES) or suite == SUITE_GPTOSS):
+        if not ((label or "").startswith(label_prefixes) or (include_suite and suite == SUITE_GPTOSS)):
             continue
         if winner not in ("A", "B"):
             continue
+        counted = {"A", "B"}
+        if mover is not None:
+            seat_a, seat_b = label.split("|", 1)[1].split(",B=", 1)
+            counted = {t for t, name in (("A", seat_a.removeprefix("A=")), ("B", seat_b)) if name.startswith(mover)}
+            if len(counted) != 1:
+                continue
         games += 1
         b = json.loads(board)
         left = {"A": len(b["own"]), "B": len(b["opponent"])}
         for t in json.loads(turns):
             me = t["team"]
             other = "B" if me == "A" else "A"
-            n[left[me], left[other]] += 1
-            w[left[me], left[other]] += winner == me
+            if me in counted:
+                n[left[me], left[other]] += 1
+                w[left[me], left[other]] += winner == me
             # Guess roles are relative to the guessing team.
             for _, role in t["guesses"]:
                 if role == "own":
@@ -150,11 +170,19 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", type=Path, default=PROJECT_ROOT / "cache" / "llm_store.db")
     ap.add_argument("--out", type=Path, default=OUT)
-    ap.add_argument("--prior", type=float, default=20.0, help="games' weight of the logistic prior per cell")
+    ap.add_argument("--prior", type=float, default=20.0, help="games' weight of the prior per cell")
+    ap.add_argument("--label", action="append", default=None,
+                    help="label prefix of the games to use (repeatable); default: the incumbent's sweeps")
+    ap.add_argument("--no-suite", action="store_true", help="leave out the gpt-oss eval suite's games")
+    ap.add_argument("--mover", default=None, help="count only the turns of this spymaster's seat")
+    ap.add_argument("--prior-table", type=Path, default=None,
+                    help="shrink toward this V table instead of a logistic fit")
     args = ap.parse_args()
 
-    n, w, games = tally(args.db)
-    prior = logistic_fit(n, w)
+    n, w, games = tally(args.db, tuple(args.label) if args.label else LABEL_PREFIXES,
+                        include_suite=not args.no_suite, mover=args.mover)
+    prior = np.load(args.prior_table)["V"] if args.prior_table else logistic_fit(n, w)
+    prior = np.nan_to_num(prior)
     V = (w + args.prior * prior) / (n + args.prior)
     raw_inner = V[1:, 1:].copy()
     V[1:, 1:] = monotone(raw_inner, n[1:, 1:] + args.prior)
