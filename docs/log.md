@@ -5139,3 +5139,28 @@ the actual pick sequences, out of fold over 5 board-grouped folds):
   objective prices is large.
 - The assassin is still under-predicted in the top risk bin: 0.138
   calibrated against 0.159 actual, 23 events.
+- **Games** (holdout_v1_gptoss, 97 boards, against learned_listener):
+
+  | assoc + V | win% | boards won both ways | sign p | assassin losses | mean k | own% |
+  |---|---|---|---|---|---|---|
+  | uncalibrated | 59.1% | 28 vs 10 | 0.005 | 21 vs 10 | 2.59 | 79.4% |
+  | **calibrated** | 54.1% | 22 vs 14 | 0.24 | 24 vs 6 | 2.39 | 80.4% |
+
+  Paired against the uncalibrated arm on the same 100 boards: the
+  uncalibrated arm won more games on 20 boards, the calibrated on 9
+  (p = 0.06).
+- **Not as expected.** Calibration made the turn predictions match reality
+  but probably made play worse, and it did not reduce assassin losses (24
+  against 21).
+  - Its main effect was a lower number: mean k 2.59 → 2.39.
+  - This is the same pattern as every caution lever against gpt-oss, now
+    even with probabilities that are correct.
+- **So something else in the objective still undervalues tempo,** and the
+  listener's optimism was offsetting it. Candidates:
+  - **V is the incumbent's value.** It assumes the incumbent plays both
+    sides from the next turn on, while the real game has win_prob on our
+    side. Policy iteration round 2 tests this: V from win_prob's own games,
+    a separate table for each side.
+  - **V is blind to the board,** which method B addresses.
+- **Calibration is not adopted.** The uncalibrated assoc + V stays the
+  leader. `calibration_path` stays available as a parameter.
