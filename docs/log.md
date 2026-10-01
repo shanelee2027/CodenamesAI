@@ -5357,3 +5357,54 @@ are not in sample. The correct version fits the temperatures on cross-fitted
 **Conclusion.** Not pursued further. Three forms of the joint refit (with the
 pull, temperature only on val, temperature only on train) gave nothing at
 pick 1, and the within-turn model's post-hoc gain does not reach play.
+
+## Pick index as a listener feature (2026-10-01)
+
+**Idea (Shane).** Tell the booster which pick of the turn it is scoring, so
+its trees can learn a different shape for each pick, instead of one
+flattening factor laid over shared scores. gpt-oss ranked whole boards
+(15 words on average) while the announced number is 1-4, so every stored
+ranking also carries picks beyond k that no booster has used.
+
+**Built.** `scripts/pipeline/train_pick_index_listener.py`.
+- Still a sequence of conditional choices: pick x is a softmax over the
+  words left, so the reward stays exact.
+- Two extra features: `x` and `x_minus_k`.
+- The marginal framing ("which word is the x-th choice, among all words")
+  was rejected. Per-position probabilities cannot give P(picks 1..j all
+  own), and with one own word and the assassin ranked either way half the
+  time, independence gives 0.25 where the truth is 0.
+- Arms: `depth k` (picks 1..k, 47k train events) and `depth 9` (picks
+  1..min(9, n-1), 159k events).
+- Same 44 features, rows, split, recipe and 0.75-per-pick weights as the
+  control. All arms are scored on picks 1..k.
+
+**Expected.** Better than post-hoc temperatures, since it can do more than
+flatten; depth 9 better than depth k on the later picks.
+
+| Set | control | + temperatures | + within-turn | depth k | depth 9 | pick 1: control / depth 9 |
+|---|---|---|---|---|---|---|
+| val | 0.3643 | 0.3683 | **0.3867** | 0.3728 | 0.3782 | 0.5938 / 0.5949 |
+| new boards | 0.3425 | 0.3469 | **0.3672** | 0.3516 | 0.3549 | 0.5557 / 0.5532 |
+| held-out words (gpt-oss) | 0.5482 | 0.5592 | **0.5746** | 0.5617 | 0.5610 | 0.7591 / 0.7593 |
+| held-out words (Sonnet) | 0.5456 | 0.5523 | **0.5627** | 0.5514 | 0.5504 | 0.7227 / 0.7191 |
+
+Against control + within-turn (95% board bootstrap), depth 9 is −0.012
+[−0.017, −0.008] on new boards and −0.014 [−0.018, −0.009] on held-out
+words gpt-oss. Gain share: x 7.3%, x_minus_k 1.3% (depth 9).
+
+**Reading.**
+- **The pick index beats the post-hoc temperatures,** as expected: +0.008
+  on new boards with depth 9, +0.003 on held-out words gpt-oss. The trees do
+  learn more than a flattening.
+- **It loses clearly to the within-turn model,** which has the pull toward
+  the words already picked. The booster's features are computed on the
+  full board, so it knows which pick it is on but not which words were
+  taken. Most of the within-turn gain is that pull, as the
+  temperature-only refit already suggested.
+- **Depth 9 helps on boards with the training vocabulary** (val +0.005,
+  new boards +0.003 over depth k), not on held-out words. The extra events
+  past k add data but not transferable signal.
+- Pick 1 is unchanged, as with every later-pick change.
+- Not played: it is worse than a listener that test A showed does not
+  change play.
