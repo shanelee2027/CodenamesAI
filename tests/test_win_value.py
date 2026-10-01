@@ -96,3 +96,18 @@ def test_one_word_is_worth_the_value_gap():
     V = np.tile(np.linspace(0, 1, 10), (10, 1))          # V[x, y] rises with y
     v = _value(V)
     assert abs(v.one_word(3, 4) - (V[4, 3] - V[4, 2])) < 1e-12
+
+
+def test_calibration_shifts_scores_by_role():
+    from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
+
+    sm = WinProbListenerSpymaster.__new__(WinProbListenerSpymaster)
+    s_own, s_bad = np.array([[1.0, 2.0]]), np.array([[0.5, 0.0, -1.0]])
+    roles = [Role.NEUTRAL, Role.OPPONENT, Role.ASSASSIN]
+    sm.calibration = None
+    a, b = sm._calibrated(s_own, s_bad, roles)
+    assert a is s_own and b is s_bad
+    sm.calibration = {"alpha": 2.0, "beta_own": -0.5, "beta_opponent": 0.25, "beta_assassin": 1.0}
+    a, b = sm._calibrated(s_own, s_bad, roles)
+    np.testing.assert_allclose(a, [[1.5, 3.5]])
+    np.testing.assert_allclose(b, [[1.0, 0.25, -1.0]])
