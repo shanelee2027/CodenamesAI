@@ -5408,3 +5408,60 @@ words gpt-oss. Gain share: x 7.3%, x_minus_k 1.3% (depth 9).
 - Pick 1 is unchanged, as with every later-pick change.
 - Not played: it is worse than a listener that test A showed does not
   change play.
+
+## History features: the listener sees the words already picked (2026-10-01)
+
+**Question (Shane).** The pick-index booster lost to the within-turn model
+because it knows which pick it is on but not which words were taken. Give
+it the history as features: is a flexible model of the pull worth more than
+the within-turn model's one linear term? This is an offline upper bound:
+in play the features depend on the picked set, so the booster would run
+about 130 times per clue at k <= 4.
+
+**Built.** `scripts/pipeline/train_history_listener.py`, on the pick-index
+model at depth 9 (x, x - k, picks up to 9), so the gain over it is the
+history alone. For each word left, from the words picked before it:
+- `embeddings` arm: highest cosine to a picked word in each of the five
+  spaces, its mean over spaces (the within-turn model's `fit`), and the
+  cosine to the most recent pick;
+- `all sources` arm adds SWOW (one hop both ways, two hops forward),
+  ConceptNet (any relation) and gpt-oss's free associations (both ways).
+
+**Expected.** Clearly better than the within-turn model everywhere, since it
+has the same information and more flexibility.
+
+| Set | within-turn | pick index | history, embeddings | history, all sources | gain of all sources over within-turn |
+|---|---|---|---|---|---|
+| val | 0.3867 | 0.3782 | 0.3988 | 0.3998 | +0.0130 [+0.0110, +0.0150] |
+| new boards | 0.3672 | 0.3549 | 0.3808 | 0.3828 | +0.0156 [+0.0122, +0.0191] |
+| held-out words (gpt-oss) | 0.5746 | 0.5610 | 0.5745 | 0.5747 | +0.0001 [−0.0026, +0.0028] |
+| held-out words (Sonnet) | 0.5627 | 0.5504 | 0.5560 | 0.5560 | −0.0066 [−0.0102, −0.0032] |
+
+By pick on new boards, within-turn → all sources: pick 2 0.299 → 0.321,
+pick 3 0.193 → 0.217, pick 4 0.133 → 0.176. Pick 1 is unchanged on every
+set.
+
+Gain share in the embeddings arm: similarity to the last pick 6.6%, the mean
+fit 4.9%, the per-space cosines 8.5% together. In the all-sources arm the
+non-embedding links take 2.0% between them, most of it SWOW two hops.
+
+**Reading.**
+- **Only partly as expected.** On boards built from the training
+  vocabulary, the history booster beats the within-turn model at every
+  later pick (+0.014 to +0.016).
+- **On held-out words it does not:** a tie on gpt-oss's rankings and a
+  significant loss on Sonnet's. The trees learn how the pull behaves for
+  familiar words, through interactions with the word-level base features,
+  and that does not transfer. The single linear term transfers as well or
+  better.
+- **This matters for play:** the eval suites are built from the held-out
+  words. On them the history booster buys nothing over the within-turn
+  model, which test A already showed does not change play. So no playable
+  version (per-set booster runs or a separate pairwise model) is worth
+  building.
+- **The other sources add almost nothing** (+0.002 on new boards, 0 on held
+  out). The pull is about distributional similarity, which the embeddings
+  already carry.
+- **Similarity to the most recent pick** is the most used history feature.
+  The within-turn model only has the maximum over all picked words; a
+  recency term is a cheap addition if later picks are revisited.
