@@ -6086,9 +6086,9 @@ Difference **+2.7 points per game [−0.1, +5.4]**. Boards better 132, worse
 - **About as expected:** the upper half of the 0.5–2 point guess, and the
   best simulated result of any decision-rule change (the board V was −0.6
   here).
-- **Some of the gain is fewer assassin losses** (−26). Removing the
-  opponent's danger words also removes the chance of their guesser hitting
-  ours, but our own assassin risk sits in the base value, so this effect is
-  indirect.
+- **There were 26 fewer assassin losses.** The mechanism is not checked.
+  The lookahead does not change how the assassin enters our own turn's
+  value, so these come from choosing different clues, not from a new
+  penalty.
 - **Next:** the gpt-oss suite, paired with `9c304cc348d6`, per the plan
   (simulated games are weak evidence on their own).
