@@ -5802,3 +5802,58 @@ stays registered as an exploration entry; V1 stays the objective.
 - The simulated games themselves remain useful as free training data for
   anything that needs outcomes (cache/sim_games.db: 6,994 games in sim_v1,
   plus 4,400 from these tests).
+
+## assoc_profile_listener (2026-10-03)
+
+**Question.** Last night's feature blocks B (the clue's profile) and C
+(reverse associations) added +0.006 to +0.009 R² on every held-out set. Does
+that carry into play? Building them for play (docs/versions/assoc_profile_listener.md):
+
+- **Structure.** Two options were considered:
+  1. append the features to the shared pipeline, the convention every
+     earlier block followed;
+  2. a self-contained subclass computing them itself. This would have needed
+     a second route around the bundle's column selection.
+
+  Option 1 was taken. Older boosters read their own columns by name, and
+  the incumbent never loads the new table.
+- **One implementation, checked twice.** `AssocProfile.columns` reproduces
+  the exploratory columns exactly on all 39,250 cached positions, and a
+  spymaster computes the same columns in play on the suite's held-out
+  boards.
+- **Free in play.** Every pool clue and all 400 board words already have
+  association lists.
+- **Booster** (assoc's 56 features + 11): +0.0054 val, +0.0059 new boards,
+  +0.0064 held-out generated, +0.0053 held-out words, +0.0079 Sonnet, every
+  CI above 0. This is consistent with the exploratory A+B+C run, since A was
+  null.
+
+**Play test.** win_prob_listener with this booster (`model_path`,
+`turn_model=frozen`) against learned_listener on holdout_v1_gptoss, paired
+by board with win_prob_listener + the assoc booster (`105dc03b7f48`,
+28 vs 10). The only difference is the booster.
+
+| holdout_v1_gptoss, vs learned_listener | boards | win% | boards won both ways | sign p | assassin losses |
+|---|---|---|---|---|---|
+| win_prob + assoc booster (`105dc03b7f48`) | 99 | 59.1% | 28 vs 10 | 0.005 | 21 vs 10 |
+| **win_prob + assoc_profile booster** (`41eb6276edd7`) | 90 | 57.2% | 20 vs 7 | 0.019 | 18 vs 9 |
+
+Paired on the 89 boards both played: **−1.1 points per game
+[−7.9, +5.6]**; boards better 17, worse 20, identical on 52.
+
+- **No detectable difference from the assoc booster.** It is as far ahead
+  of the incumbent as the assoc booster was, and no further. A fit gain of
+  +0.006 R² is a third of conceptnet → assoc's pick-1 gain. A 100-board
+  suite cannot resolve the few points it might be worth, as the interval
+  shows.
+- **10 boards were discarded:** gpt-oss returned unusable rankings on every
+  attempt. That is the second run in a row (12 last night). Earlier suite
+  runs lost at most 1–3 boards, so either DeepInfra's gpt-oss has changed or
+  these clues provoke it. Not retried: a retry last night recovered 1 of 13.
+- Cost about $0.03 (473 new responses); about $0.08 since last night's
+  start, of the $0.30 granted.
+- **Kept as an exploration entry, not adopted:** the assoc booster stays the
+  best-supported listener for play. If a stronger test is wanted, a direct
+  head-to-head (assoc_profile + V against assoc + V) on more boards would
+  measure the difference itself instead of two separate leads over the
+  incumbent.

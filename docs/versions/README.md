@@ -30,6 +30,9 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
   later picks of a turn modelled separately in the reward.
 - [`board_value_listener`](board_value_listener.md): win_prob_listener with a
   V that reads the board, fitted on simulated games.
+- [`assoc_profile_listener`](assoc_profile_listener.md): assoc_feature_listener
+  plus the clue's association profile and reverse associations as listener
+  features.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.
