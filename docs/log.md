@@ -6429,7 +6429,7 @@ opponents.
 
 **New games.** The three clue policies had never been played on the gpt-oss
 suite. They were played for this, with one retry pass for refused boards:
-4,608 gpt-oss calls, about $0.32 of the $2 DeepInfra grant.
+2,323 gpt-oss calls in all, about $0.16 of the $2 DeepInfra grant.
 
 | Policy | win% | boards won both ways |
 |---|---|---|
