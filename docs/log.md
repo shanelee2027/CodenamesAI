@@ -5683,3 +5683,63 @@ suite's 100 boards with the simulated guesser
   optimistic about states where the mover is behind and must take risks; this
   is a known bias to check against the real recorded games, not a reason to
   stop.
+
+## Simulated games: a board-reading V (2026-10-03, overnight)
+
+**Games.** `simulate_games.py --label sim_v1`: win_prob_listener with the
+incumbent's booster and V1 (`model_path=cache/listener_gbt.txt`,
+`turn_model=frozen`) against learned_listener, guesser `sim:assoc`, boards
+from the training vocabulary on seeds 6,000,000+. 6,994 games on 3,498 boards
+at about 1,730 boards an hour on 13 workers. The run was planned for 6,000
+boards and was stopped at the background job's two-hour limit. The
+challenger won 54–56% throughout, as on the suite (55.0%).
+
+**Featurizing was the bottleneck.** eval_board_value's per-state loop ran at
+about 30 ms a state on the loaded machine (hours for 100k states).
+Featurizing all states of a board in one batch of masked tensor ops gives the
+same features (largest difference 7e-7 on 500 states) at least 6× faster:
+100k real states in 9 minutes. That code is now `codenames/board_value.py`,
+shared by the tools and the spymaster.
+
+**Board model** (`scripts/tools/eval_sim_value.py --label sim_v1 --mover
+learned_listener`). The states are turn starts where the incumbent moves
+against win_prob, which are the positions win_prob_listener reads V at:
+25,607 states. As in the go/no-go, a GBT starts from the count table's logit
+and adds the board features, with early stopping split by board. A bug on the
+way: LightGBM's raw prediction leaves out the init score, so the first run
+scored the trees' shift alone and reported log-loss 0.696 (ln 2). Fixed
+before any result was read.
+
+| | log-loss gain from the board, 95% CI over boards |
+|---|---|
+| simulation, out of fold | +0.0055 [+0.0037, +0.0073] |
+| **real gpt-oss states** (100,584, 700 boards): the real count table (out of fold) plus the simulated board term | **+0.0043 [+0.0011, +0.0074]** |
+| for reference, the go/no-go: a board GBT fitted on the real games themselves, out of fold | +0.0039 [+0.0011, +0.0070] |
+
+- **The board's worth transfers from simulation to gpt-oss.** A correction
+  that never saw a real game improves the real games' predictions as much as
+  one fitted on them. On 1,800 and then 3,000 simulated boards the transfer
+  gain was +0.0036 and +0.0043, so it grows with simulated data.
+- Within a score cell the term moves V by sd 0.048 (over 0.05 for 24% of
+  states, over 0.10 for 5%). As in the go/no-go, the most-used features are
+  the assassin closeness of each side, then the best 2-clue.
+- **The simulated count table does not transfer,** but that is expected: the
+  movers differ. In simulation the incumbent moves against the stronger
+  win_prob (it wins 43.9%), while the real states are mostly the incumbent
+  against variants of itself (52.0%). In the middle bin the table predicts
+  0.48 against 0.56 actual. The spymaster therefore keeps V1 as the count
+  table and adds only the board term.
+
+**board_value_listener** (docs/versions/board_value_listener.md). This is
+win_prob_listener with W = 1 − sigmoid(logit V1 + board term) for each
+ending, valued at the likeliest after-board for that clue: its top j own
+words found, plus its top-scored neutral or opponent word for those endings.
+That is about 3,000 after-boards a move, 3–4 s. Two design points:
+- **The shared `win_probability` was generalised** to accept W per clue
+  (`[..., :k]` indexing). For the 1-D tables every other spymaster passes,
+  this is the same computation; all 458 tests pass. With a zero term the new
+  spymaster reproduces win_prob_listener's scores exactly.
+- **The likeliest after-board is an approximation.** The exact version would
+  average over which own words are found, which needs the subset
+  enumeration the go/no-go listed. The approximation errs most when a
+  clue's top words are close, and then its endings are spread anyway.
