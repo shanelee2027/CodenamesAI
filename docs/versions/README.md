@@ -35,6 +35,9 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
   features.
 - [`reply_lookahead_listener`](reply_lookahead_listener.md): win_prob_listener
   that works out the incumbent's reply on the board each clue leaves.
+- [`pick_index_lookahead_listener`](pick_index_lookahead_listener.md):
+  reply_lookahead_listener with the assoc booster and a pick-index model of
+  our turn.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.

@@ -91,6 +91,7 @@ from codenames.spymasters.conceptnet_listener import ConceptnetListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
 from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
+from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
          "/compare": "compare.html"}
@@ -190,6 +191,20 @@ SPYMASTERS: dict[str, dict] = {
         "needs": ["isa_sims.npz", "conceptnet_sims.npz", "sequential_listener.json", "word_vectors.npz"],
         "about": "The ConceptNet listener, but after the first pick the guesser is modelled as "
                  "flatter and pulled toward words like the ones it already picked (Cap, then Glove)."},
+    # Win-probability objective with the assoc booster, a pick-index model of
+    # the turn and a one-move lookahead at the incumbent's reply
+    # (codenames/spymasters/pick_index_lookahead_listener.py). Its value is a
+    # P(win), not net words, so the k=1 tiebreak (tuned in net words) is off,
+    # as in the eval suite.
+    "pick_index_lookahead": {
+        "label": "Pick-index lookahead (win probability)", "model": "listener_gbt_assoc_features.txt",
+        "outside_n": 0, "cls": PickIndexLookaheadListenerSpymaster, "kwargs": {"outside_n": 0},
+        "no_k1": True,
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "win_value.npz",
+                  "listener_gbt_pick_indexassoc_depth9.txt", "reply_offset_pick_index.npz"],
+        "about": "Chooses the clue that maximises the chance of winning after the turn and the "
+                 "incumbent's reply. Its listener is the association-feature model, with a "
+                 "pick-index booster for how the guesser's 2nd, 3rd and 4th picks go. ~1.5 s per clue."},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).
@@ -249,7 +264,7 @@ class Engine:
             cls = spec.get("cls", LearnedListenerSpymaster)
             kwargs = spec.get("kwargs") or {"outside_n": spec["outside_n"]}
             self._spymasters[key] = cls(
-                **kwargs, k1_tiebreak=self.k1, model_path=self.cache_dir / spec["model"],
+                **kwargs, k1_tiebreak=self.k1 and not spec.get("no_k1"), model_path=self.cache_dir / spec["model"],
                 bundle=self._bundles[spec["model"]], clue_stats=self.clue_stats,
                 cache_dir=self.cache_dir)
         return self._spymasters[key]
@@ -297,6 +312,11 @@ class Engine:
             s[None, :n_own], s[None, n_own:], np.array([sm.costs[r] for r in roles[n_own:]]),
             clue_number_cap(n_own, sm.max_number), s_out, words=words)
         value = float((gain - penalty)[0, number - 1])
+        kind = "net_words"
+        if hasattr(sm, "clue_value"):           # a win-probability model: show the P(win) it chose on
+            with _LOCK:
+                v = sm.clue_value(board, clue, number, self.sims)
+            value, kind = (v, "win") if v is not None else (value, kind)
         entries = [(w, ROLE_CODE[r], float(x)) for w, r, x in zip(words, roles, s)]
         if got["outside"] is not None:
             entries.append(("PASS", "pass", got["outside"]))
@@ -310,7 +330,7 @@ class Engine:
                for i in order[:self.SHOW]]
         own = sorted((i for i, e in enumerate(entries) if e[1] == "a"), key=lambda i: -entries[i][2])
         return {"targets": [entries[i][0] for i in own[:number]], "order": out,
-                "value": round(value, 3)}
+                "value": round(value, 3), "value_kind": kind}
 
     def clue(self, seed: int, revealed: list[str], turn: str, key: str) -> dict:
         board = Board.generate(seed=seed)
@@ -623,7 +643,7 @@ class CompareStudy:
             "blind": p["blind"], "agreed_before": p["agreed"], "k1_tiebreak": self.engine.k1,
             "left": sides[0]["key"], "right": sides[1]["key"],
             "vote": choice, "winner": winner, "note": note,
-            "clues": {sd["key"]: {f: sd[f] for f in ("clue", "number", "value", "targets")}
+            "clues": {sd["key"]: {f: sd.get(f) for f in ("clue", "number", "value", "value_kind", "targets")}
                       for sd in sides},
             "ms": int((time.time() - p["t_shown"]) * 1000),
         }

@@ -228,6 +228,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "reply_lookahead_listener with the assoc booster and a pick-index model of our turn: the best 8 clues of the frozen search are scored at every number by cache/listener_gbt_pick_indexassoc_depth9.txt, which reads the assoc booster's features plus the pick number and pick number - k, so pick j of the turn is a softmax of its own scores (no post-hoc temperatures or within-turn layer). Each turn is enumerated exactly under those scores; the best 6 (clue, number) pairs get the incumbent's reply lookahead, centred on V by cache/reply_offset_pick_index.npz. docs/versions/pick_index_lookahead_listener.md.",
+   "name": "pick_index_lookahead_listener",
+   "type": "pick_index_lookahead_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

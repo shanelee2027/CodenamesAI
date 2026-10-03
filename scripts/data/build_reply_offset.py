@@ -20,7 +20,12 @@ training boards, never the test boards): every probable outcome (P >= 0.01)
 of the best clues at every number. Each cell's mean is shrunk toward 0 with
 the weight of 50 outcomes.
 
+With `--spymaster pick_index_lookahead_listener` the outcomes are its turns
+under the pick-index booster (its top clues at every number), and the table
+goes to cache/reply_offset_pick_index.npz.
+
     python scripts/data/build_reply_offset.py --positions 300
+    python scripts/data/build_reply_offset.py --positions 300 --spymaster pick_index_lookahead_listener
 """
 
 from __future__ import annotations
@@ -34,13 +39,15 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "tools"))
 
-OUT = PROJECT_ROOT / "cache" / "reply_offset.npz"
+OUT = {"reply_lookahead_listener": PROJECT_ROOT / "cache" / "reply_offset.npz",
+       "pick_index_lookahead_listener": PROJECT_ROOT / "cache" / "reply_offset_pick_index.npz"}
 SHRINK = 50.0
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--positions", type=int, default=300)
+    ap.add_argument("--spymaster", choices=list(OUT), default="reply_lookahead_listener")
     args = ap.parse_args()
 
     from check_reply_lookahead import positions
@@ -48,12 +55,18 @@ def main() -> None:
     from codenames.board import Board, OpponentBoardView, clue_number_cap, load_training_wordlist
     from codenames.game import Role
     from codenames.similarity import SimilarityTensor
+    from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
     from codenames.spymasters.reply_lookahead_listener import ReplyLookaheadListenerSpymaster, turn_outcomes
+    from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 
     sims = SimilarityTensor.load()
     # Raw lookahead values: no offset table yet.
-    sm = ReplyLookaheadListenerSpymaster(shortlist=200, sigma=1.5, max_rarity=10.0,
-                                         model_path=PROJECT_ROOT / "cache" / "listener_gbt.txt", reply_offset_path="")
+    pick = args.spymaster == "pick_index_lookahead_listener"
+    if pick:
+        sm = PickIndexLookaheadListenerSpymaster(shortlist=200, sigma=1.5, max_rarity=10.0, reply_offset_path="")
+    else:
+        sm = ReplyLookaheadListenerSpymaster(shortlist=200, sigma=1.5, max_rarity=10.0,
+                                             model_path=PROJECT_ROOT / "cache" / "listener_gbt.txt", reply_offset_path="")
     vocab = load_training_wordlist()
     size = sm.value.V.shape[0]
     total, count = np.zeros((size, size)), np.zeros((size, size))
@@ -67,35 +80,39 @@ def main() -> None:
         words = own + bad[Role.NEUTRAL] + bad[Role.OPPONENT] + bad[Role.ASSASSIN]
         roles = [r for r in (Role.NEUTRAL, Role.OPPONENT, Role.ASSASSIN) for _ in bad[r]]
         n_own, K = len(own), clue_number_cap(len(own), sm.max_number)
-        _, sc, _ = super(ReplyLookaheadListenerSpymaster, sm)._score_all_clues(view, sims)
-        fin = np.flatnonzero(np.isfinite(sc))
-        top = fin[np.argsort(-sc[fin])[: sm.n_top_clues]]
-        keep, S = sm._scores(sm, [sims.clue_words[i] for i in top], words, K, sims)
+        _, sc, _ = WinProbListenerSpymaster._score_all_clues(sm, view, sims)
+        if pick:
+            cand = sm.candidate_turns(view, sims, sc)
+            turns = [] if cand is None else [o for _, _, _, o in cand["pairs"]]
+        else:
+            fin = np.flatnonzero(np.isfinite(sc))
+            top = fin[np.argsort(-sc[fin])[: sm.n_top_clues]]
+            keep, S = sm._scores(sm, [sims.clue_words[i] for i in top], words, K, sims)
+            turns = [turn_outcomes(S[t], n_own, k) for t in range(len(keep)) for k in range(1, K + 1)]
         opp = sm._opponent(view, sims)
-        if not keep or opp is None:
+        if not turns or opp is None:
             continue
         b = sum(r == Role.OPPONENT for r in roles)
         cache: dict = {}
-        for t in range(len(keep)):
-            for k in range(1, K + 1):
-                for (found, end), p in turn_outcomes(S[t], n_own, k).items():
-                    if p < sm.min_outcome:
-                        continue
-                    left = n_own - len(found)
-                    role = None if end is None else roles[end - n_own]
-                    if left == 0 or role == Role.ASSASSIN or (role == Role.OPPONENT and b == 1):
-                        continue
-                    b_after = b - 1 if role == Role.OPPONENT else b
-                    removed = frozenset([words[i] for i in found] + ([] if end is None else [words[end]]))
-                    if removed not in cache:
-                        cache[removed] = sm._reply_win(opp, removed)
-                    total[b_after, left] += (1 - cache[removed]) - (1 - sm.value.V[b_after, left])
-                    count[b_after, left] += 1
+        for outcomes in turns:
+            for (found, end), p in outcomes.items():
+                if p < sm.min_outcome:
+                    continue
+                left = n_own - len(found)
+                role = None if end is None else roles[end - n_own]
+                if left == 0 or role == Role.ASSASSIN or (role == Role.OPPONENT and b == 1):
+                    continue
+                b_after = b - 1 if role == Role.OPPONENT else b
+                removed = frozenset([words[i] for i in found] + ([] if end is None else [words[end]]))
+                if removed not in cache:
+                    cache[removed] = sm._reply_win(opp, removed)
+                total[b_after, left] += (1 - cache[removed]) - (1 - sm.value.V[b_after, left])
+                count[b_after, left] += 1
         if (n + 1) % 25 == 0:
             print(f"  {n + 1} positions", flush=True)
     offset = total / (count + SHRINK)
-    np.savez(OUT, offset=offset, count=count)
-    print(f"{int(count.sum())} outcomes -> {OUT}")
+    np.savez(OUT[args.spymaster], offset=offset, count=count)
+    print(f"{int(count.sum())} outcomes -> {OUT[args.spymaster]}")
     print("offset[b, a] (rows b = opponent's words left after our turn, columns a = ours), cells with 100+ outcomes:")
     for bb in range(1, size):
         cells = [f"{offset[bb, a]:+.3f}" if count[bb, a] >= 100 else "   .  " for a in range(1, size)]
