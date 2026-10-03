@@ -46,6 +46,7 @@ from codenames.spymasters.assoc_profile_listener import AssocProfileListenerSpym
 from codenames.spymasters.conceptnet_listener import ConceptnetListenerSpymaster
 from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 from codenames.spymasters.board_value_listener import BoardValueListenerSpymaster
+from codenames.spymasters.reply_lookahead_listener import ReplyLookaheadListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
 from codenames.spymasters.base import Spymaster
@@ -72,6 +73,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "assoc_profile_listener": AssocProfileListenerSpymaster,
     "win_prob_listener": WinProbListenerSpymaster,
     "board_value_listener": BoardValueListenerSpymaster,
+    "reply_lookahead_listener": ReplyLookaheadListenerSpymaster,
     "within_turn_listener": WithinTurnListenerSpymaster,
     "imitation_policy": ImitationPolicySpymaster,
     "gptoss_reward_policy": GptossRewardPolicySpymaster,

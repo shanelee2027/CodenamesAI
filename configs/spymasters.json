@@ -214,6 +214,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "win_prob_listener with a one-move lookahead: the best few (clue, number) pairs are re-valued by enumerating each turn's probable outcomes and working out the incumbent's reply on each after-board (its top clues from one search per move, re-scored with the revealed words dropped). An outcome's value is 1 - the incumbent's P(win) with that reply, instead of V's board-blind average. docs/versions/reply_lookahead_listener.md.",
+   "name": "reply_lookahead_listener",
+   "type": "reply_lookahead_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }
