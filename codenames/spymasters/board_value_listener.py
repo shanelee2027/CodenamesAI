@@ -33,6 +33,7 @@ this is win_prob_listener.
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -71,7 +72,9 @@ class BoardValueListenerSpymaster(WinProbListenerSpymaster):
         self.board_value = BoardValue(Path(board_value_path) if board_value_path else Path(cache_dir) / BOARD_VALUE,
                                       Path(board_counts_path) if board_counts_path else Path(cache_dir) / BOARD_COUNTS,
                                       Path(cache_dir))
-        self._board = None
+        # The arena plays several games per worker in threads, all on this one
+        # instance, so the board being scored is per thread.
+        self._local = threading.local()
 
     @classmethod
     def model_files(cls, params: dict) -> list[Path]:
@@ -82,11 +85,11 @@ class BoardValueListenerSpymaster(WinProbListenerSpymaster):
                 *(cache_dir / f for f in POLICY_FILES)]
 
     def _score_all_clues(self, board, sims):
-        self._board = board                  # _clue_values needs the whole board, revealed words included
+        self._local.board = board            # _clue_values needs the whole board, revealed words included
         try:
             return super()._score_all_clues(board, sims)
         finally:
-            self._board = None
+            self._local.board = None
 
     def _clue_values(self, s_own, s_bad, roles, costs, max_k, s_out, words=None):
         s_own, s_bad = self._calibrated(np.asarray(s_own, dtype=np.float64), np.asarray(s_bad, dtype=np.float64), roles)
@@ -111,7 +114,7 @@ class BoardValueListenerSpymaster(WinProbListenerSpymaster):
     def _after_boards(self, s_own, s_bad, roles, max_k, words):
         """W per clue and ending, (n_clues, max_k + 1) each, or None to fall
         back to the score alone."""
-        board = self._board
+        board = getattr(self._local, "board", None)
         if board is None or words is None:
             return None
         full = list(board.words)

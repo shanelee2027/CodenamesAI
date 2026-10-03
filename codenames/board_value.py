@@ -115,9 +115,11 @@ class BoardValue:
         import torch
 
         key = tuple(word_ids.tolist())
-        if self._matrix is None or self._matrix[0] != key:
-            self._matrix = (key, board_matrix(self.pf, word_ids, self.device))
-        Sl = self._matrix[1]
+        cached = self._matrix          # one read: other threads may replace it meanwhile
+        if cached is None or cached[0] != key:
+            cached = (key, board_matrix(self.pf, word_ids, self.device))
+            self._matrix = cached
+        Sl = cached[1]
         nf = len(SIDE_FEATURES)
         N = mover_own.shape[0]
         F = np.empty((N, 2 * nf), dtype=np.float32)
