@@ -73,6 +73,9 @@ def main() -> None:
     ap.add_argument("--booster", action="append", default=None,
                     help="label=booster file in cache/[:within-turn params file]; repeat. The first is "
                          "the reference for the paired differences")
+    ap.add_argument("--sets", nargs="+", default=None,
+                    help="train_listener_net.load_sets names; default the three generated held-out copies. "
+                         "`train` gives the in-sample fit, for the gap to held-out")
     args = ap.parse_args()
 
     import lightgbm as lgb
@@ -91,7 +94,7 @@ def main() -> None:
     sets = load_sets()
     vw = WordVectors()
     rng = np.random.default_rng(0)
-    for s in (GENERATED, GENERATED_SONNET55, GENERATED_SONNET):
+    for s in args.sets or (GENERATED, GENERATED_SONNET55, GENERATED_SONNET):
         pos = with_all_columns(sets[s])
         e = Events(pos, vw)
         _, bid = np.unique(e.board, return_inverse=True)

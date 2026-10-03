@@ -6300,3 +6300,33 @@ same base:
   add only +0.002 over assoc.
 - Sonnet 5.5's later picks are much more predictable than Sonnet 5's
   (within-turn pick 4: 0.13 against 0.10).
+
+**Training R² beside held-out R²** (`eval_listener_accuracy.py --sets
+train`, `score_turn_models.py --sets train`). Train is in-sample for every
+booster. The incumbent was refitted on train and val together; the others
+were fitted on train and early-stopped on val.
+
+| Model | train | gpt-oss held-out | Sonnet 5.5 held-out | gap (train − Sonnet 5.5) |
+|---|---|---|---|---|
+| incumbent | 0.4364 | 0.3186 | 0.3205 | 0.116 |
+| assoc | 0.5057 | 0.3340 | 0.3293 | 0.176 |
+| assoc_profile | 0.5331 | 0.3404 | 0.3309 | 0.202 |
+| 44 + within-turn | 0.5108 | 0.3491 | 0.3492 | 0.162 |
+| 44 pick index + history, embeddings | 0.5509 | 0.3562 | 0.3540 | 0.197 |
+| 44 pick index + history, all sources | 0.5630 | 0.3569 | 0.3532 | 0.210 |
+| assoc + within-turn | 0.5058 | 0.3590 | 0.3546 | 0.151 |
+| assoc pick index + history, embeddings | 0.5667 | 0.3655 | 0.3573 | 0.209 |
+| assoc pick index + history, all sources | 0.5737 | 0.3654 | 0.3571 | 0.217 |
+
+- **The more flexible the model, the bigger the gap**, but the held-out
+  order still follows the training order, except where noted below. The
+  extra fit is partly real.
+- **All sources against embeddings:** +0.007 to +0.012 more in training,
+  nothing more held out. That is the one clear case of pure memorisation.
+- **Within-turn adds nothing in sample** (assoc 0.5057 frozen against 0.5058),
+  yet +0.025 held out. In sample, the booster's sharp later picks are
+  right because it memorised those boards. On new boards they are
+  overconfident, and the within-turn flattening corrects that.
+- Most of each gap is new boards, not new words: gpt-oss `new boards`
+  (training words) scores only about 0.02 above the held-out set
+  (2026-10-01).
