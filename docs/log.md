@@ -6070,3 +6070,25 @@ Also: conceptnet + within-turn 0.3512 / 0.3304; joint44 + within-turn
 - Not scored: assoc_profile + within-turn (no within-turn parameters fitted
   on that booster yet), extra A and ABC (their exploratory columns are not
   in `FEATURE_NAMES`), and the old decoy / oss_recipe / qwen boosters.
+
+**Paired simulation on fresh boards (reply lookahead).** 600 boards (seeds
+6,004,000+), sim:assoc guesser, against the incumbent. Paired with
+win_prob_listener using V1 and the incumbent booster (`sim_v1_fresh`):
+
+| | win | assassin losses |
+|---|---|---|
+| win_prob_listener, V1 | 53.7% | 180 |
+| **reply_lookahead_listener** (`b307a9fcd833`) | **56.3%** | 154 |
+
+Difference **+2.7 points per game [−0.1, +5.4]**. Boards better 132, worse
+108, identical on 360; sign p = 0.14.
+
+- **About as expected:** the upper half of the 0.5–2 point guess, and the
+  best simulated result of any decision-rule change (the board V was −0.6
+  here).
+- **Some of the gain is fewer assassin losses** (−26). Removing the
+  opponent's danger words also removes the chance of their guesser hitting
+  ours, but our own assassin risk sits in the base value, so this effect is
+  indirect.
+- **Next:** the gpt-oss suite, paired with `9c304cc348d6`, per the plan
+  (simulated games are weak evidence on their own).
