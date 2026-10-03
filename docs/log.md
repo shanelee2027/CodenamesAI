@@ -5857,3 +5857,76 @@ Paired on the 89 boards both played: **−1.1 points per game
   head-to-head (assoc_profile + V against assoc + V) on more boards would
   measure the difference itself instead of two separate leads over the
   incumbent.
+
+## reply lookahead: the incumbent's reply on the board our clue leaves (2026-10-03)
+
+**Idea (Shane's).** V(a, b) values the position after our turn by score
+alone. But our unrevealed words are the opponent's danger words. A clue
+that gets our "Nile" found also unlocks the opponent's "river" clue. A human
+spymaster thinks about this. The board V tried to learn it from simulated
+outcomes and failed in play. This instead works it out: the incumbent is
+code, so its reply on any after-board can be computed. The only model is
+the guesser (our listener). Depth 1: our turn, then its clue. The
+position after that is valued by V.
+
+**Two structures considered.**
+- *Exact:* a full incumbent search on every probable after-board. This is
+  right by construction, but about 0.56 s × ~45 after-boards ≈ 25 s a move.
+  It is fine for analysis and too slow for play or for a 600-board
+  simulation.
+- *Cheap (chosen):* one incumbent search per move on the current board,
+  keeping its best 30 clues. On each after-board, drop the revealed words
+  from those clues' listener scores and let the incumbent choose among them.
+  This misses clues that only become good once a word is gone. The risk is
+  measured below, against the exact version.
+
+**Design choices worth flagging.**
+- Only the best 6 (clue, number) pairs from the best 8 clues are
+  re-valued. Others keep win_prob's value minus 10, so the lookahead can
+  only reorder win_prob's own shortlist. It never brings in a clue win_prob
+  ranked low.
+- Outcomes with P < 0.01, or past the 12 likeliest, keep V's value.
+- The incumbent picks its reply by its own cost objective, as it does in
+  play. But its *P(win)* with that reply is computed with **our** listener
+  and V, since what matters is what will happen, not what it believes.
+- **Offset centring.** Raw, the lookahead sat below V on average, and more
+  so the more own words our turn found (−0.006, −0.020, −0.038, −0.046,
+  −0.054 for 0–4). That would penalise exactly the productive clues. V is
+  anchored to real outcomes and the lookahead is not, so the level comes
+  from V. `offset[b, a]` = mean(lookahead − V) per score, from 103,365
+  outcomes at 300 sim_v1 positions (training boards), shrunk toward 0 with
+  weight 50. It is subtracted, so only the board-specific deviation moves
+  the choice. The largest cells are one ahead after our turn: (a 1, b 2)
+  −0.181, (2, 3) −0.116, (3, 4) −0.092, (4, 5) −0.071, (5, 6) −0.057.
+  Either V overrates being one ahead, or the turn model underrates the
+  opponent's chance there. This did not need resolving for the decision
+  rule, but it is a lead on V.
+
+**The cheap reply against the exact one** (`check_reply_lookahead.py`,
+40 positions, 1,924 after-boards):
+
+| | |
+|---|---|
+| same incumbent clue / clue and number | 66.1% / 64.9% |
+| its P(win), mean abs error (90th pct) | 0.016 (0.039) |
+| candidate correction, mean abs error | 0.0097 |
+| our choice the same as with exact replies | 95% |
+| lookahead changes win_prob's choice | 25% of positions |
+| time per move | 0.72 s mid-game, ~1.1 s on a full board |
+
+So a third of the time the cheap reply names a different clue, but one of
+nearly the same value. The decision is unchanged at 95% of positions.
+
+**Bug on the first launch.** The `top_clues` parameter was stored as
+`self.top_clues`, an int that shadowed `Spymaster.top_clues()`. Every game
+crashed on its first move. The checks above call `_score_all_clues`
+directly, so they never went through `give_clue`. Renamed it and added a
+regression test. No records were written.
+
+**Expected.** The lookahead changes the choice at a quarter of positions,
+each by a small value margin. A paired gain of 0.5–2 points over V1 on
+fresh boards would be plausible. The board V's failure is the warning: a
+model's estimate of after-board differences can be mostly noise against the
+real guesser. Here the difference comes from a computed reply instead of
+a fitted regression, so I expect less of that, but the listener's error on
+the opponent's turn still enters.
