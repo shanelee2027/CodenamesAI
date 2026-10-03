@@ -6092,3 +6092,32 @@ Difference **+2.7 points per game [−0.1, +5.4]**. Boards better 132, worse
   penalty.
 - **Next:** the gpt-oss suite, paired with `9c304cc348d6`, per the plan
   (simulated games are weak evidence on their own).
+
+**gpt-oss suite (reply lookahead).** holdout_v1_gptoss against the
+incumbent, both sides on the incumbent's booster. 92 boards played; 8 were
+discarded because gpt-oss would not rank (the first was the clue "fucked":
+the clue pool has profanity in it).
+
+| vs learned_listener | win% | boards won both ways | sign p | assassin losses | mean k |
+|---|---|---|---|---|---|
+| win_prob_listener, V1 (`9c304cc348d6`) | 52.2% (90 shared boards) | 17 vs 14 | | 29 | |
+| **reply_lookahead_listener** (`b307a9fcd833`) | **56.0%** | **20 vs 9** | 0.061 | 28 vs 6 | 2.59 vs 2.29 |
+
+Paired with V1 on the 90 boards both played: **+3.9 points per game
+[−2.8, +10.6]**. Boards better 20, worse 12, identical on 58; sign p = 0.22.
+
+- **The same direction as the simulation** (+2.7 there), and a similar
+  size. Neither is significant alone, but the two tests use different
+  guessers and different boards, and both point the same way.
+- **The assassin count is V's, not the lookahead's:** 28 against V1's 29,
+  both far above the incumbent's 6. win_prob gives bigger numbers (2.59
+  against 2.29) and accepts the risk. The lookahead did not add to it.
+- **Profanity in the clue pool** is a separate fix: such a clue costs a
+  board whenever gpt-oss refuses it, and a human would not want it either.
+  Not addressed here.
+- Cost: 454 new gpt-oss responses, about $0.05. About $0.13 has been spent
+  since last night, of the $0.30.
+- **Verdict:** the best decision rule so far on both tests, but not shown
+  significant over V1. It costs 0.7–1.1 s a move. It is the natural
+  decision rule for the next incumbent, and it should be re-tested once the
+  listener booster is swapped in.

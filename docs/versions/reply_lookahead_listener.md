@@ -72,4 +72,15 @@ and `reply_offset_path`.
 
 ## Results
 
-See docs/log.md, "reply lookahead".
+Each test pairs this model with win_prob_listener using V1 (the same booster
+and the same V; only the lookahead differs), both against the incumbent.
+
+| Test | win_prob, V1 | reply lookahead | Paired difference |
+|---|---|---|---|
+| 600 fresh simulated boards (sim:assoc) | 53.7% | 56.3% | +2.7 pts [−0.1, +5.4], sign p = 0.14 |
+| gpt-oss suite (90 shared boards) | 52.2%, 17 vs 14 | 56.0%, 20 vs 9 (p = 0.061) | +3.9 pts [−2.8, +10.6], sign p = 0.22 |
+
+It is the best decision rule so far on both tests, in the same direction
+and by a similar size, but not significant over V1 on either. Its assassin
+losses (28) are V1's (29), not new. Details in docs/log.md, "reply
+lookahead".
