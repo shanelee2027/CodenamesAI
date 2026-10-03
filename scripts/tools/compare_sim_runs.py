@@ -13,6 +13,13 @@ bootstrap over boards, boards where one challenger won more games than the
 other (sign test), and assassin losses.
 
     python scripts/tools/compare_sim_runs.py sim_v1 sim_bv1
+
+Recorded gpt-oss suite games work the same way, with the challengers told
+apart by name:
+
+    python scripts/tools/compare_sim_runs.py eval:holdout_v1_gptoss eval:holdout_v1_gptoss \
+        --db cache/llm_store.db --base-name win_prob_listener:9c304cc348d6 \
+        --other-name board_value_listener:9bd8d05c6da9
 """
 
 from __future__ import annotations
@@ -27,16 +34,21 @@ import numpy as np
 SIM_DB = Path(__file__).resolve().parents[2] / "cache" / "sim_games.db"
 
 
-def per_board(db: Path, label: str, opponent: str) -> tuple[dict[int, list[int]], str]:
+def per_board(db: Path, label: str, opponent: str, challenger: str | None = None) -> tuple[dict[int, list[int]], str]:
     """{seed: [games won, assassin losses, games]} for the side that is not
-    `opponent`, and that side's name."""
+    `opponent` (only runs where that side's name starts with `challenger`,
+    when given), and that side's name."""
     out: dict[int, list[int]] = {}
     name = None
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     for seed, run, outcome, winner in conn.execute(
             "SELECT seed, label, outcome, winner FROM game_records WHERE label LIKE ?", (label + "|%",)):
         seat = dict(kv.split("=", 1) for kv in run.split("|", 1)[1].split(","))
+        if sum(n.startswith(opponent) for n in seat.values()) != 1:
+            continue                                                     # not a game against `opponent`
         me = next(s for s, n in seat.items() if not n.startswith(opponent))
+        if challenger and not seat[me].startswith(challenger):
+            continue
         name = seat[me]
         row = out.setdefault(seed, [0, 0, 0])
         row[0] += winner == me
@@ -52,10 +64,12 @@ def main() -> None:
     ap.add_argument("other")
     ap.add_argument("--opponent", default="learned_listener")
     ap.add_argument("--db", type=Path, default=SIM_DB)
+    ap.add_argument("--base-name", default=None, help="challenger name prefix within `base`'s runs")
+    ap.add_argument("--other-name", default=None, help="challenger name prefix within `other`'s runs")
     args = ap.parse_args()
 
-    A, name_a = per_board(args.db, args.base, args.opponent)
-    B, name_b = per_board(args.db, args.other, args.opponent)
+    A, name_a = per_board(args.db, args.base, args.opponent, args.base_name)
+    B, name_b = per_board(args.db, args.other, args.opponent, args.other_name)
     seeds = sorted(set(A) & set(B))
     wa = np.array([A[s][0] for s in seeds], dtype=float)
     wb = np.array([B[s][0] for s in seeds], dtype=float)

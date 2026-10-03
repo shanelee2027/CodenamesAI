@@ -56,10 +56,21 @@ the term is 0, and this is win_prob_listener.
 
 ## Results
 
-See docs/log.md, "Simulated games". Any gpt-oss test against the incumbent
-pairs this V with the incumbent's booster (`model_path=cache/listener_gbt.txt`,
-`turn_model=frozen`), so the only difference from the win_prob_listener
-baseline (V1 with the same booster: 17 vs 14 boards) is the value function.
+**No gain in play** (docs/log.md, "Simulated games: a board-reading V").
+Each test pairs this V with the incumbent's booster
+(`model_path=cache/listener_gbt.txt`, `turn_model=frozen`), so the only
+difference from win_prob_listener (V1, same booster) is the value function.
+Both play learned_listener, and comparisons are paired by board:
+
+| Test | boards | difference per game vs V1, 95% CI |
+|---|---|---|
+| simulated, the board model's training boards | 1,000 | +2.9 [+0.6, +5.1] (in-sample) |
+| simulated, fresh boards | 600 | −0.6 [−3.8, +2.6] |
+| gpt-oss suite | 87 | −1.2 [−8.1, +5.8] |
+
+The correction predicts real outcomes better than the score alone (+0.0043
+log-loss on 100k real states), but the gain does not carry into clue choice.
+V1 stays the objective.
 
 ## Known risks
 

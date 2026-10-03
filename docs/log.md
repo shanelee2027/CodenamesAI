@@ -5743,3 +5743,61 @@ That is about 3,000 after-boards a move, 3–4 s. Two design points:
   average over which own words are found, which needs the subset
   enumeration the go/no-go listed. The approximation errs most when a
   clue's top words are close, and then its endings are spread anyway.
+
+**Play: no gain.** Every test pairs the board V with the incumbent's booster
+(`model_path=cache/listener_gbt.txt`, `turn_model=frozen`), so the only
+difference from win_prob_listener (V1, `9c304cc348d6`) is the value function.
+Both play learned_listener. Comparisons are paired by board
+(`scripts/tools/compare_sim_runs.py`).
+
+| Test | boards | win_prob (V1) | board_value | difference per game, 95% CI | boards better / worse | assassin losses |
+|---|---|---|---|---|---|---|
+| simulated, the board model's own training boards | 1,000 | 55.5% | 58.4% | +2.9 [+0.6, +5.1] | 246 / 202 (p = 0.04) | 240 / 247 |
+| **simulated, fresh boards** (seeds 6,004,000+) | 600 | 53.7% | 53.1% | **−0.6 [−3.8, +2.6]** | 144 / 150 (p = 0.77) | 180 / 165 |
+| **gpt-oss suite** (held-out words) | 87 | 52.3% | 51.1% | **−1.2 [−8.1, +5.8]** | 14 / 18 (p = 0.60) | 30 / 34 |
+
+- **The in-sample gain was the board model fitting its training boards.**
+  The features summarise a board's words finely enough to identify it, and
+  the final model is fitted on every board. Early stopping split by board
+  keeps the *fit* honest, which is why the log-loss gains above hold out of
+  fold, but a policy scored on those same boards still benefits from the
+  memorised part. On fresh boards the gain is gone. This was caught only
+  because the fresh-board run was added; the in-sample result alone would
+  have read as significant.
+- **Better prediction did not become better decisions.** The term predicts
+  real outcomes better (+0.0043 log-loss on boards it never saw). Within one
+  move, however, the candidate after-boards differ only a little in its
+  features, and the search takes the best of 200 clues. The term's
+  differences between them are as much error as signal. This is the
+  selection-bias risk named in the doc, and it applies to a V as much as to
+  a listener.
+- **gpt-oss agrees,** with a wide interval: 87 boards cannot see a few points
+  either way. 13 boards were discarded because gpt-oss failed to rank (it
+  returned degenerate responses on every attempt). A retry recovered 1 and
+  failed on the same 12 again, so it was not pursued.
+- **A bug on the way.** The first gpt-oss run crashed: the arena plays
+  several games per worker in threads on one spymaster instance, and the
+  board being scored was stored on the instance. The board is now
+  thread-local. Every simulated run used one thread per worker and is
+  unaffected. The crashed run's 167 recorded games (id `73e51fe3fd8d` on
+  holdout_v1_gptoss) may hold silently wrong decisions, from two seatings of
+  one board sharing the slot. They are void and were left in the store, not
+  deleted. The rerun has a new id (`9bd8d05c6da9`), forced by passing the
+  default `board_value_path` explicitly.
+- **Cost:** about $0.05 of gpt-oss tonight (701 new responses, mostly the
+  crashed run), plus $0.01 of association lists.
+
+**Verdict.** The simulator works: it reproduces gpt-oss's game statistics
+except the assassin, and a value correction learned in it transfers to real
+outcomes. A board-reading V used greedily in the clue search does not win
+more, in simulation on fresh boards or with gpt-oss. board_value_listener
+stays registered as an exploration entry; V1 stays the objective.
+
+**Open, if this is picked up again:**
+- Fit the correction on more boards relative to games (the sim run used two
+  games per board, so per-board memorisation is cheap), or drop the features
+  that identify a board.
+- Check whether the term's spread *between the after-boards of one move*
+  is larger than its error. If it is not, no search can use it.
+- The simulated games themselves remain useful as free training data for
+  anything that needs outcomes (cache/sim_games.db, 6,994 + 2,400 games).
