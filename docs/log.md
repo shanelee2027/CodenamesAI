@@ -5524,3 +5524,45 @@ anything, larger for boosters with more word-level features.
 - **Use this set, not `held-out words`, when an R² is compared with new
   boards.** The game-ranking sets remain the right check for the clues play
   actually gives.
+
+## Turn models on the generated held-out set (2026-10-03)
+
+**Question.** The history booster (pick index + history features) beat the
+within-turn model on new boards (+0.016) but tied on held-out words and lost
+on Sonnet. Those held-out sets are rankings of clues spymasters chose. Does
+the gain survive on held-out words generated exactly like new boards?
+`scripts/tools/score_turn_models.py` scores every saved turn model on both
+generated sets (44 features, picks 1..k; gain over within-turn with a 95%
+board bootstrap).
+
+| Model | new boards R² | gain over within-turn | held-out generated R² | gain over within-turn |
+|---|---|---|---|---|
+| frozen | 0.3425 | −0.0247 | 0.3212 | −0.0279 |
+| + temperatures | 0.3469 | −0.0203 | 0.3298 | −0.0193 |
+| within-turn | 0.3672 | | 0.3491 | |
+| pick index, depth 9 | 0.3549 | −0.0123 | 0.3356 | −0.0135 |
+| pick index + history, embeddings | 0.3808 | +0.0136 [+0.0103, +0.0169] | 0.3562 | +0.0072 [+0.0035, +0.0106] |
+| pick index + history, all sources | 0.3828 | +0.0156 [+0.0120, +0.0192] | 0.3569 | +0.0079 [+0.0042, +0.0114] |
+
+Per pick on held-out generated, within-turn → history (all sources): pick 2
+0.263 → 0.271, pick 3 0.151 → 0.170, pick 4 0.093 → 0.111. Pick 1 is 0.559
+or 0.560 for every model.
+
+**Reading.**
+- **On generated positions the gain partly transfers:** about half of the
+  new-boards gain survives on new words, and it is significant. The
+  earlier "it does not transfer" was too strong; it held for the
+  game-ranking sets, not for new words as such.
+- **It still vanishes on the clues spymasters actually choose** (tie on
+  held-out gpt-oss games, loss on Sonnet). On good clues the guesser's later
+  picks are already well described by the linear pull; the trees' extra
+  shape helps mostly on mixed and bad clues.
+- **The ordering is the same on both generated sets:** frozen < temperatures
+  < pick index < within-turn < pick index + history. The pick index without
+  history always loses to the within-turn model, so the history is what
+  matters, as claimed.
+- **For play,** the gain over within-turn (+0.008) is under a third of
+  within-turn's own gain over frozen (+0.028) on the same set, and test A
+  found that larger gain did not change games. A playable history model
+  (about 130 booster runs per clue) is still not worth building on this
+  evidence.
