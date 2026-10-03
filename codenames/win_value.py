@@ -92,7 +92,9 @@ def win_probability(gain_and_penalty: Callable[[np.ndarray], tuple[np.ndarray, n
     exactly = np.clip(reach[:, :-1] - reach[:, 1:], 0, 1)             # P(N = j), j < max_k
     end_neu = np.clip(exactly - end_opp - end_ass, 0, 1)                # neutral, or the outside option
 
+    # W per ending, (a + 1,) from the score alone, or (n_clues, >= max_k + 1)
+    # when the after-board differs by clue (codenames/board_value.py).
     w = value.after(n_own, n_opponent)
-    ended = end_neu * w["neutral"][:max_k] + end_opp * w["opponent"][:max_k]   # the assassin is worth 0
+    ended = end_neu * w["neutral"][..., :max_k] + end_opp * w["opponent"][..., :max_k]   # the assassin is worth 0
     # At k: every ending with j < k own words, plus finding all k and stopping.
-    return np.cumsum(ended, axis=1) + reach[:, 1:] * w["stop"][1:max_k + 1]
+    return np.cumsum(ended, axis=1) + reach[:, 1:] * w["stop"][..., 1:max_k + 1]

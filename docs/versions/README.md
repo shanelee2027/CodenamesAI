@@ -28,6 +28,8 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
   objective, with any listener booster.
 - [`within_turn_listener`](within_turn_listener.md): conceptnet_listener with
   later picks of a turn modelled separately in the reward.
+- [`board_value_listener`](board_value_listener.md): win_prob_listener with a
+  V that reads the board, fitted on simulated games.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.

@@ -48,10 +48,8 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "data"))
 
+from codenames.board_value import SIDE_FEATURES, Z_COLS, board_matrix, side_features_batch  # noqa: E402
 from build_win_value import LABEL_PREFIXES, MAX_WORDS, SUITE_GPTOSS, logistic_fit, monotone  # noqa: E402
-
-Z_COLS = slice(0, 5)          # the five embedding z-scores in PolicyFeatures.pair
-SIDE_FEATURES = ["best_1", "best_2", "best_3", "best_4", "worst_word", "mean_word", "assassin_pair"]
 
 
 def load_states(db: Path) -> list[dict]:
@@ -115,40 +113,6 @@ def side_features(S, own, bad, ass, legal):
     return out.double().cpu().tolist()
 
 
-def side_features_batch(Sl, own, bad, ass):
-    """`side_features` for N states of one board at once. `Sl` is (25, C)
-    with illegal clues already at -1e9; own/bad/ass are (N, 25) boolean masks.
-    Masked words are filled with the same -1e9, so every max, top-k and
-    empty case comes out as in the one-state version, which stays as the
-    readable definition (checked on 500 simulated states: they agree to
-    7e-7; the batch is about 6x faster)."""
-    import torch
-
-    NEG = -1e9
-    N = own.shape[0]
-    out = torch.full((N, len(SIDE_FEATURES)), float("nan"), device=Sl.device)
-    n_own = own.sum(1)
-    S3 = Sl[None].expand(N, -1, -1)                                      # (N, 25, C)
-    neg = torch.full_like(S3, NEG)
-    badmax = torch.where(bad[:, :, None], S3, neg).max(1).values         # (N, C)
-    top = torch.topk(torch.where(own[:, :, None], S3, neg), 4, dim=1).values   # (N, 4, C)
-    best = (top - badmax[:, None, :]).max(2).values                      # (N, 4)
-    out[:, :4] = torch.where(torch.arange(1, 5, device=Sl.device)[None, :] <= n_own[:, None], best, out[:, :4])
-    t2 = torch.topk(torch.where((own | bad)[:, :, None], S3, neg), 2, dim=1)
-    word = torch.arange(25, device=Sl.device)[None, :, None]
-    other = torch.where(t2.indices[:, :1, :] == word, t2.values[:, 1:2, :], t2.values[:, :1, :])  # (N, 25, C)
-    per_word = (S3 - other).max(2).values                                # (N, 25)
-    has = n_own > 0
-    out[:, 4] = torch.where(has, torch.where(own, per_word, torch.full_like(per_word, float("inf"))).min(1).values,
-                            out[:, 4])
-    out[:, 5] = torch.where(has, (per_word * own).sum(1) / n_own.clamp(min=1), out[:, 5])
-    a = ass.float().argmax(1)                                            # the assassin's slot, if unrevealed
-    pair = torch.minimum(S3, Sl[a][:, None, :]).max(2).values            # (N, 25)
-    ap = torch.where(own, pair, torch.full_like(pair, -float("inf"))).max(1).values
-    out[:, 6] = torch.where(has & ass.any(1), ap, out[:, 6])
-    return out.cpu().numpy()
-
-
 def featurize(states: list[dict]) -> np.ndarray:
     """(n_states, 2 + 2 * len(SIDE_FEATURES)): a, b, then the mover's side
     features, then the opponent's. States of one board are featurized
@@ -168,12 +132,7 @@ def featurize(states: list[dict]) -> np.ndarray:
             end += 1
         run = states[start:end]
         st = run[0]
-        idx = np.array([pf.board_index[w.lower()] for w in st["words"]])
-        z = np.asarray(pf.pair[idx][:, :, Z_COLS], dtype=np.float32)           # (25, C, 5)
-        S = torch.tensor(np.nanmean(np.where(np.isfinite(z), z, np.nan), axis=2), device=dev)
-        S = torch.nan_to_num(S, nan=0.0)
-        legal = torch.tensor(pf.legal_mask(idx), device=dev)
-        Sl = torch.where(legal[None, :], S, torch.tensor(-1e9, device=dev))
+        Sl = board_matrix(pf, np.array([pf.board_index[w.lower()] for w in st["words"]]), dev)
         roles = np.array(st["roles"])
         up = np.array([[w not in r["revealed"] for w in st["words"]] for r in run])
         a_side = np.array([r["mover"] == "A" for r in run])[:, None]

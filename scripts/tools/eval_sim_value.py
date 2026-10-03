@@ -25,7 +25,10 @@ closeness).
      board-reading V adds within a move: after-boards of one move differ
      in the board term.
 
-The final simulated board model is saved to cache/board_value_sim.txt.
+The final simulated board model is saved to cache/board_value_sim.txt, and
+the simulated count table its `count_logit` input is read from to
+cache/board_value_sim_counts.npz (spymasters/board_value_listener.py uses
+both).
 
     python scripts/tools/eval_sim_value.py --label sim_v1
 """
@@ -49,6 +52,7 @@ from eval_board_value import SIDE_FEATURES, count_table, featurize, load_states 
 SIM_DB = PROJECT_ROOT / "cache" / "sim_games.db"
 REAL_FEATURES = PROJECT_ROOT / "cache" / "training_data" / "board_value_features.npz"
 OUT = PROJECT_ROOT / "cache" / "board_value_sim.txt"
+OUT_COUNTS = PROJECT_ROOT / "cache" / "board_value_sim_counts.npz"     # the count table its input logit is read from
 PARAMS = {"objective": "binary", "learning_rate": 0.03, "num_leaves": 15, "min_data_in_leaf": 200,
           "feature_fraction": 0.8, "verbose": -1}
 
@@ -100,6 +104,9 @@ def fit_board(X, y, base_logit, bid, rng):
 
 
 def board_term(bst, X, base_logit):
+    """The trees' shift of the logit away from the count table's. LightGBM's
+    raw prediction leaves out the init score it was trained from, so this is
+    the board's own contribution; the full logit is base_logit + this."""
     full = np.column_stack([X[:, :2], base_logit, X[:, 2:]])
     return bst.predict(full, raw_score=True)
 
@@ -137,7 +144,7 @@ def main() -> None:
         _, bid_tr = np.unique(bid[tr], return_inverse=True)
         bst = fit_board(Xs[tr], ys[tr], lg[tr], bid_tr, rng)
         p_count[te] = 1 / (1 + np.exp(-lg[te]))
-        p_board[te] = 1 / (1 + np.exp(-board_term(bst, Xs[te], lg[te])))
+        p_board[te] = 1 / (1 + np.exp(-(lg[te] + board_term(bst, Xs[te], lg[te]))))
     d = ll(p_count, ys) - ll(p_board, ys)
     per_b, n_b = np.bincount(bid, d), np.bincount(bid)
     boot = [per_b[dr].sum() / n_b[dr].sum() for dr in rng.integers(0, len(ub), (2000, len(ub)))]
@@ -155,6 +162,7 @@ def main() -> None:
     lg_all = logit(V_sim[a, b])
     bst = fit_board(Xs, ys, lg_all, bid, rng)
     bst.save_model(str(OUT))
+    np.savez(OUT_COUNTS, V=V_sim)
     imp = bst.feature_importance("gain")
     names = ["a", "b", "count_logit"] + [f"me_{f}" for f in SIDE_FEATURES] + [f"them_{f}" for f in SIDE_FEATURES]
     print("   gain share: " + ", ".join(f"{n} {g / imp.sum():.1%}" for n, g in
@@ -175,7 +183,7 @@ def main() -> None:
         tr, te = foldr != f, foldr == f
         lg_real[te] = logit(count_table(ar[tr], br[tr], yr[tr])[ar[te], br[te]])
     sim_count_lg = logit(V_sim[ar, br])
-    term = board_term(bst, Xr, sim_count_lg) - sim_count_lg            # the board's own contribution
+    term = board_term(bst, Xr, sim_count_lg)
     arms = {"real count table (out of fold)": lg_real,
             "simulated count table": sim_count_lg,
             "real count + simulated board term": lg_real + term}

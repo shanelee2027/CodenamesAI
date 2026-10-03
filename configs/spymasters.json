@@ -186,6 +186,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "win_prob_listener with a V that reads the board: each ending of the turn is valued at the likeliest after-board for that clue, by V(a, b)'s logit plus a board correction (codenames/board_value.py) fitted on games with a listener-sampling guesser (scripts/pipeline/simulate_games.py, scripts/tools/eval_sim_value.py) and checked on 100k real gpt-oss states. board_value_path / board_counts_path swap the correction. docs/versions/board_value_listener.md.",
+   "name": "board_value_listener",
+   "type": "board_value_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }
