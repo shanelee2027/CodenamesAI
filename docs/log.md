@@ -6382,7 +6382,7 @@ Fitted temperatures (1/c, picks 1 / 2 / 3 / 4+):
 
 | Model | 44 base | assoc base |
 |---|---|---|
-| frozen | 0.97 / 1.09 / 1.25 / 1.42 | 0.97 / 1.09 / 1.25 / 1.42 |
+| frozen | 0.97 / 1.10 / 1.27 / 1.44 | 0.97 / 1.09 / 1.25 / 1.42 |
 | within-turn | 0.97 / 1.00 / 1.00 / 1.00 | same |
 | pick index, depth 9 | 1.04 / 1.07 / 1.07 / 1.05 | 1.04 / 1.06 / 1.07 / 1.05 |
 | pick index + history, embeddings | 1.03 / 1.03 / 1.00 / 1.02 | 1.04 / 1.04 / 1.02 / 1.03 |
@@ -6402,7 +6402,7 @@ Sonnet 5.5 R², before → after:
   temperatures they reproduce.
 - **The pick-index models already learn their own per-pick sharpness**
   (Shane's point). Their val temperatures are 1.02–1.17, against the
-  frozen booster's 1.09–1.42.
+  frozen boosters' 1.09–1.44.
 - Pick 1 is calibrated on val (0.97–1.04). Freeing it slightly hurts
   held-out pick 1 for the frozen and within-turn models (0.5478 → 0.5471).
   The pick-1 drop from training to held-out is not an overconfidence that
