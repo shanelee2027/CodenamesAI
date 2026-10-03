@@ -6236,3 +6236,67 @@ and bypassing the store, for about $0.08. Raw results are in
 
 **Cap chosen: 2,048.** That is three times the longest seen. A call costs
 what it generates, so the cap only bounds a runaway answer, at about $0.02.
+
+## The Sonnet 5.5 generated held-out set (2026-10-03)
+
+**Built** after the guesser fix (`LLMGuesser` retries unusable answers and
+then raises, `max_tokens` 2048, last-array parsing).
+
+- All 1,810 planned positions were ranked by `claude-sonnet-5-5` at medium
+  effort: 1,749 bought here, 60 from the pilot (15 of them replaced by the
+  cap-probe answers). One was refused: 5 words, 4 named.
+- 2 retries, 0 answers cut off by the cap, **$5.36**.
+- 1,761 positions load (4,378 events). Backup:
+  `cache/llm_store.backup_20261003_sonnet55.db`.
+- Anthropic spend today: about $8.65 of the $15 granted.
+
+Every model on it. Single-pick boosters (gain over the incumbent, paired by
+board):
+
+| Booster | R² | pick 1 | 2 | 3 | 4 | gain [95% CI] |
+|---|---|---|---|---|---|---|
+| incumbent | 0.3205 | 0.549 | 0.201 | 0.139 | 0.058 | |
+| 44 features, current recipe | 0.3229 | 0.548 | 0.206 | 0.143 | 0.064 | +0.002 [−0.001, +0.005] |
+| association_listener (count target) | 0.3230 | 0.548 | 0.206 | 0.141 | 0.068 | +0.002 [−0.001, +0.006] |
+| isa | 0.3240 | 0.549 | 0.207 | 0.145 | 0.062 | +0.004 [+0.001, +0.007] |
+| conceptnet | 0.3240 | 0.551 | 0.205 | 0.143 | 0.061 | +0.004 [+0.000, +0.007] |
+| assoc | 0.3293 | 0.558 | 0.210 | 0.147 | 0.068 | +0.009 [+0.005, +0.013] |
+| assoc + B | 0.3306 | 0.560 | 0.212 | 0.146 | 0.065 | +0.010 [+0.005, +0.015] |
+| assoc + C | 0.3305 | 0.558 | 0.211 | 0.150 | 0.068 | +0.010 [+0.006, +0.015] |
+| assoc_profile | 0.3309 | 0.560 | 0.212 | 0.149 | 0.065 | +0.010 [+0.006, +0.015] |
+
+Turn models (`score_turn_models.py`); the gain is over within-turn on the
+same base:
+
+| Model | R² | pick 1 | 2 | 3 | 4 | gain [95% CI] |
+|---|---|---|---|---|---|---|
+| 44 + temperatures | 0.3295 | 0.548 | 0.213 | 0.154 | 0.089 | −0.020 |
+| 44 + within-turn | 0.3492 | 0.548 | 0.241 | 0.192 | 0.132 | |
+| 44 pick index, depth 9 | 0.3331 | 0.549 | 0.218 | 0.162 | 0.090 | −0.016 |
+| **44 pick index + history, embeddings** | **0.3540** | 0.549 | 0.245 | 0.204 | 0.142 | **+0.005 [+0.001, +0.008]** |
+| 44 pick index + history, all sources | 0.3532 | 0.548 | 0.244 | 0.203 | 0.142 | +0.004 [+0.000, +0.008] |
+| conceptnet + within-turn | 0.3505 | 0.551 | 0.241 | 0.191 | 0.132 | |
+| assoc + within-turn | 0.3546 | 0.558 | 0.244 | 0.194 | 0.133 | |
+| assoc pick index, depth 9 | 0.3374 | 0.557 | 0.220 | 0.163 | 0.093 | −0.017 |
+| **assoc pick index + history, embeddings** | **0.3573** | 0.557 | 0.245 | 0.203 | 0.142 | +0.003 [−0.001, +0.006] |
+| assoc pick index + history, all sources | 0.3571 | 0.556 | 0.246 | 0.202 | 0.144 | +0.003 [−0.001, +0.006] |
+
+**Reading.**
+- **Correction: the history boosters do transfer, partly.** On the
+  Sonnet 5 set they lost to within-turn (−0.007 to −0.010), and I read that
+  as "they learn gpt-oss's quirks". On this clean set they win: +0.005 on
+  the 44 base (interval clear of 0), +0.003 on the assoc base (spanning 0).
+  That is about half to two-thirds of their gpt-oss gain. The Sonnet 5
+  loss was most likely the 8.5% of board-order rankings in that set. Board
+  order is noise at every pick, and the flexible history model is the one
+  that noise hurts most. The "does not transfer" reading is withdrawn.
+- **The best model by accuracy is the assoc pick index + history booster**
+  (0.3573 on Sonnet 5.5, 0.3654 on gpt-oss). It is just ahead of assoc +
+  within-turn (0.3546, 0.3590). It cannot play cheaply: its features
+  depend on the words already picked, so the reward needs the booster for
+  every picked set, about 130 runs per clue at k ≤ 4.
+- **The association features transfer at about 57%** (+0.009 here against
+  +0.015 on gpt-oss), close to the Sonnet 5 estimate. The profile columns
+  add only +0.002 over assoc.
+- Sonnet 5.5's later picks are much more predictable than Sonnet 5's
+  (within-turn pick 4: 0.13 against 0.10).
