@@ -236,6 +236,7 @@ class _FakeTextBlock:
 class _FakeResponse:
     def __init__(self, text: str):
         self.content = [_FakeTextBlock(text)]
+        self.usage = SimpleNamespace(input_tokens=100, output_tokens=50)
 
 
 class _FakeMessages:

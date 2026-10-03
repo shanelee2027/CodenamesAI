@@ -90,6 +90,9 @@ class LLMGuesser(Guesser):
         # codenames/llm_store.py. Opt-in via cache_path: off by default so
         # tests with a fake client never touch the filesystem.
         self._disk_cache = LLMResponseCache(Path(cache_path)) if cache_path is not None else None
+        # Tokens billed by this instance's API calls (cache hits add nothing),
+        # so a paid collection can stop at a budget (collect_listener_data.py).
+        self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
         # One LLMGuesser instance is shared across every game in a batch
         # (codenames/two_team_gpu_arena.py plays them concurrently on a
         # thread pool specifically so their network calls overlap -- see
@@ -194,6 +197,10 @@ class LLMGuesser(Guesser):
             # way by finding the JSON array wherever it appears.
             request["thinking"] = {"type": "disabled"}
         response = self.client.messages.create(**request)
+        with self._lock:
+            self.usage["calls"] += 1
+            self.usage["input_tokens"] += response.usage.input_tokens
+            self.usage["output_tokens"] += response.usage.output_tokens
         text = next((block.text for block in response.content if block.type == "text"), "")
         return self._parse_ranking(text, candidate_words)
 

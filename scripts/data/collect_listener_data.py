@@ -40,6 +40,10 @@ Usage:
     # a test set on the held-out words, generated exactly like the rest
     python scripts/data/collect_listener_data.py --vocab holdout --n 2100
 
+    # the same held-out test set ranked by Sonnet, stopping before $4 is spent
+    python scripts/data/collect_listener_data.py --vocab holdout --n 2100 \
+        --guesser anthropic:claude-sonnet-5:medium --budget 4.0
+
     # check how much is already bought without spending anything
     python scripts/data/collect_listener_data.py --n 10000 --dry-run
 """
@@ -168,6 +172,17 @@ def main() -> None:
     ap.add_argument("--model", default="openai/gpt-oss-120b")
     ap.add_argument("--provider", default="deepinfra")
     ap.add_argument("--effort", default="low")
+    ap.add_argument("--guesser", default=None,
+                    help="a guesser spec (codenames/guessers/registry.py::build_guesser) used instead of "
+                         "--model/--provider/--effort, e.g. anthropic:claude-sonnet-5:medium. The plan is "
+                         "the same, so a second guesser ranks exactly the positions the first did")
+    ap.add_argument("--budget", type=float, default=None,
+                    help="Anthropic guessers only: stop starting calls once the billed tokens, priced at "
+                         "--price-in/--price-out, reach this many dollars")
+    ap.add_argument("--price-in", type=float, default=2.0, help="$ per million input tokens")
+    ap.add_argument("--price-out", type=float, default=10.0,
+                    help="$ per million output tokens, thinking included. The defaults are claude-sonnet-5's "
+                         "as implied by this project's two measured Sonnet call costs (docs/log.md)")
     ap.add_argument("--max-workers", type=int, default=8,
                     help="kept low on purpose: these calls are network-bound and the provider "
                          "caps throughput anyway, so more workers only add 429s and CPU noise "
@@ -206,13 +221,24 @@ def main() -> None:
             kinds[p["kind"]] += 1
     print(f"planned {len(positions)}   mix: {dict(kinds)}")
 
-    from codenames.guessers.openai_compat import OpenAICompatGuesser
-    g = OpenAICompatGuesser(model=args.model, provider=args.provider,
-                            reasoning_effort=args.effort, cache_path=DB)
+    if args.guesser:
+        from codenames.guessers.registry import build_guesser
+        g = build_guesser(args.guesser)
+    else:
+        from codenames.guessers.openai_compat import OpenAICompatGuesser
+        g = OpenAICompatGuesser(model=args.model, provider=args.provider,
+                                reasoning_effort=args.effort, cache_path=DB)
+    if args.budget is not None and not hasattr(g, "usage"):
+        raise SystemExit("--budget needs a guesser that reports billed tokens (an anthropic: spec)")
+
+    def spent() -> float:
+        u = g.usage
+        return (u["input_tokens"] * args.price_in + u["output_tokens"] * args.price_out) / 1e6
     cached = sum(1 for p in positions
                  if g._disk_cache.get(g.cache_model_id, p["clue"], tuple(p["candidates"]), p["k"]) is not None)
     todo = len(positions) - cached
-    print(f"already cached: {cached}   to buy: {todo}   est ${todo * 0.000102:.2f}")
+    print(f"already cached: {cached}   to buy: {todo}"
+          + ("" if args.guesser else f"   est ${todo * 0.000102:.2f}"))
     if args.dry_run or todo == 0:
         return
 
@@ -222,6 +248,8 @@ def main() -> None:
     t0 = time.time()
 
     def work(p):
+        if args.budget is not None and spent() >= args.budget:
+            return
         try:
             g.rank_candidates(p["clue"], p["candidates"], None, number=p["k"])
         except Exception as exc:  # a dead host or a refusal must not kill an 8-hour run
@@ -236,12 +264,17 @@ def main() -> None:
                 el = time.time() - t0
                 rate = n / el if el else 0
                 print(f"  {n}/{len(positions)}  {rate:.2f}/s  errors {counter['err']}  "
-                      f"eta {(len(positions)-n)/rate/60:.0f} min" if rate else f"  {n}", flush=True)
+                      f"eta {(len(positions)-n)/rate/60:.0f} min" if rate else f"  {n}",
+                      f"  spent ${spent():.3f}" if args.budget is not None else "", flush=True)
 
     with ThreadPoolExecutor(max_workers=args.max_workers) as ex:
         list(ex.map(work, positions))
     print(f"\ndone in {(time.time()-t0)/60:.1f} min, {counter['err']} errors. "
           f"Re-run the same command to top up or resume.")
+    if hasattr(g, "usage"):
+        u = g.usage
+        print(f"billed: {u['calls']} calls, {u['input_tokens']} input / {u['output_tokens']} output tokens"
+              + (f", ${spent():.3f} at ${args.price_in}/${args.price_out} per Mtok" if args.budget is not None else ""))
 
 
 if __name__ == "__main__":
