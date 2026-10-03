@@ -50,6 +50,8 @@ from pathlib import Path
 import numpy as np
 from scipy.special import log_ndtr
 
+from codenames.assoc_profile import PROFILE_FEATURES, AssocProfile
+
 # Noise level for the Gaussian argmax feature: 2.0 brackets the measured
 # listener sigma (2.06 for Sonnet, 2.20 for gpt-oss). Three levels were carried
 # originally so the trees could interpolate; the prune found 1.0 and 3.0 both
@@ -176,6 +178,12 @@ FEATURE_NAMES: list[str] = [
     # Rock (The Rock) -- so it is also the feature most specific to gpt-oss,
     # and is checked against Sonnet's picks and a second guesser's games.
     "assoc_share", "assoc_rank",
+    # tier 2: the clue's own association profile and the reverse direction
+    # (codenames/assoc_profile.py, scripts/data/build_assoc_profile.py). B:
+    # how vague gpt-oss finds the clue (its lists' spread) plus its rarity,
+    # norms and sense count -- board constants that act through interactions.
+    # C: from each board word's own lists, whether they name the clue.
+    *PROFILE_FEATURES,
 ]
 
 CONCEPTNET_FEATURES = ("cn_isa", "cn_isa_rev", "cn_part", "cn_typed", "cn_any", "cmp_cw", "cmp_wc")
@@ -189,7 +197,10 @@ APPENDED_TABLES: dict[str, tuple[str, tuple[str, ...]]] = {
     "conceptnet": ("conceptnet_sims.npz", CONCEPTNET_FEATURES),
     "senses": ("wordnet_senses.npz", ("sense_agree", "sense_spread")),
     "assoc": ("assoc_sims.npz", ("assoc_share", "assoc_rank")),
+    "profile": ("assoc_profile.npz", PROFILE_FEATURES),
 }
+# Tables that are not clue x word similarity rows load through their own class.
+TABLE_LOADERS: dict[str, type] = {"profile": AssocProfile}
 
 N_FEATURES = len(FEATURE_NAMES)
 
@@ -500,6 +511,7 @@ def extract(
     conceptnet: "ExtraSims | None" = None,
     senses: "ExtraSims | None" = None,
     assoc: "ExtraSims | None" = None,
+    profile: "AssocProfile | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -679,6 +691,11 @@ def extract(
         acols = np.array([assoc.board_pos.get(w.lower(), -1) for w in candidates])
         cols.append(assoc.row("assoc_share", ci, acols))
         cols.append(assoc.row("assoc_rank", ci, acols))
+
+    if profile is None:
+        cols.extend(np.full(n, np.nan) for _ in PROFILE_FEATURES)
+    else:
+        cols.extend(profile.columns(clue, candidates).T)
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

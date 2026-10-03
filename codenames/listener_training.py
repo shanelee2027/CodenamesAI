@@ -21,6 +21,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 from codenames.board import Board
 from codenames.clue_stats import ClueStats
+from codenames.assoc_profile import B_FEATURES, C_FEATURES, AssocProfile
 from codenames.listener_features import (
     FEATURE_NAMES, EntitySims, ExtraSims, SwowTables, WordNorms, WordStats,
     extract,
@@ -41,6 +42,7 @@ ISA_SIMS = CACHE / "isa_sims.npz"
 CONCEPTNET_SIMS = CACHE / "conceptnet_sims.npz"
 WORDNET_SENSES = CACHE / "wordnet_senses.npz"
 ASSOC_SIMS = CACHE / "assoc_sims.npz"
+ASSOC_PROFILE = CACHE / "assoc_profile.npz"
 DEFAULT_MODEL = "deepinfra/openai/gpt-oss-120b+effort=low"  # the teacher
 
 # Named feature blocks, so an ablation is a flag rather than an edit. The point
@@ -67,6 +69,8 @@ FEATURE_BLOCKS: dict[str, list[str]] = {
     "compound": ["cmp_cw", "cmp_wc"],
     "senses": ["sense_agree", "sense_spread"],
     "assoc": ["assoc_share", "assoc_rank"],
+    "clue_profile": list(B_FEATURES),
+    "reverse_assoc": list(C_FEATURES),
 }
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
 
@@ -159,7 +163,7 @@ def _feature_cache_path() -> Path:
     for f in (here / "listener_features.py", here / "listener_training.py"):
         h.update(f.read_bytes())
     for f in (WORD_STATS, SWOW_TABLES, ENTITY_SIMS, LM_PMI, EXTRA_SIMS, WORD_NORMS, WORDNET_SIMS,
-              LEXICAL_SIMS, ISA_SIMS, CONCEPTNET_SIMS, WORDNET_SENSES, ASSOC_SIMS, CACHE / "similarity_tensor.npy", CACHE / "clue_stats.npz"):
+              LEXICAL_SIMS, ISA_SIMS, CONCEPTNET_SIMS, WORDNET_SENSES, ASSOC_SIMS, ASSOC_PROFILE, CACHE / "similarity_tensor.npy", CACHE / "clue_stats.npz"):
         if f.exists():
             st = f.stat()
             h.update(f"{f.name}:{st.st_size}:{st.st_mtime_ns}".encode())
@@ -265,6 +269,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     conceptnet = ExtraSims.load(CONCEPTNET_SIMS) if CONCEPTNET_SIMS.exists() else None
     senses = ExtraSims.load(WORDNET_SENSES) if WORDNET_SENSES.exists() else None
     assoc = ExtraSims.load(ASSOC_SIMS) if ASSOC_SIMS.exists() else None
+    profile = AssocProfile.load(ASSOC_PROFILE) if ASSOC_PROFILE.exists() else None
     print(f"SWOW: {'loaded' if swow else 'ABSENT'}   entity sims: "
           f"{'loaded' if entity else 'ABSENT'}   LM PMI: {'loaded' if pmi else 'ABSENT'}"
           f"   extra spaces: {'loaded' if extra else 'ABSENT'}"
@@ -274,7 +279,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
           f"   isa: {'loaded' if isa else 'ABSENT'}"
           f"   conceptnet: {'loaded' if conceptnet else 'ABSENT'}"
           f"   senses: {'loaded' if senses else 'ABSENT'}"
-          f"   assoc: {'loaded' if assoc else 'ABSENT'}")
+          f"   assoc: {'loaded' if assoc else 'ABSENT'}"
+          f"   profile: {'loaded' if profile else 'ABSENT'}")
     boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
@@ -323,7 +329,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
             feats = fcache[fkey]
         else:
             feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi, extra,
-                            norms, wordnet, lexical, isa, conceptnet, senses, assoc)
+                            norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile)
             fcache[fkey] = feats
         if feats is None:
             dropped["features"] += 1
@@ -350,7 +356,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                 keep = [r for r in range(len(rank)) if r not in taken]
                 sub = [shuffled[r] for r in keep]
                 f = extract(clue, sub, number, sims, stats, wstats, clue_index, swow, entity,
-                            pmi, extra, norms, wordnet, lexical, isa, conceptnet, senses, assoc)
+                            pmi, extra, norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile)
                 if f is None:
                     ok = False
                     break
@@ -368,14 +374,15 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
         tmp.replace(fcache_path)
     if decoys is not None:
         got = decoy_positions(decoys, sims, stats, clue_index, wstats, swow, entity, pmi,
-                              extra, norms, wordnet, lexical, dropped, isa, conceptnet, senses, assoc)
+                              extra, norms, wordnet, lexical, dropped, isa, conceptnet, senses, assoc, profile)
         print(f"decoy positions: {len(got)} from {decoys}")
         out.extend(got)
     return out, dropped
 
 
 def decoy_positions(path: Path, sims, stats, clue_index, wstats, swow, entity, pmi,
-                    extra, norms, wordnet, lexical, dropped: dict, isa=None, conceptnet=None, senses=None, assoc=None) -> list[dict]:
+                    extra, norms, wordnet, lexical, dropped: dict, isa=None, conceptnet=None, senses=None, assoc=None,
+                    profile=None) -> list[dict]:
     """Positions from scripts/data/collect_decoy_data.py, in the same shape.
 
     Words drawn uniformly from the vocabulary are mixed into the candidate
@@ -415,7 +422,7 @@ def decoy_positions(path: Path, sims, stats, clue_index, wstats, swow, entity, p
             dropped["decoy_short"] = dropped.get("decoy_short", 0) + 1
             continue
         feats = extract(r["clue"], shuffled, r["number"], sims, stats, wstats, clue_index,
-                        swow, entity, pmi, extra, norms, wordnet, lexical, isa, conceptnet, senses, assoc)
+                        swow, entity, pmi, extra, norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile)
         if feats is None:
             dropped["decoy_features"] = dropped.get("decoy_features", 0) + 1
             continue

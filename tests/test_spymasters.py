@@ -77,7 +77,8 @@ class TestRegistry:
                                 "sonnet_spymaster", "pick_temperature_listener",
                                 "isa_listener", "conceptnet_listener",
                                 "within_turn_listener", "assoc_feature_listener",
-                                "win_prob_listener", "board_value_listener"}
+                                "win_prob_listener", "board_value_listener",
+                                "assoc_profile_listener"}
 
     def test_the_paid_spymaster_is_never_picked_up_by_role(self):
         """Every game sonnet_spymaster plays costs money, so no arena may

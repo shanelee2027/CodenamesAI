@@ -42,6 +42,7 @@ from pathlib import Path
 
 from codenames.spymasters.association_listener import AssociationListenerSpymaster
 from codenames.spymasters.assoc_feature_listener import AssocFeatureListenerSpymaster
+from codenames.spymasters.assoc_profile_listener import AssocProfileListenerSpymaster
 from codenames.spymasters.conceptnet_listener import ConceptnetListenerSpymaster
 from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 from codenames.spymasters.board_value_listener import BoardValueListenerSpymaster
@@ -68,6 +69,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "isa_listener": IsaListenerSpymaster,
     "conceptnet_listener": ConceptnetListenerSpymaster,
     "assoc_feature_listener": AssocFeatureListenerSpymaster,
+    "assoc_profile_listener": AssocProfileListenerSpymaster,
     "win_prob_listener": WinProbListenerSpymaster,
     "board_value_listener": BoardValueListenerSpymaster,
     "within_turn_listener": WithinTurnListenerSpymaster,

@@ -41,6 +41,7 @@ from codenames.game import role_costs
 from codenames.listener_features import (
     APPENDED_TABLES,
     FEATURE_NAMES,
+    TABLE_LOADERS,
     EntitySims,
     ExtraSims,
     SwowTables,
@@ -126,7 +127,7 @@ class ListenerBundle:
             if used & set(feats):
                 if not (cache_dir / name).exists():
                     raise FileNotFoundError(f"{name} missing from {cache_dir}; see scripts/data/")
-                appended[key] = ExtraSims.load(cache_dir / name)
+                appended[key] = TABLE_LOADERS.get(key, ExtraSims).load(cache_dir / name)
         return cls(
             booster=booster,
             word_stats=WordStats.load(cache_dir / "word_stats.npz"),
