@@ -6017,3 +6017,56 @@ at medium effort (`anthropic:claude-sonnet-5-5:medium`), $0.18.
   On this small sample the two Sonnets agree with each other no more than
   each agrees with gpt-oss. Switching would be a change of guesser, not a
   cheaper copy of the same one, so no set should mix them.
+
+**Every listener on both generated held-out sets.** These come from
+`eval_listener_accuracy.py`, plus `score_turn_models.py --sets` for the
+pick-index and history models (both bases). Pick 4 here is the same as 4+,
+since k ≤ 4. Full output: `cache/training_data/acc_all.log`, `turn44.log`,
+`turnassoc.log`.
+
+Single-pick listeners (frozen Plackett–Luce at later picks). Gain over the
+incumbent is paired by board:
+
+| Booster | gpt-oss R² | gain | Sonnet R² | pick 1 | 2 | 3 | 4 | gain [95% CI] |
+|---|---|---|---|---|---|---|---|---|
+| incumbent | 0.3186 | | 0.2955 | 0.523 | 0.177 | 0.102 | 0.012 | |
+| 44 features, current recipe | 0.3212 | +0.003 | 0.2950 | 0.522 | 0.181 | 0.098 | 0.006 | −0.001 [−0.005, +0.004] |
+| association_listener (count target w0.3) | 0.3196 | +0.001 | 0.2984 | 0.524 | 0.183 | 0.107 | 0.009 | +0.003 [−0.002, +0.008] |
+| isa | 0.3231 | +0.005 | 0.2991 | 0.525 | 0.186 | 0.102 | 0.010 | +0.004 [−0.001, +0.008] |
+| conceptnet | 0.3235 | +0.005 | 0.2986 | 0.526 | 0.186 | 0.098 | 0.009 | +0.003 [−0.002, +0.008] |
+| assoc | 0.3340 | +0.015 | 0.3049 | 0.535 | 0.187 | 0.109 | 0.011 | +0.009 [+0.003, +0.016] |
+| assoc + B (clue profile) | 0.3374 | +0.019 | 0.3076 | 0.539 | 0.192 | 0.107 | 0.007 | +0.012 [+0.005, +0.019] |
+| assoc + C (reverse assoc) | 0.3366 | +0.018 | 0.3060 | 0.537 | 0.190 | 0.106 | 0.008 | +0.011 [+0.004, +0.017] |
+| assoc_profile (B + C) | 0.3404 | +0.022 | 0.3071 | 0.539 | 0.191 | 0.107 | 0.003 | +0.012 [+0.004, +0.019] |
+
+Turn models (picks 2+). Gain over the within-turn model on the same base,
+gpt-oss → Sonnet:
+
+| Model | 44 base: gpt-oss / Sonnet R² | gain vs within-turn | assoc base: gpt-oss / Sonnet R² | gain vs within-turn |
+|---|---|---|---|---|
+| frozen | 0.3212 / 0.2950 | −0.028 / −0.032 | 0.3340 / 0.3049 | −0.025 / −0.031 |
+| + per-pick temperatures | 0.3298 / 0.3058 | −0.019 / −0.022 | 0.3413 / 0.3145 | −0.018 / −0.021 |
+| within-turn | 0.3491 / 0.3274 | | 0.3590 / 0.3358 | |
+| pick index, depth 9 | 0.3356 / 0.3092 | −0.014 / −0.018 | 0.3447 / 0.3161 | −0.014 / −0.020 |
+| pick index + history, all sources | 0.3569 / 0.3205 | **+0.008 / −0.007** | 0.3654 / 0.3262 | **+0.006 / −0.010** |
+
+Also: conceptnet + within-turn 0.3512 / 0.3304; joint44 + within-turn
+0.3496 / 0.3273.
+
+**Reading.**
+- **The within-turn model is the largest single gain in either table**
+  (+0.03 pooled, all at picks 2+), and it transfers to Sonnet in full.
+- **The history boosters do not transfer.** They beat within-turn on
+  gpt-oss (+0.006 to +0.008) and lose to it on Sonnet (−0.007 to −0.010),
+  with both intervals clear of 0. What they learn beyond the one linear
+  pull term is how gpt-oss continues a turn. The held-out game sets
+  (2026-10-01) pointed the same way.
+- **On Sonnet only the association-based boosters are clearly ahead of the
+  incumbent.** isa, conceptnet, the 44-feature refit and the count-target
+  booster are all within ±0.004 with intervals spanning 0.
+- B and C each carry about the same share. B (the clue's profile) is a
+  little stronger on both guessers, and together they add little on Sonnet
+  over either one alone.
+- Not scored: assoc_profile + within-turn (no within-turn parameters fitted
+  on that booster yet), extra A and ABC (their exploratory columns are not
+  in `FEATURE_NAMES`), and the old decoy / oss_recipe / qwen boosters.
