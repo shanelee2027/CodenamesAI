@@ -57,6 +57,30 @@ for the opponent's turn.
 
 ## Results
 
-Pending: gpt-oss suite against the incumbent, paired with
-reply_lookahead_listener on the assoc booster (frozen turn model) as the
-reference.
+All three rows are on the gpt-oss suite against the incumbent. Paired
+differences are per game, with a 95% bootstrap over the boards both rows
+played.
+
+| Model | boards | win% | boards won both ways | sign p | assassin losses | mean k |
+|---|---|---|---|---|---|---|
+| win_prob, assoc booster | 99 | 59.1% | 28 vs 10 | 0.005 | 21 vs 10 | 2.59 |
+| + reply lookahead | 91 | 56.0% | 25 vs 14 | 0.108 | 26 vs 8 | 2.53 |
+| **+ pick index (this model)** | 92 | **57.6%** | **27 vs 13** | **0.038** | 27 vs 10 | 2.52 |
+
+| Paired difference | per game, 95% CI |
+|---|---|
+| pick index over the frozen lookahead | +2.4 points [−4.7, +9.4] |
+| the lookahead over plain win_prob (assoc) | −2.8 points [−10.0, +3.9] |
+| this model over plain win_prob (assoc) | +0.0 points [−7.1, +7.1], 58.2% each on 91 boards |
+
+**It beats the incumbent, but no more than plain win_prob on the same
+booster does.**
+- The pick index points up over the frozen lookahead.
+- The lookahead points down on this booster, though it pointed up on the
+  incumbent's (+3.9 points).
+- All three differences are within noise. At about 90 boards a paired
+  difference needs to be about 7 points to show.
+
+The more accurate turn model changed the choice little in play. It changes
+the clue in a third of positions (docs/log.md, "pick_index_lookahead_listener"),
+but its mean number (2.52) is the same as the frozen lookahead's (2.53).

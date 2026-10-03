@@ -6454,3 +6454,61 @@ and scores 0.512. Their eval R² is the same.
 - Win rates here are on each challenger's own boards against the incumbent.
   A few differ by about 1 point from the version docs, which used the boards
   shared with a paired run.
+
+## pick_index_lookahead_listener (2026-10-03)
+
+**Idea (Shane).** Combine the best pieces: the assoc booster, the
+pick-index model of later picks (no post-hoc score changes), and the
+one-turn reply lookahead.
+
+**Structure.** The pick-index booster needs a score vector per pick and per
+number: 10 booster runs per clue instead of 1. Two options:
+- (A) Pick index only for the top 8 clues of the frozen search.
+- (B) Pick index across the whole shortlist.
+
+Before building, a check (scratch script, 100 mid-game positions from the
+sim_v1 games, training boards):
+
+| Check | Result |
+|---|---|
+| A picks the same clue and number as B | 99 of 100 |
+| P(win) lost by A | 0.0008 at most |
+| B's choice is the frozen search's top clue | 67% |
+| B's choice is within the frozen top 3 / 8 / 20 | 93% / 99% / 100% |
+
+B costs about 2.7 s per move and A about +0.2 s, so A was built.
+
+**Built.**
+- `codenames/spymasters/pick_index_lookahead_listener.py`: a subclass of
+  reply_lookahead_listener. `pick_turn_outcomes` is turn_outcomes with a
+  score row per pick (tested: it equals the frozen enumeration when the rows
+  are equal, and is exact on a hand-worked case).
+- The offset table was rebuilt under the new turn model
+  (`build_reply_offset.py --spymaster pick_index_lookahead_listener`; 300
+  positions, 92k outcomes). It is within 0.004 of the old table on average
+  (0.014 at most) over the cells with 100+ outcomes.
+- Added to the play server. It runs without the k=1 tiebreak, which is tuned
+  in net words, and the compare page shows its value as P(win).
+
+**Suite** (gpt-oss, against the incumbent):
+
+| Model | win% | boards won both ways | sign p |
+|---|---|---|---|
+| reply lookahead, assoc booster (the reference, new) | 56.0% | 25 vs 14 | 0.11 |
+| pick_index_lookahead_listener | 57.6% | 27 vs 13 | 0.038 |
+
+Paired differences:
+- pick index over the reference: +2.4 points [−4.7, +9.4];
+- against plain win_prob on the assoc booster: +0.0 [−7.1, +7.1].
+
+**Expected:** the best spymaster so far, since each piece was the best on its
+own measure. **Found:** it is significant against the incumbent, but it ties
+win_prob with the same booster. The lookahead points slightly down on the
+assoc booster (−2.8 [−10.0, +3.9]), where it pointed up on the incumbent's
+booster (+3.9). The mean number given is unchanged (2.52 against 2.53).
+New gpt-oss calls: 790, about $0.06.
+
+The two lookahead rows were added to `scripts/tools/report_win_rates.py`.
+With them, the common-boards set shrinks from 49 to 44, so the notebook's
+committed outputs (49 boards) were left as they were. Re-executing it would
+change its common column.
