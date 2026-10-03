@@ -5930,3 +5930,71 @@ model's estimate of after-board differences can be mostly noise against the
 real guesser. Here the difference comes from a computed reply instead of
 a fitted regression, so I expect less of that, but the listener's error on
 the opponent's turn still enters.
+
+## A Sonnet copy of the generated held-out set (2026-10-03)
+
+**Why (Shane).** From now on, the headline test of listener accuracy is R²
+by pick on `held-out words, generated`. Those are positions made exactly
+like the training positions, on the 150 held-out words, so it tests the
+training distribution on unseen vocabulary. Game-ranking sets are
+secondary. Until now it existed only with gpt-oss's rankings. gpt-oss is
+also the teacher and the source of the association features, so a gain on
+it may be partly gpt-oss predicting itself. A copy ranked by Sonnet, which
+nothing was trained on, separates the two.
+
+**Built.** `collect_listener_data.py` gained `--guesser SPEC` and
+`--budget`. The budget stops starting calls once the tokens billed (counted
+by `LLMGuesser.usage`, thinking included) reach a dollar cap. The plan is
+the same, so Sonnet ranks exactly gpt-oss's positions. The same prompt
+comes from llm.py.
+
+- A 60-call pilot measured $0.0034 a call: 215 tokens in, 296 out, mostly
+  thinking, since the visible answer is a ~15-word JSON list. So all 1,810
+  positions would have cost about $6.10, over the $5 granted.
+- Prices are not published in this repo. $2/$10 per million is what both
+  earlier Sonnet cost measurements imply. To stay under $5 even at
+  $3/$15, I bought the first 913 positions in seed order (seeds
+  5,000,000–5,001,049): **$2.85** in all (60 + 853 calls, no errors, 32
+  workers, under two minutes).
+- 889 positions load (5 unusable rankings), 2,161 events.
+- Store backed up to `cache/llm_store.backup_20261003_sonnet.db`.
+
+The new tool `scripts/tools/eval_listener_accuracy.py` is the headline
+test. It reports R² by pick and paired differences from a reference
+booster, bootstrapped over boards.
+
+**Expected.** The same order of boosters on Sonnet, with the
+association-feature gains shrunk to about a third, as on the Sonnet game
+rankings (+0.0034 against +0.0118).
+
+| R², gain over the incumbent [95% CI] | gpt-oss (1,807 positions) | Sonnet (889 positions) | Sonnet / gpt-oss |
+|---|---|---|---|
+| incumbent, pooled R² | 0.3186 | 0.2955 | |
+| conceptnet | +0.0048 [+0.0016, +0.0081] | +0.0031 [−0.0017, +0.0080] | 0.65 |
+| assoc | +0.0154 [+0.0113, +0.0194] | +0.0094 [+0.0033, +0.0155] | 0.61 |
+| assoc_profile | +0.0218 [+0.0170, +0.0265] | +0.0116 [+0.0037, +0.0193] | 0.53 |
+| assoc_profile over assoc | +0.0064 [+0.0040, +0.0089] | +0.0022 [−0.0023, +0.0067] | 0.34 |
+
+By pick, the incumbent → assoc_profile:
+
+| | pick 1 | pick 2 | pick 3 | pick 4+ |
+|---|---|---|---|---|
+| gpt-oss | 0.556 → 0.583 | 0.228 → 0.245 | 0.091 → 0.116 | 0.015 → 0.023 |
+| Sonnet | 0.523 → 0.539 | 0.177 → 0.191 | 0.102 → 0.107 | 0.012 → 0.003 |
+
+**Reading.**
+- **The order holds on Sonnet**, and the association features transfer
+  better than expected: about 60% of the gpt-oss gain, not a third.
+  Generated positions include many bad and off-target clues, where knowing
+  what a clue brings to mind helps any guesser. Suite clues are a
+  spymaster's best, where what is left is closer to guesser-specific taste.
+- **The profile columns are the most gpt-oss-specific part.** Over assoc
+  they add +0.006 on gpt-oss and +0.002 on Sonnet, with an interval
+  spanning 0. They describe how gpt-oss associates (its lists' vagueness,
+  its reverse lists), so this is the expected shape.
+- Sonnet's R² is lower throughout (0.30 against 0.32): every booster was
+  fitted to gpt-oss.
+- Pick 4+ on Sonnet rests on 204 events. The drop there for assoc_profile
+  (0.012 → 0.003) is within noise.
+- **For the incumbent update:** assoc_profile is the best booster on both
+  guessers. Its lead over assoc is only clearly established on gpt-oss.
