@@ -53,21 +53,25 @@ PARAMS = {"objective": "binary", "learning_rate": 0.03, "num_leaves": 15, "min_d
           "feature_fraction": 0.8, "verbose": -1}
 
 
-def load_sim_states(db: Path, label: str) -> list[dict]:
+def load_sim_states(db: Path, label: str, mover: str | None = None) -> list[dict]:
+    """Turn starts of the games under `label`; with `mover`, only those where
+    the spymaster whose name starts with it is about to move."""
     out = []
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    for board, turns, winner in conn.execute(
-            "SELECT board, turns, winner FROM game_records WHERE label LIKE ?", (label + "|%",)):
+    for run, board, turns, winner in conn.execute(
+            "SELECT label, board, turns, winner FROM game_records WHERE label LIKE ?", (label + "|%",)):
         if winner not in ("A", "B"):
             continue
+        seat = dict(kv.split("=", 1) for kv in run.split("|", 1)[1].split(","))
         by_role = json.loads(board)
         words = [w for r in ("own", "opponent", "neutral", "assassin") for w in by_role[r]]
         roles = [r for r in ("own", "opponent", "neutral", "assassin") for _ in by_role[r]]
         key = " ".join(sorted(w.lower() for w in words))
         revealed: set[str] = set()
         for t in json.loads(turns):
-            out.append({"words": words, "roles": roles, "revealed": frozenset(revealed),
-                        "mover": t["team"], "won": float(winner == t["team"]), "board": key})
+            if mover is None or seat[t["team"]].startswith(mover):
+                out.append({"words": words, "roles": roles, "revealed": frozenset(revealed),
+                            "mover": t["team"], "won": float(winner == t["team"]), "board": key})
             revealed |= {w for w, _ in t["guesses"]}
     conn.close()
     return out
@@ -105,12 +109,15 @@ def main() -> None:
     ap.add_argument("--label", required=True)
     ap.add_argument("--db", type=Path, default=SIM_DB)
     ap.add_argument("--folds", type=int, default=5)
+    ap.add_argument("--mover", default=None,
+                    help="only states where this spymaster moves (win_prob_listener reads V at the "
+                         "opponent's turns, so `learned_listener` is the table it would use)")
     args = ap.parse_args()
 
     rng = np.random.default_rng(0)
-    sim = load_sim_states(args.db, args.label)
+    sim = load_sim_states(args.db, args.label, args.mover)
     ys = np.array([s["won"] for s in sim])
-    cache = PROJECT_ROOT / "cache" / "training_data" / f"sim_value_features_{args.label}.npz"
+    cache = PROJECT_ROOT / "cache" / "training_data" / f"sim_value_features_{args.label}_{args.mover or 'all'}.npz"
     if cache.exists() and len(np.load(cache)["X"]) == len(sim):
         Xs = np.load(cache)["X"]
     else:
