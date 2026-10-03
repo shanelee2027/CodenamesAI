@@ -6121,3 +6121,55 @@ Paired with V1 on the 90 boards both played: **+3.9 points per game
   significant over V1. It costs 0.7–1.1 s a move. It is the natural
   decision rule for the next incumbent, and it should be re-tested once the
   listener booster is swapped in.
+
+## Unparsed LLM rankings are stored as board order (2026-10-03)
+
+**Found while answering Shane's question** (do the LLMs get the number,
+and do they rank every word?).
+
+**The prompt.**
+- It does give the number: "gave the clue X for k word(s)". That is the
+  spymaster's number in games and the generator's k in collected data.
+- It asks for ALL the listed words, the unrevealed ones in board order, as
+  a JSON array.
+- The parser (`LLMGuesser._parse_ranking`) keeps the words the model named,
+  in its order, then backfills everything else in board order.
+
+**The checks differ by provider.**
+- `OpenAICompatGuesser` rejects and retries a response that names fewer
+  than max(k + 2, 3) words.
+- `LLMGuesser` (Anthropic) has no such check. A response with no parseable
+  answer becomes a complete-looking ranking in board order. It is stored,
+  passes `load_positions`' `bad_ranking` test, which only checks that every
+  word is present, and is used as data.
+
+**Measured.** Named count = the shortest prefix after which the stored
+ranking is exactly the board-order backfill. That is a lower bound, so
+"nothing named" is reliable.
+
+| | All stored rankings with a number: nothing named | fewer than k named | Generated held-out plan: nothing named | fewer than k named |
+|---|---|---|---|---|
+| Sonnet 5, medium | 4.0% of 11,892 | 4.1% | **78 of 913 (8.5%)** | 88 (9.6%) |
+| Sonnet 5.5, medium | 15 of 60 (25%) | 25% | 15 of 60 | 15 of 60 |
+| gpt-oss, low | 0.24% of 88,183 | 1.3% | 3 of 889 | 19 (2.1%) |
+
+**Likely cause, not yet confirmed:** `max_tokens = 512` with thinking on at
+medium effort. Thinking counts against `max_tokens`, so a call that thinks
+long ends with no text. The stop reason is not stored, so this is
+inferred. The higher rate for Sonnet 5.5 fits a model that thinks
+differently.
+
+**What it affects.**
+- The Sonnet copy of the generated set has 8.5% of positions whose
+  "ranking" is board order. Board order is role-shuffled, so those labels
+  are noise. That lowers Sonnet R² for every booster and dilutes the
+  gains, so the "about 60% of the gpt-oss gain transfers" figure is
+  probably an underestimate.
+- **The Sonnet 5.5 pilot numbers are wrong.** A quarter of its rankings
+  were board order, so its agreement with Sonnet 5 and gpt-oss (66% and
+  54%) is understated. Its 261 output tokens a call is the billed figure
+  but includes truncated calls.
+- In Sonnet-guessed games, about 4% of guesser turns were board-order
+  guesses, for both sides alike.
+- gpt-oss is barely affected. Training uses only picks 1..k, which the
+  k + 2 check covers.
