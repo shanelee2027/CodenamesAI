@@ -92,7 +92,7 @@ def main() -> None:
         n_own, K = len(own), clue_number_cap(len(own), sm.max_number)
         _, base_scores, _ = super(ReplyLookaheadListenerSpymaster, sm)._score_all_clues(view, sims)
         finite = np.flatnonzero(np.isfinite(base_scores))
-        top = finite[np.argsort(-base_scores[finite])[: sm.top_clues]]
+        top = finite[np.argsort(-base_scores[finite])[: sm.n_top_clues]]
         keep, S = sm._scores(sm, [sims.clue_words[i] for i in top], words, K, sims)
         opp = sm._opponent(view, sims)
         if not keep or opp is None:

@@ -30,3 +30,18 @@ def test_turn_stops_at_the_number_and_at_the_last_own_word():
     out = turn_outcomes(s, 2, 4)
     assert max(len(f) for f, _ in out) == 2
     assert all(e is None for f, e in out if len(f) == 2)
+
+
+def test_parameters_do_not_shadow_the_spymaster_interface():
+    # `top_clues` is both a constructor parameter and the Spymaster method
+    # give_clue calls; storing the int under that name broke every game.
+    import pytest
+
+    from codenames.spymasters.registry import spymaster_spec
+
+    cls, kw = spymaster_spec("reply_lookahead_listener", model_path="cache/listener_gbt.txt")
+    try:
+        sm = cls(**kw)
+    except FileNotFoundError:
+        pytest.skip("needs the cached listener boosters")
+    assert callable(sm.top_clues) and callable(sm.give_clue)

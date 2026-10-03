@@ -115,7 +115,7 @@ class ReplyLookaheadListenerSpymaster(WinProbListenerSpymaster):
         self.opp = LearnedListenerSpymaster(cache_dir=cache_dir, model_path=opp_path, clue_stats=self.clue_stats)
         # With the same booster on both sides, the incumbent's scores are ours.
         self._same_listener = opp_path.resolve() == model_path.resolve()
-        self.top_clues, self.n_candidates, self.opponent_clues = top_clues, candidates, opponent_clues
+        self.n_top_clues, self.n_candidates, self.opponent_clues = top_clues, candidates, opponent_clues
         self.min_outcome, self.max_outcomes = min_outcome, max_outcomes
         # The lookahead's mean offset from V at each score
         # (scripts/data/build_reply_offset.py); "" means none, for building it.
@@ -233,7 +233,7 @@ class ReplyLookaheadListenerSpymaster(WinProbListenerSpymaster):
         roles = [r for r in (Role.NEUTRAL, Role.OPPONENT, Role.ASSASSIN) for _ in bad[r]]
         n_own, K = len(own), clue_number_cap(len(own), self.max_number)
 
-        top = finite[np.argsort(-scores[finite])[: self.top_clues]]
+        top = finite[np.argsort(-scores[finite])[: self.n_top_clues]]
         keep, S = self._scores(self, [sims.clue_words[i] for i in top], words, K, sims)
         opp = self._opponent(board, sims)
         if not keep or opp is None:

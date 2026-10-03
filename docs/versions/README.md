@@ -33,6 +33,8 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
 - [`assoc_profile_listener`](assoc_profile_listener.md): assoc_feature_listener
   plus the clue's association profile and reverse associations as listener
   features.
+- [`reply_lookahead_listener`](reply_lookahead_listener.md): win_prob_listener
+  that works out the incumbent's reply on the board each clue leaves.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.
