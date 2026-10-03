@@ -6330,3 +6330,41 @@ were fitted on train and early-stopped on val.
 - Most of each gap is new boards, not new words: gpt-oss `new boards`
   (training words) scores only about 0.02 above the held-out set
   (2026-10-01).
+
+**The full table: R² by pick on training and on the two held-out copies.**
+Train is in-sample. Held-out is the generated held-out-words set.
+
+| Model | Set | pooled | pick 1 | pick 2 | pick 3 | pick 4 |
+|---|---|---|---|---|---|---|
+| incumbent | train | 0.436 | 0.657 | 0.357 | 0.222 | 0.148 |
+| | held-out, gpt-oss | 0.319 | 0.556 | 0.228 | 0.091 | 0.015 |
+| | held-out, Sonnet 5.5 | 0.321 | 0.549 | 0.201 | 0.139 | 0.058 |
+| assoc | train | 0.506 | 0.716 | 0.440 | 0.296 | 0.212 |
+| | held-out, gpt-oss | 0.334 | 0.577 | 0.238 | 0.109 | 0.018 |
+| | held-out, Sonnet 5.5 | 0.329 | 0.558 | 0.210 | 0.147 | 0.068 |
+| assoc_profile | train | 0.533 | 0.739 | 0.472 | 0.327 | 0.237 |
+| | held-out, gpt-oss | 0.340 | 0.583 | 0.245 | 0.116 | 0.023 |
+| | held-out, Sonnet 5.5 | 0.331 | 0.560 | 0.212 | 0.149 | 0.065 |
+| 44 + within-turn | train | 0.511 | 0.717 | 0.453 | 0.300 | 0.212 |
+| | held-out, gpt-oss | 0.349 | 0.559 | 0.263 | 0.151 | 0.093 |
+| | held-out, Sonnet 5.5 | 0.349 | 0.548 | 0.241 | 0.192 | 0.132 |
+| 44 pick index + history (embeddings) | train | 0.551 | 0.734 | 0.517 | 0.351 | 0.257 |
+| | held-out, gpt-oss | 0.356 | 0.560 | 0.270 | 0.168 | 0.110 |
+| | held-out, Sonnet 5.5 | 0.354 | 0.549 | 0.245 | 0.204 | 0.142 |
+| assoc + within-turn | train | 0.506 | 0.716 | 0.445 | 0.291 | 0.206 |
+| | held-out, gpt-oss | 0.359 | 0.577 | 0.269 | 0.155 | 0.092 |
+| | held-out, Sonnet 5.5 | 0.355 | 0.558 | 0.244 | 0.194 | 0.133 |
+| assoc pick index + history (embeddings) | train | 0.567 | 0.751 | 0.535 | 0.363 | 0.266 |
+| | held-out, gpt-oss | 0.366 | 0.576 | 0.277 | 0.170 | 0.110 |
+| | held-out, Sonnet 5.5 | 0.357 | 0.557 | 0.245 | 0.203 | 0.142 |
+
+- **The frozen boosters collapse at later picks off the training boards.**
+  At pick 4 the incumbent has 0.148 in training and 0.015 on gpt-oss
+  held-out. The within-turn and history models keep 0.09–0.14 there, while
+  their training pick 4 is no higher than the frozen boosters'. Training
+  R² cannot show this. The held-out set exists for exactly this reason.
+- **Pick 1 loses about 0.10–0.19 from training to held-out for every
+  model**, the least for the incumbent. Most of that is new boards: it
+  appears on training-vocabulary new boards too.
+- **Sonnet 5.5's later picks are easier to predict than gpt-oss's**
+  (pick 3–4) and its first pick slightly harder.
