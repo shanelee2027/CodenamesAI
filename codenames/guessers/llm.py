@@ -93,6 +93,7 @@ class LLMGuesser(Guesser):
         # Tokens billed by this instance's API calls (cache hits add nothing),
         # so a paid collection can stop at a budget (collect_listener_data.py).
         self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
+        self._thinking_off = "disabled"
         # One LLMGuesser instance is shared across every game in a batch
         # (codenames/two_team_gpu_arena.py plays them concurrently on a
         # thread pool specifically so their network calls overlap -- see
@@ -195,8 +196,20 @@ class LLMGuesser(Guesser):
             # reason inline in the visible text even with thinking
             # disabled; _parse_ranking's regex search handles that either
             # way by finding the JSON array wherever it appears.
-            request["thinking"] = {"type": "disabled"}
-        response = self.client.messages.create(**request)
+            request["thinking"] = {"type": self._thinking_off}
+        try:
+            response = self.client.messages.create(**request)
+        except Exception as exc:
+            # Newer models (Sonnet 5.5) reject "disabled" and name
+            # "between_tools" as their way to turn thinking off: no thinking
+            # before the answer, and with no tools in the request, none at
+            # all. Switch only when the API says so, so older models keep the
+            # request they were measured with.
+            if request.get("thinking", {}).get("type") != "disabled" or "between_tools" not in str(exc):
+                raise
+            self._thinking_off = "between_tools"
+            request["thinking"] = {"type": self._thinking_off}
+            response = self.client.messages.create(**request)
         with self._lock:
             self.usage["calls"] += 1
             self.usage["input_tokens"] += response.usage.input_tokens

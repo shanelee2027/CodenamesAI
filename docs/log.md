@@ -6181,3 +6181,38 @@ gpt-oss. The earlier "the two Sonnets agree no more than each does with
 gpt-oss" was an artifact of 5.5's board-order rankings, and is withdrawn.
 Sonnet 5 also failed on 6 of the 15 positions where 5.5 failed: the same
 hard positions push both past the token cap.
+
+**Sonnet 5.5 with thinking off (same day).** The same 60 positions, for
+$0.17. This model rejects `thinking: disabled` and names
+`{"type": "between_tools"}` as its way to turn thinking off.
+`LLMGuesser` now switches to that when the API asks, so older models keep
+the request they were measured with.
+
+| | Sonnet 5, medium | Sonnet 5.5, medium | Sonnet 5.5, thinking off |
+|---|---|---|---|
+| output tokens a call | 296 (pilot) | 261 | 232 (0 thinking) |
+| unusable rankings (fewer than k named) | 9.6% of the 913 | 15 of 60 | 7 of 60 |
+
+Pick-1 agreement, on the 40 positions all four answered:
+
+| Pair | Same pick 1 |
+|---|---|
+| Sonnet 5 / 5.5 medium | 78% |
+| Sonnet 5 / 5.5 off | 68% |
+| 5.5 medium / 5.5 off | 85% |
+| Sonnet 5 / gpt-oss | 72% |
+| 5.5 off / gpt-oss | 60% |
+
+**A second cause of unusable rankings: the parser, not the token cap.**
+One failed thinking-off call was re-run and inspected (217 output tokens,
+stop reason end_turn). The model put "Pen" in its array (fountain pen: not
+on the board), noticed, and wrote "Correction..." followed by two more
+arrays. `_parse_ranking`'s greedy `\[.*\]` spans from the first `[` to the
+last `]`, which is not valid JSON, so the whole answer was discarded and
+board order stored. The last array was the right answer.
+
+- These self-correction loops also explain the token count. A clean answer
+  is about 40 tokens (one test call: 38).
+- How many of Sonnet 5's failures are this rather than the token cap is
+  unknown, since neither the text nor the stop reason is stored. Both
+  causes are possible.
