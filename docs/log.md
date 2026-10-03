@@ -6368,3 +6368,44 @@ Train is in-sample. Held-out is the generated held-out-words set.
   appears on training-vocabulary new boards too.
 - **Sonnet 5.5's later picks are easier to predict than gpt-oss's**
   (pick 3–4) and its first pick slightly harder.
+
+## Per-pick temperatures fitted on gpt-oss val, scored on Sonnet 5.5 (2026-10-03)
+
+**Question (Shane).** How much does Sonnet 5.5 R² improve if every model
+gets one temperature per pick (1, 2, 3, 4+), fitted only on gpt-oss data?
+`score_turn_models.py --val-temperatures` fits them by maximum likelihood on
+val, which every booster saw only for early stopping. Each model's whole
+logit at pick j is multiplied by c_j. Unlike the older "+ temperatures"
+row, pick 1 is free too.
+
+Fitted temperatures (1/c, picks 1 / 2 / 3 / 4+):
+
+| Model | 44 base | assoc base |
+|---|---|---|
+| frozen | 0.97 / 1.09 / 1.25 / 1.42 | 0.97 / 1.09 / 1.25 / 1.42 |
+| within-turn | 0.97 / 1.00 / 1.00 / 1.00 | same |
+| pick index, depth 9 | 1.04 / 1.07 / 1.07 / 1.05 | 1.04 / 1.06 / 1.07 / 1.05 |
+| pick index + history, embeddings | 1.03 / 1.03 / 1.00 / 1.02 | 1.04 / 1.04 / 1.02 / 1.03 |
+
+Sonnet 5.5 R², before → after:
+
+| Model | 44 base | assoc base |
+|---|---|---|
+| frozen | 0.3229 → 0.3292 | 0.3293 → 0.3347 |
+| within-turn | 0.3492 → 0.3488 | 0.3546 → 0.3542 |
+| pick index, depth 9 | 0.3331 → 0.3354 | 0.3374 → 0.3398 |
+| pick index + history, embeddings | 0.3540 → 0.3550 | **0.3573 → 0.3589** |
+| pick index + history, all sources | 0.3532 → 0.3545 | 0.3571 → 0.3588 |
+
+- **Almost nothing to gain: +0.001 to +0.002 for the best models.** The
+  frozen boosters gain +0.005 to +0.006, the same as the old post-hoc
+  temperatures they reproduce.
+- **The pick-index models already learn their own per-pick sharpness**
+  (Shane's point). Their val temperatures are 1.02–1.17, against the
+  frozen booster's 1.09–1.42.
+- Pick 1 is calibrated on val (0.97–1.04). Freeing it slightly hurts
+  held-out pick 1 for the frozen and within-turn models (0.5478 → 0.5471).
+  The pick-1 drop from training to held-out is not an overconfidence that
+  val, on training vocabulary, can see.
+- Best on Sonnet 5.5 so far: **assoc pick index + history (embeddings) + val
+  temperatures, 0.3589.**
