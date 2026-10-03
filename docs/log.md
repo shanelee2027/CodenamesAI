@@ -6409,3 +6409,48 @@ Sonnet 5.5 R², before → after:
   val, on training vocabulary, can see.
 - Best on Sonnet 5.5 so far: **assoc pick index + history (embeddings) + val
   temperatures, 0.3589.**
+
+## Progress notebook: every model since 2026-09-25 on one test (2026-10-03)
+
+**Why.** For the professor meeting. Shane asked that the results be
+consistent across everything tried: the same eval set, the same guesser and
+the same opponent. Earlier numbers were spread over several sets, suites and
+opponents.
+
+**What.**
+- `scripts/tools/report_listener_accuracy.py`: every listener model on train,
+  Sonnet 5.5 and gpt-oss generated held-out sets, by pick, with the paired
+  difference from the incumbent. Written to `cache/report/listener_accuracy.csv`.
+- `scripts/tools/report_win_rates.py`: the 21 challengers on the gpt-oss
+  suite against the incumbent. Reports their own boards, the 49 common boards,
+  and the paired difference from a reference row. Written to
+  `cache/report/win_rates.csv`.
+- `notebooks/progress_since_0925.ipynb` renders both.
+
+**New games.** The three clue policies had never been played on the gpt-oss
+suite. They were played for this, with one retry pass for refused boards:
+4,608 gpt-oss calls, about $0.32 of the $2 DeepInfra grant.
+
+| Policy | win% | boards won both ways |
+|---|---|---|
+| imitation_policy | 38.8% | 6 vs 26 (p = 0.001) |
+| gptoss_reward_policy | 43.8% | 10 vs 21 (p = 0.071) |
+| win_actor_critic | 46.7% | 17 vs 23 (p = 0.43) |
+
+**New accuracy numbers.** The neural correction (residual, no attention, 3
+seeds) on Sonnet 5.5 scores 0.3222–0.3273. That is −0.001 to +0.004 over its
+base, the 44 recipe at 0.3229. On gpt-oss's copy of the same positions it is
++0.013 to +0.014. Expected: a small transferable gain, like the
+association features. Found: most of what it learned is specific to gpt-oss.
+
+**Training R² gap, split** (assoc booster): train 0.506, val 0.371,
+held-out words on gpt-oss 0.334, held-out words on Sonnet 5.5 0.329. Most of
+the gap is in-sample fit, which also depends on the number of trees: the
+incumbent has 380 trees and scores 0.436 on train, the 44 recipe has 2,590
+and scores 0.512. Their eval R² is the same.
+
+**Corrections to earlier tables.**
+- score_turn_models' "pick 4" was exactly 4; the report uses 4+.
+- Win rates here are on each challenger's own boards against the incumbent.
+  A few differ by about 1 point from the version docs, which used the boards
+  shared with a paired run.
