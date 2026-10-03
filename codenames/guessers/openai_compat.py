@@ -343,14 +343,9 @@ class OpenAICompatGuesser(Guesser):
     def _named_by_model(text: str, candidate_words: list[str]) -> set[str]:
         """The candidate words the response actually contained, recovered the
         same way `_parse_ranking` recovers them so the two cannot disagree."""
-        import json
-        import re
+        from codenames.guessers.llm import json_array
 
-        match = re.search(r"\[.*\]", text, re.DOTALL)
-        try:
-            raw = json.loads(match.group(0)) if match else []
-        except json.JSONDecodeError:
-            raw = []
+        raw = json_array(text, candidate_words)
         allowed = set(candidate_words)
         return {w for w in raw if isinstance(w, str) and w in allowed}
 

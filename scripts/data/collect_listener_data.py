@@ -273,7 +273,8 @@ def main() -> None:
           f"Re-run the same command to top up or resume.")
     if hasattr(g, "usage"):
         u = g.usage
-        print(f"billed: {u['calls']} calls, {u['input_tokens']} input / {u['output_tokens']} output tokens"
+        print(f"billed: {u['calls']} calls ({u.get('retries', 0)} retries, {u.get('max_tokens_stops', 0)} hit max_tokens), "
+              f"{u['input_tokens']} input / {u['output_tokens']} output tokens"
               + (f", ${spent():.3f} at ${args.price_in}/${args.price_out} per Mtok" if args.budget is not None else ""))
 
 

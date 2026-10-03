@@ -9,7 +9,9 @@ distribution on vocabulary no model has seen. Sets of rankings from real games
 are easier and skewed, because every clue in them was a spymaster's best.
 `held-out words, generated, Sonnet` is the first 913 of the same positions
 ranked by Sonnet: a guesser nothing was trained on, so it shows how much of a
-gain is the model predicting gpt-oss specifically.
+gain is the model predicting gpt-oss specifically. `..., Sonnet 5.5` is all of
+the positions ranked by Sonnet 5.5, with no unusable answers stored; prefer
+it to the Sonnet 5 copy, 8.5% of which is board-order backfill.
 
 Reported per booster (and turn model, if given) on each set:
 - R² pooled, with a 95% bootstrap over boards;
@@ -78,7 +80,7 @@ def main() -> None:
     from codenames.listener_net import WordVectors
     from codenames.sequential_listener import SequentialParams
     from train_joint_listener import Events
-    from train_listener_net import GENERATED, GENERATED_SONNET, gbt_scores, load_sets
+    from train_listener_net import GENERATED, GENERATED_SONNET, GENERATED_SONNET55, gbt_scores, load_sets
 
     specs = []
     for spec in args.booster or DEFAULT_BOOSTERS:
@@ -89,7 +91,7 @@ def main() -> None:
     sets = load_sets()
     vw = WordVectors()
     rng = np.random.default_rng(0)
-    for s in (GENERATED, GENERATED_SONNET):
+    for s in (GENERATED, GENERATED_SONNET55, GENERATED_SONNET):
         pos = with_all_columns(sets[s])
         e = Events(pos, vw)
         _, bid = np.unique(e.board, return_inverse=True)

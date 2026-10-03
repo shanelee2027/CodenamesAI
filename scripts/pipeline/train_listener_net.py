@@ -29,7 +29,12 @@ the LightGBM one on the same choice events.
 - `held-out words, generated, Sonnet`: the first 913 of those positions
   (seeds 5,000,000 to 5,001,049), ranked by Sonnet at medium effort, the
   guesser nothing here was trained on (docs/log.md, "A Sonnet copy of the
-  generated held-out set").
+  generated held-out set"). About 8.5% of its rankings are board-order
+  backfill from answers that did not parse (docs/log.md, "Unparsed LLM
+  rankings are stored as board order").
+- `held-out words, generated, Sonnet 5.5`: all of the generated positions
+  ranked by Sonnet 5.5 at medium effort, collected after the guesser was
+  fixed to retry unusable answers instead of storing them.
 
 Metric: McFadden R^2 per choice event, pooled and at step 1, as
 listener_training.mcfadden_on computes it.
@@ -69,6 +74,8 @@ SETS_CACHE = CACHE / "training_data" / "listener_net_sets.pkl"
 GENERATED = "held-out words, generated"
 GENERATED_BOARDS = 5000          # seeds searched when resolving them (2,200 collected)
 GENERATED_SONNET = "held-out words, generated, Sonnet"
+GENERATED_SONNET55 = "held-out words, generated, Sonnet 5.5"
+SONNET55 = "claude-sonnet-5-5+effort=medium"
 
 
 def load_sets(reload: bool = False) -> dict[str, list[dict]]:
@@ -80,7 +87,7 @@ def load_sets(reload: bool = False) -> dict[str, list[dict]]:
     else:
         sets = _load_sets()
         SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
-    for name, model in ((GENERATED, T.DEFAULT_MODEL), (GENERATED_SONNET, SONNET)):
+    for name, model in ((GENERATED, T.DEFAULT_MODEL), (GENERATED_SONNET, SONNET), (GENERATED_SONNET55, SONNET55)):
         if name not in sets:
             sets[name] = _load_generated_holdout(model)
             SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))

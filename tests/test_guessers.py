@@ -237,6 +237,7 @@ class _FakeResponse:
     def __init__(self, text: str):
         self.content = [_FakeTextBlock(text)]
         self.usage = SimpleNamespace(input_tokens=100, output_tokens=50)
+        self.stop_reason = "end_turn"
 
 
 class _FakeMessages:
@@ -266,7 +267,7 @@ class _SlowFakeMessages:
     def create(self, **kwargs):
         self.calls.append(kwargs)
         time.sleep(self.delay)
-        return _FakeResponse("[]")
+        return _FakeResponse('["Apple", "Banana", "Car", "Doghouse"]')
 
 
 class _SlowFakeClient:
@@ -282,17 +283,36 @@ class TestLLMGuesser:
         g = LLMGuesser(client=client)
         assert g.rank_candidates("fruit", self.WORDS, sims=None, number=2) == ["Car", "Apple", "Doghouse", "Banana"]
 
-    def test_malformed_response_falls_back_to_original_order(self):
-        client = _FakeClient(["not json at all"])
-        g = LLMGuesser(client=client)
-        assert g.rank_candidates("fruit", self.WORDS, sims=None) == self.WORDS
+    def test_unusable_response_is_retried_then_raises_and_is_not_cached(self, tmp_path):
+        # It used to be backfilled in board order and stored as the model's
+        # ranking (docs/log.md, "Unparsed LLM rankings are stored as board order").
+        from codenames.guessers.llm import ATTEMPTS
 
-    def test_partial_response_appends_missing_words_in_original_order(self):
-        # Model only mentions two of the four words.
-        client = _FakeClient(['["Banana", "Car"]'])
+        client = _FakeClient(["not json at all"] * ATTEMPTS)
+        g = LLMGuesser(client=client, cache_path=tmp_path / "store.db")
+        with pytest.raises(RuntimeError, match="usable ranking"):
+            g.rank_candidates("fruit", self.WORDS, sims=None, number=1)
+        assert len(client.messages.calls) == ATTEMPTS
+        assert g._disk_cache.get(g.cache_model_id, "fruit", tuple(self.WORDS), 1) is None
+
+    def test_retry_that_succeeds_is_used(self):
+        client = _FakeClient(["thinking out loud, no array", '["Banana", "Apple", "Car", "Doghouse"]'])
         g = LLMGuesser(client=client)
-        ranked = g.rank_candidates("fruit", self.WORDS, sims=None)
+        assert g.rank_candidates("fruit", self.WORDS, sims=None, number=1)[:2] == ["Banana", "Apple"]
+        assert g.usage["retries"] == 1
+
+    def test_partial_but_sufficient_response_appends_missing_words_in_original_order(self):
+        # A clue for 1 needs 3 named words; the fourth is backfilled.
+        client = _FakeClient(['["Banana", "Car", "Apple"]'])
+        g = LLMGuesser(client=client)
+        ranked = g.rank_candidates("fruit", self.WORDS, sims=None, number=1)
         assert ranked == ["Banana", "Car", "Apple", "Doghouse"]
+
+    def test_self_corrected_answer_takes_the_last_array(self):
+        text = ('["Banana", "Pear", "Apple", "Car", "Doghouse"]\n\nWait, "Pear" is not in the list. '
+                'Corrected answer:\n\n["Banana", "Apple", "Car", "Doghouse"]')
+        g = LLMGuesser(client=_FakeClient([text]))
+        assert g.rank_candidates("fruit", self.WORDS, sims=None, number=1) == ["Banana", "Apple", "Car", "Doghouse"]
 
     def test_repeated_calls_with_the_same_inputs_are_cached(self):
         client = _FakeClient(['["Apple", "Banana", "Car", "Doghouse"]'])

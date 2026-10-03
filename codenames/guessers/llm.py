@@ -41,6 +41,44 @@ from codenames.similarity import SimilarityTensor
 
 DEFAULT_MODEL = "claude-haiku-4-5"
 
+# Attempts per ranking before LLMGuesser gives up and raises, as
+# OpenAICompatGuesser does. An unusable answer is never stored: it used to be
+# backfilled in board order and cached as if it were the model's ranking
+# (docs/log.md, "Unparsed LLM rankings are stored as board order").
+ATTEMPTS = 3
+
+
+def json_array(text: str, candidate_words: list[str]) -> list:
+    """The answer array in a response: the LAST JSON array that parses and
+    names at least one candidate word.
+
+    Models sometimes correct themselves ("Wait, 'Turkey' isn't in the list.
+    Corrected answer: [...]") or reason in the visible text before the array.
+    A greedy first-[-to-last-] match spans several arrays and fails to parse,
+    which discarded the whole answer. Shared by both LLM guessers so what is
+    parsed and what is counted as named cannot disagree."""
+    allowed = set(candidate_words)
+    for chunk in reversed(re.findall(r"\[[^\[\]]*\]", text)):
+        try:
+            raw = json.loads(chunk)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(raw, list) and any(isinstance(w, str) and w in allowed for w in raw):
+            return raw
+    return []
+
+
+def required_named(total: int, number: int | None, min_coverage: float = 0.8) -> int:
+    """How many candidate words a usable answer must name: enough to cover
+    what a turn reads off the top (number + 2, at least 3), or `min_coverage`
+    of the board when a full ranking is wanted. Same rule as
+    OpenAICompatGuesser._reject."""
+    import math
+
+    if number is not None:
+        return min(total, max(number + 2, 3))
+    return math.ceil(min_coverage * total)
+
 _PROMPT_TEMPLATE = """You are playing the guesser role in the board game Codenames. Your \
 spymaster gave the clue "{clue}"{count_note}. Here are the words still available to guess:
 
@@ -56,7 +94,7 @@ class LLMGuesser(Guesser):
     def __init__(
         self,
         model: str = DEFAULT_MODEL,
-        max_tokens: int = 512,
+        max_tokens: int = 2048,
         client=None,
         cache_path: str | Path | None = None,
         effort: str | None = None,
@@ -92,7 +130,7 @@ class LLMGuesser(Guesser):
         self._disk_cache = LLMResponseCache(Path(cache_path)) if cache_path is not None else None
         # Tokens billed by this instance's API calls (cache hits add nothing),
         # so a paid collection can stop at a budget (collect_listener_data.py).
-        self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0}
+        self.usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "retries": 0, "max_tokens_stops": 0}
         self._thinking_off = "disabled"
         # One LLMGuesser instance is shared across every game in a batch
         # (codenames/two_team_gpu_arena.py plays them concurrently on a
@@ -173,6 +211,27 @@ class LLMGuesser(Guesser):
         return cached
 
     def _query(self, clue: str, candidate_words: list[str], number: int | None) -> list[str]:
+        """The model's ranking, retried up to ATTEMPTS times until it names
+        enough words (`required_named`); raises RuntimeError("... did not
+        return a usable ranking ...") otherwise, which the arenas treat as a
+        refusal and the collectors as an error. Nothing unusable is returned,
+        so nothing unusable is cached."""
+        need = required_named(len(candidate_words), number)
+        problems = []
+        for attempt in range(ATTEMPTS):
+            if attempt:
+                with self._lock:
+                    self.usage["retries"] += 1
+            text, stop = self._request(clue, candidate_words, number)
+            named = {w for w in json_array(text, candidate_words) if isinstance(w, str)} & set(candidate_words)
+            if len(named) >= need:
+                ranking = self._parse_ranking(text, candidate_words)
+                return list(dict.fromkeys(ranking))           # a word listed twice counts once
+            problems.append(f"named {len(named)}/{len(candidate_words)} (stop {stop})")
+        raise RuntimeError(f"{self.cache_model_id} did not return a usable ranking for clue {clue!r} "
+                           f"over {len(candidate_words)} words, need {need}: " + "; ".join(problems))
+
+    def _request(self, clue: str, candidate_words: list[str], number: int | None) -> tuple[str, str | None]:
         count_note = f" for {number} word(s)" if number else ""
         prompt = _PROMPT_TEMPLATE.format(clue=clue, count_note=count_note, words="\n".join(candidate_words))
         request = {
@@ -214,8 +273,9 @@ class LLMGuesser(Guesser):
             self.usage["calls"] += 1
             self.usage["input_tokens"] += response.usage.input_tokens
             self.usage["output_tokens"] += response.usage.output_tokens
+            self.usage["max_tokens_stops"] += response.stop_reason == "max_tokens"
         text = next((block.text for block in response.content if block.type == "text"), "")
-        return self._parse_ranking(text, candidate_words)
+        return text, response.stop_reason
 
     @staticmethod
     def _parse_ranking(text: str, candidate_words: list[str]) -> list[str]:
@@ -224,11 +284,7 @@ class LLMGuesser(Guesser):
         response, if it couldn't be parsed at all) falls back to the
         board's own original order, appended after whatever the model did
         rank."""
-        match = re.search(r"\[.*\]", text, re.DOTALL)
-        try:
-            raw = json.loads(match.group(0)) if match else []
-        except json.JSONDecodeError:
-            raw = []
+        raw = json_array(text, candidate_words)
         valid = [w for w in raw if isinstance(w, str) and w in candidate_words]
         missing = [w for w in candidate_words if w not in valid]
         return valid + missing
