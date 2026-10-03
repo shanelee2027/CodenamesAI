@@ -14,7 +14,9 @@ The game loop reads the ranking exactly as it reads gpt-oss's: the first
 `number` words, stopping at the first that is not the team's own. So games
 played with this guesser are games in which the listener is the truth, at no
 API cost. That is what the simulated-games value model is trained on; its
-gap to gpt-oss is measured, not assumed (scripts/tools/check_simulator.py).
+gap to gpt-oss is measured, not assumed: configs/eval_suite_sim_assoc.json
+replays the gpt-oss suite's boards with it (docs/log.md, "Simulated games:
+simulator fidelity").
 
 The k feature is the announced number, as in the listener's training data
 (the spymaster's search scores at its number cap instead).

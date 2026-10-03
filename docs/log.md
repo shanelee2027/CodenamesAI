@@ -5599,3 +5599,87 @@ the 44 features, unchanged by any turn model.
 - The extra history sources still add nothing over the embeddings.
 - For play this is still a later-pick gain over a model test A found does
   not change games, and it would need about 130 booster runs per clue.
+
+## Exploratory feature blocks on the assoc booster (2026-10-03, overnight)
+
+**Question (Shane).** Are there more features that add to the assoc booster
+(56 features)? Exploratory: three blocks, each added to the same rows, split
+and recipe, plus all three together (`scripts/tools/eval_extra_features.py`,
+boosters saved as `cache/listener_gbt_assoc_extra_{A,B,C,ABC}.txt`). Scored
+frozen, gain over the assoc booster with a 95% bootstrap over boards.
+
+- **A, board-relative association / ConceptNet** (11): rank on the board,
+  share of the board's total and margin over the best other word, for
+  `assoc_share`, `assoc_rank`, `cn_any`; plus how many board words the clue's
+  lists name and how many have a ConceptNet edge. The reason to expect a gain:
+  the embedding features already come in board-relative form and those
+  versions carry much of the gain.
+- **B, the clue itself** (8): how vague gpt-oss finds the clue (distinct
+  words across its 5 lists, overlap between lists, how often they open with
+  the same word), and its rarity, concreteness, familiarity, frequency and
+  WordNet senses. Board constants, so they can act only through interactions.
+- **C, reverse associations** (3): gpt-oss's lists *from* each board word —
+  share naming the clue, reciprocal position, rank on the board. Cost about
+  $0.01 (205 new board-word lists; most were already owned).
+
+| Gain over assoc (R²) | val | new boards | held-out generated | held-out words | Sonnet |
+|---|---|---|---|---|---|
+| +A | −0.0000 | −0.0009 | −0.0003 | −0.0001 | +0.0001 |
+| +B | +0.0043 | +0.0052 | +0.0034 | +0.0028 | +0.0028 |
+| +C | +0.0011 | +0.0012 (CI spans 0) | +0.0026 | +0.0030 | +0.0058 |
+| +A+B+C | +0.0046 | **+0.0061** [+0.0035, +0.0088] | **+0.0076** [+0.0052, +0.0103] | **+0.0079** [+0.0052, +0.0106] | **+0.0092** [+0.0066, +0.0118] |
+
+Absolute R² for +A+B+C: 0.3560 new boards, 0.3417 held-out generated,
+0.5715 held-out words, 0.5634 Sonnet (assoc: 0.3499, 0.3340, 0.5637, 0.5542).
+The gain is at pick 1 and at picks 2+ alike (pick 1 +0.005 to +0.009).
+
+**Reading.**
+- **A is null everywhere.** The trees already build the board-relative
+  versions from the absolute features plus the softmax; the hypothesis was
+  wrong.
+- **B helps on every set** (+0.003 to +0.005), the first clue-level signal
+  that has: a clue's vagueness changes how sharply the guesser picks.
+- **C is small on generated clues and largest on the held-out game sets**
+  (+0.006 Sonnet), where clues are good and the question is which of a few
+  close words the guesser reads it as.
+- **Together they give about the sum of B and C**, a little more on two of
+  the held-out sets (held-out generated +0.0076 against
+  B + C = +0.0060; held-out words +0.0079 against +0.0058). The gain is
+  *larger* on held-out vocabulary than on new boards from training words, so
+  it is not memorisation.
+- Not deployed. Using it in play means computing B and C in
+  `listener_features.py` (B needs the clue's 5 association lists, which the
+  assoc spymaster already fetches; C needs reverse lists for every board word,
+  one gpt-oss call per new word). It is a ~+0.007 fit gain on top of a
+  booster whose own +0.009 pick-1 gain over the 44 features has not yet been
+  tested in head-to-head play.
+
+## Simulated games: simulator fidelity (2026-10-03, overnight)
+
+**Setup.** Part of method B (a board-reading V): the guesser is replaced by
+a fitted listener that samples rankings (`sim:assoc`: assoc booster, pick 1
+from its softmax, later picks from its within-turn model), so games cost
+compute only. Games are recorded in `cache/sim_games.db`, never the LLM store.
+
+**Fidelity check.** The matchup whose real gpt-oss result is known — V1 with
+the incumbent booster (`win_prob_listener`, `model_path=cache/listener_gbt.txt`,
+`turn_model=frozen`) against `learned_listener` — replayed on the gpt-oss
+suite's 100 boards with the simulated guesser
+(`configs/eval_suite_sim_assoc.json`), 200 games in 383 s on 4 workers.
+
+| | win% challenger | assassin losses (V1 vs inc.) | mean k | own words / clue | own % of guesses |
+|---|---|---|---|---|---|
+| gpt-oss (real) | 51.5% (17 vs 14 boards) | 31 vs 9 | 2.68 vs 2.32 | 1.72 vs 1.71 | 76.4 vs 81.7 |
+| simulated | 55.0% (p = 0.17, 44 decisive boards) | 19 vs 11 | 2.60 vs 2.30 | 1.68 vs 1.67 | 77.0 vs 80.4 |
+
+**Reading.**
+- **Close on everything that comes from clue choice and ordinary guessing:**
+  the clue numbers, words per clue and accuracy match within a couple of
+  points, and the win rates are within noise of each other.
+- **The gap is the assassin.** gpt-oss kills V1 on the assassin 31 times, the
+  simulator 19; for the incumbent both are about 10. The simulated guesser is
+  less likely than gpt-oss to reach for the assassin on the riskier, higher-k
+  clues V1 gives. So a V trained on simulated games will be somewhat
+  optimistic about states where the mover is behind and must take risks; this
+  is a known bias to check against the real recorded games, not a reason to
+  stop.
