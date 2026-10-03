@@ -99,11 +99,18 @@ def main() -> None:
     ap.add_argument("--max-workers", type=int, default=16)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--pool", action="store_true", help="also every clue in the spymaster's pool")
+    ap.add_argument("--board", action="store_true",
+                    help="ONLY the board words, for reverse associations (does the word bring the "
+                         "clue to mind); most are already in the pool, so this buys the rest")
     args = ap.parse_args()
 
     clues = teacher_clues()
     if args.pool:
         clues = sorted(set(clues) | set(pool_clues()))
+    if args.board:
+        from codenames.board import load_wordlist
+
+        clues = sorted({w.lower() for w in load_wordlist()})
     if args.limit:
         clues = clues[:: max(1, len(clues) // args.limit)][: args.limit]
     args.out.parent.mkdir(parents=True, exist_ok=True)

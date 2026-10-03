@@ -120,6 +120,11 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
                                         codenames/guessers/openai_compat.py::PROVIDERS,
                                         e.g. deepinfra:openai/gpt-oss-120b:low:temperature=1.0
         <name>                          an entry in `pool_config` (the synthetic guessers)
+        sim:<preset>[:seed=<n>][:frozen]
+                                        ListenerSampleGuesser: a fitted listener as the
+                                        guesser, no API calls (codenames/guessers/
+                                        listener_sample.py; presets assoc, conceptnet,
+                                        incumbent). `frozen` drops the within-turn model.
 
     Every LLM guesser caches to cache/llm_store.db, keyed by model and
     effort (and temperature, when set), so two specs never share an answer and
@@ -139,6 +144,17 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
     provider, sep, rest = spec.partition(":")
     if not sep:
         return load_pool(pool_config)[spec].guesser
+    if provider == "sim":
+        from codenames.guessers.listener_sample import PRESETS, ListenerSampleGuesser
+
+        name, *opts = rest.split(":")
+        if name not in PRESETS:
+            raise ValueError(f"unknown sim preset {name!r}; known: {sorted(PRESETS)}")
+        seed = next((int(o.partition("=")[2]) for o in opts if o.startswith("seed=")), 0)
+        g = ListenerSampleGuesser.preset(name, seed=seed)
+        if "frozen" in opts:
+            g.seq = None
+        return g
     model, _, tail = rest.partition(":")
     if not model:
         raise ValueError(f"guesser spec {spec!r} names no model")
