@@ -5998,3 +5998,22 @@ By pick, the incumbent → assoc_profile:
   (0.012 → 0.003) is within noise.
 - **For the incumbent update:** assoc_profile is the best booster on both
   guessers. Its lead over assoc is only clearly established on gpt-oss.
+
+**Sonnet 5.5 price pilot (same day).** Run on the same first 60 positions,
+at medium effort (`anthropic:claude-sonnet-5-5:medium`), $0.18.
+
+- **Tokens:** 217 in and 261 out a call, against Sonnet 5's 215 and 296.
+  That is 12% fewer output tokens, so $0.0031 a call at the same per-token
+  prices, against $0.0034 in Sonnet 5's pilot. All 1,810 positions would
+  cost about $5.50.
+- **Rankings** (59 positions ranked by all three guessers):
+
+  | Pair | Same pick 1 | Same first two |
+  |---|---|---|
+  | Sonnet 5 / 5.5 | 66% | 36% |
+  | Sonnet 5 / gpt-oss | 61% | 32% |
+  | Sonnet 5.5 / gpt-oss | 54% | 20% |
+
+  On this small sample the two Sonnets agree with each other no more than
+  each agrees with gpt-oss. Switching would be a change of guesser, not a
+  cheaper copy of the same one, so no set should mix them.
