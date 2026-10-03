@@ -6216,3 +6216,23 @@ board order stored. The last array was the right answer.
 - How many of Sonnet 5's failures are this rather than the token cap is
   unknown, since neither the text nor the stop reason is stored. Both
   causes are possible.
+
+**Sonnet 5.5 cap probe (same day).** The 15 positions where 5.5 at medium
+effort gave unusable rankings were re-asked at `max_tokens = 4096`, directly
+and bypassing the store, for about $0.08. Raw results are in
+`cache/training_data/sonnet55_cap_probe.json`.
+
+- **All 15 answered usably**, every word named, stop reason `end_turn`.
+- **Output was 99–652 tokens a call, with 0 thinking tokens on every one.**
+  At medium effort the model chose not to use thinking blocks and reasoned
+  in the visible text instead. "opposed" for 3: a paragraph about "anti-",
+  "con" and opposite pairs, then the JSON array. At 512 the cap cut that off
+  before the array, so the parser found nothing.
+- One more answer (istanbul) repeated the "Turkey isn't in the list,
+  corrected answer" self-correction. Taking the last array that parses is
+  enough to handle it.
+- So the token cap and the parser explain the 5.5 failures between them,
+  and neither is the model's skill.
+
+**Cap chosen: 2,048.** That is three times the longest seen. A call costs
+what it generates, so the cap only bounds a runaway answer, at about $0.02.
