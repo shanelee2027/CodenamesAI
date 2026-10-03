@@ -6173,3 +6173,11 @@ differently.
   guesses, for both sides alike.
 - gpt-oss is barely affected. Training uses only picks 1..k, which the
   k + 2 check covers.
+
+**Sonnet 5.5 pilot, recomputed on usable rankings only.** These are the 42
+positions where all three guessers named at least k words. Pick 1 agrees
+79% for Sonnet 5 / 5.5, 71% for Sonnet 5 / gpt-oss and 71% for Sonnet 5.5 /
+gpt-oss. The earlier "the two Sonnets agree no more than each does with
+gpt-oss" was an artifact of 5.5's board-order rankings, and is withdrawn.
+Sonnet 5 also failed on 6 of the 15 positions where 5.5 failed: the same
+hard positions push both past the token cap.
