@@ -10,11 +10,12 @@ different things. `held-out words, generated` (collect_listener_data.py
 vocabulary, so a gain that holds on new boards but not there is a gain that
 does not transfer to new words.
 
-Every model is on the incumbent's 44 features with the same rows, split and
-recipe, scored on picks 1..k: R² pooled and per pick, and each model's gain
+Every model is on one base feature set (`--base`: the incumbent's 44, or the
+assoc booster's 56) with the same rows, split and recipe, scored on picks 1..k: R² pooled and per pick, and each model's gain
 over the within-turn model with a 95% bootstrap over boards.
 
     python scripts/tools/score_turn_models.py
+    python scripts/tools/score_turn_models.py --base assoc
 """
 
 from __future__ import annotations
@@ -30,12 +31,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "pipeline"))
 
 CACHE = Path(__file__).resolve().parents[2] / "cache"
 SETS = ("new boards", "held-out words, generated")
+# Per base feature set: the frozen booster, its post-hoc temperatures and
+# within-turn parameters (fitted on val), and the suffix of the pick-index and
+# history boosters trained on the same columns.
+BASES = {
+    "44": {"booster": "listener_gbt_control44.txt",
+           "temperatures": "sequential_listener_control44_temperature.json",
+           "within": "sequential_listener_control44.json"},
+    "assoc": {"booster": "listener_gbt_assoc_features.txt",
+              "temperatures": "sequential_listener_assoc_temperature.json",
+              "within": "sequential_listener_assoc.json"},
+}
 REF = "within-turn"
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--sets", nargs="+", default=list(SETS))
+    ap.add_argument("--base", choices=list(BASES), default="44", help="which base feature set")
     args = ap.parse_args()
 
     import lightgbm as lgb
@@ -51,7 +64,8 @@ def main() -> None:
     sets = load_sets()
     vw = WordVectors()
     pt = PairTables()
-    control = lgb.Booster(model_file=str(CACHE / "listener_gbt_control44.txt"))
+    base = BASES[args.base]
+    control = lgb.Booster(model_file=str(CACHE / base["booster"]))
     cols = [FEATURE_NAMES.index(n) for n in control.feature_name()]
     seq = lambda f: SequentialParams.from_dict(json.loads((CACHE / f).read_text()))
     rng = np.random.default_rng(0)
@@ -63,17 +77,18 @@ def main() -> None:
         sc = gbt_scores(control, ps)
         flat = np.concatenate([sc[i][keep] for i, keep in zip(e.pos_of, e.keep_of)])
         rows = [("frozen", *e.nll(flat, ones, zeros))]
-        for label, f in (("+ temperatures", "sequential_listener_control44_temperature.json"),
-                         (REF, "sequential_listener_control44.json")):
+        for label, f in (("+ temperatures", base["temperatures"]), (REF, base["within"])):
             th = seq(f)
             rows.append((label, *e.nll(flat, *e.transform(th, e.drop(sc)))))
         Xp, _, _, _ = pick_groups(ps, cols, None)
-        for label, f in (("pick index, depth k", "listener_gbt_pick_index44_depthk.txt"),
-                         ("pick index, depth 9", "listener_gbt_pick_index44_depth9.txt")):
+        for label, f in (("pick index, depth k", f"listener_gbt_pick_index{args.base}_depthk.txt"),
+                         ("pick index, depth 9", f"listener_gbt_pick_index{args.base}_depth9.txt")):
+            if not (CACHE / f).exists():
+                continue
             b = lgb.Booster(model_file=str(CACHE / f))
             rows.append((label, *e.nll(b.predict(Xp, raw_score=True), ones, zeros)))
         for arm, feats in ARMS.items():
-            b = lgb.Booster(model_file=str(CACHE / f"listener_gbt_history44_{arm.replace(' ', '_')}.txt"))
+            b = lgb.Booster(model_file=str(CACHE / f"listener_gbt_history{args.base}_{arm.replace(' ', '_')}.txt"))
             Xh, _, g, _ = history_groups(ps, cols, None, feats, vw, pt)
             assert len(g) == len(e.step)
             rows.append((f"pick index + history, {arm}", *e.nll(b.predict(Xh, raw_score=True), ones, zeros)))

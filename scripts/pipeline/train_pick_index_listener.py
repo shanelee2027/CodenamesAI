@@ -87,7 +87,7 @@ def pick_groups(positions: list[dict], cols: list[int], max_depth: int | None):
     return np.vstack(X), np.concatenate(y), groups, np.asarray(w)
 
 
-def fit(arm: str) -> str:
+def fit(arm: str, features_from: Path = CACHE / "listener_gbt.txt") -> str:
     import lightgbm as lgb
 
     import codenames.listener_training as T
@@ -95,7 +95,7 @@ def fit(arm: str) -> str:
     from train_listener_net import load_sets
 
     sets = load_sets()
-    names = lgb.Booster(model_file=str(CACHE / "listener_gbt.txt")).feature_name()
+    names = lgb.Booster(model_file=str(features_from)).feature_name()
     cols = [FEATURE_NAMES.index(n) for n in names]
     Xtr, ytr, gtr, wtr = pick_groups(sets["train"], cols, DEPTHS[arm])
     Xva, yva, gva, _ = pick_groups(sets["val"], cols, None)
@@ -106,7 +106,13 @@ def fit(arm: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.parse_args()
+    ap.add_argument("--features-from", type=Path, default=CACHE / "listener_gbt.txt",
+                    help="base features: this booster's columns (default: the incumbent's 44)")
+    ap.add_argument("--name", default="44", help="output suffix naming the base features")
+    ap.add_argument("--arms", nargs="+", default=list(DEPTHS), choices=list(DEPTHS))
+    ap.add_argument("--train-only", action="store_true",
+                    help="save the boosters and stop (score with scripts/tools/score_turn_models.py)")
+    args = ap.parse_args()
 
     import lightgbm as lgb
 
@@ -117,17 +123,19 @@ def main() -> None:
     from train_listener_net import gbt_scores, load_sets
 
     t0 = time.time()
-    with ProcessPoolExecutor(len(DEPTHS)) as ex:
-        models = dict(zip(DEPTHS, ex.map(fit, DEPTHS)))
+    with ProcessPoolExecutor(len(args.arms)) as ex:
+        models = dict(zip(args.arms, ex.map(fit, args.arms, [args.features_from] * len(args.arms))))
     boosters = {arm: lgb.Booster(model_str=s) for arm, s in models.items()}
     for arm, b in boosters.items():
-        path = CACHE / f"listener_gbt_pick_index44_{arm.replace(' ', '')}.txt"
+        path = CACHE / f"listener_gbt_pick_index{args.name}_{arm.replace(' ', '')}.txt"
         b.save_model(str(path))
         imp = dict(zip(b.feature_name(), b.feature_importance("gain")))
         tot = sum(imp.values())
         print(f"{arm}: {b.num_trees()} trees -> {path}; gain share x {imp['x'] / tot:.1%}, "
               f"x_minus_k {imp['x_minus_k'] / tot:.1%}")
 
+    if args.train_only:
+        return
     sets = load_sets()
     vw = WordVectors()
     control = lgb.Booster(model_file=str(CACHE / "listener_gbt_control44.txt"))

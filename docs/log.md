@@ -5566,3 +5566,36 @@ or 0.560 for every model.
   found that larger gain did not change games. A playable history model
   (about 130 booster runs per clue) is still not worth building on this
   evidence.
+
+## Turn models on the assoc booster's features (2026-10-03)
+
+**Question (Shane).** Do the assoc features (better pick 1) and the history
+features (better later picks) add up? The same turn models as above, retrained
+on the assoc booster's 56 base features (`--features-from
+cache/listener_gbt_assoc_features.txt --name assoc`), with within-turn and
+temperature baselines fitted on the assoc booster
+(`cache/sequential_listener_assoc*.json`). The three boosters trained in
+parallel at 5 threads each. Scored by `score_turn_models.py --base assoc`.
+
+| Model | new boards (44 → 56) | gain over within-turn (56) | held-out generated (44 → 56) | gain over within-turn (56) |
+|---|---|---|---|---|
+| frozen | 0.3425 → 0.3499 | −0.0240 | 0.3212 → 0.3340 | −0.0250 |
+| within-turn | 0.3672 → 0.3739 | | 0.3491 → 0.3590 | |
+| pick index, depth 9 | 0.3549 → 0.3615 | −0.0123 | 0.3356 → 0.3447 | −0.0143 |
+| pick index + history, embeddings | 0.3808 → 0.3867 | +0.0129 [+0.0094, +0.0163] | 0.3562 → 0.3655 | +0.0065 [+0.0028, +0.0102] |
+| pick index + history, all sources | 0.3828 → 0.3887 | +0.0148 [+0.0112, +0.0183] | 0.3569 → 0.3654 | +0.0064 [+0.0026, +0.0104] |
+
+Pick 1 on held-out generated: 0.577 for the assoc booster against 0.559 for
+the 44 features, unchanged by any turn model.
+
+**Reading.**
+- **The two gains add.** The assoc features lift every turn model by about
+  the same amount (+0.006 on new boards, +0.009 to +0.010 on held-out
+  generated), and the history booster's lead over the within-turn model is
+  the same as on the 44 features (+0.015 / +0.006).
+- **Best listener so far by fit:** pick index + history on the assoc
+  features, 0.389 on new boards and 0.365 on held-out generated, against
+  0.343 and 0.321 for the 44-feature frozen booster.
+- The extra history sources still add nothing over the embeddings.
+- For play this is still a later-pick gain over a model test A found does
+  not change games, and it would need about 130 booster runs per clue.
