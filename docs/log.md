@@ -5800,4 +5800,5 @@ stays registered as an exploration entry; V1 stays the objective.
 - Check whether the term's spread *between the after-boards of one move*
   is larger than its error. If it is not, no search can use it.
 - The simulated games themselves remain useful as free training data for
-  anything that needs outcomes (cache/sim_games.db, 6,994 + 2,400 games).
+  anything that needs outcomes (cache/sim_games.db: 6,994 games in sim_v1,
+  plus 4,400 from these tests).
