@@ -18,8 +18,12 @@ Triangle, Spot, Sound). docs/log.md: "Relatedness labels" and
   among the remaining words and STOP. Word rows read the assoc profile
   booster's columns without `k`, plus the pick number. The STOP row reads
   only the clue-level columns and the pick number.
+- **Number.** What the clue points at: the expected count of own words the
+  guesser picks before STOP, with a wrong pick not ending the count,
+  rounded, in [1, 4]. To this listener the number is only a cap, so choosing
+  it by P(win) gave 4 almost always.
 - **Search.** The frozen search with the assoc profile booster gives the
-  200-clue shortlist. Each clue is re-valued at every number under the STOP
+  200-clue shortlist. Each clue is valued at its own number under the STOP
   listener: P(win) after the turn, exact over the own words found. STOP ends
   the turn like a neutral word, with nothing lost. No reply lookahead, and
   no k=1 tiebreak.
@@ -30,13 +34,11 @@ Judged by the user playing it (scripts/tools/play_server.py, "Stop
 listener"). No suite run yet: the arena's gpt-oss guesser never stops, so
 the suite would not see what this model changes.
 
-The first version, on a trial model trained on 1,324 labels, still gives 4
-on 26 of 30 boards. The number is only a cap for this listener, so a larger
-one is nearly free (docs/log.md, "stop_listener").
+On a trial model trained on 1,324 labels, choosing the number by P(win) gave
+4 on 26 of 30 boards. With the number set to what the clue points at, it
+gives 3 on 15 and 4 on 15 (docs/log.md, "stop_listener").
 
 ## Open for the next model
 
-- How the announced number is chosen, so that it says how many words the
-  clue points at.
 - `--set guess` (the strict set) against guess + stretch.
 - A Sonnet check of the labels, when wanted.
