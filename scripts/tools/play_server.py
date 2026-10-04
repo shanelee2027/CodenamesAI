@@ -219,6 +219,15 @@ SPYMASTERS: dict[str, dict] = {
                  "guesser that stops when the clue points at nothing else, learned from which "
                  "words gpt-oss says a clue points at (asked without the number). PASS in the "
                  "explanation is that guesser's chance of stopping at once."},
+    # The same, with the STOP listener trained on the strict "guess" set only.
+    "stop_guess": {
+        "label": "Stop listener, strict (win probability)", "model": "listener_gbt_assoc_profile.txt",
+        "outside_n": 0, "cls": StopListenerSpymaster, "no_k1": True,
+        "kwargs": {"outside_n": 0, "stop_model_path": DEFAULT_CACHE_DIR / "listener_gbt_stop_guess.txt"},
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz", "win_value.npz",
+                  "listener_gbt_stop_guess.txt"],
+        "about": "The stop listener, trained only on the words gpt-oss says a clue clearly points "
+                 "at (not the 'stretch' ones), so its guesser stops sooner and its numbers are smaller."},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).

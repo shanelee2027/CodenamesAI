@@ -6607,3 +6607,36 @@ counts are still 2.9 to 4.6 on the chosen clues: this listener rarely stops
 on the clues the search likes. Whether that is the guess + stretch set or
 the small training set is for the full model. 2.5 s per clue (the count
 needs 9 picks of booster rows, against 4 before).
+
+**Full collection.** 18,544 calls, 0 errors, 34 unknown names; 305 input
+and 345 output tokens per call. Spend: $1.30 at the ranking prompt's
+measured cost per call, or about $1.67 at the cruder $0.09 per 1,000. Every
+one of the 18,687 generated training positions is labelled.
+
+| Set | mean words | 0 | 1 | 2 | 3 | 4 | 5 | 6+ |
+|---|---|---|---|---|---|---|---|---|
+| guess | 1.84 | 10% | 40% | 21% | 19% | 7% | 2% | 1% |
+| guess + stretch | 3.96 | 5% | 15% | 13% | 15% | 15% | 13% | 25% |
+
+**The two STOP listeners** (fit 15,885, val 2,802 positions, split by board seed):
+
+| Label set | trees | val R² | pick 1 | 2 | 3 | 4 | val P(STOP) when it stopped / continued |
+|---|---|---|---|---|---|---|---|
+| guess + stretch (`listener_gbt_stop.txt`) | 3,756 | 0.296 | 0.595 | 0.310 | 0.199 | 0.155 | 0.33 / 0.15 |
+| guess (`listener_gbt_stop_guess.txt`) | 2,394 | 0.481 | 0.603 | 0.430 | 0.334 | 0.493 | 0.56 / 0.24 |
+
+The R² are not comparable across the two rows: the events differ (the
+strict set ends sooner, so more of its events are STOP, which the clue-level
+row predicts well).
+
+**On 30 boards** (the spymaster with each listener):
+
+| Listener | numbers | mean | points at, on the chosen clues |
+|---|---|---|---|
+| guess + stretch | 3 on 7, 4 on 23 | 3.77 | 3.0 to 4.5 |
+| guess | 2 on 15, 3 on 14, 4 on 1 | 2.53 | 1.9 to 3.2 |
+
+For example "laws 3" (Police, Bill, Code), "drake 2" (Duck, Dragon),
+"veterinary 2" (Dog, Lab). The strict listener gives the numbers a human
+would. Both are on the play server ("Stop listener" and "Stop listener,
+strict"); about 3 to 4 s per clue. The user judges by playing.

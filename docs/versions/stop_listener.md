@@ -38,7 +38,16 @@ On a trial model trained on 1,324 labels, choosing the number by P(win) gave
 4 on 26 of 30 boards. With the number set to what the clue points at, it
 gives 3 on 15 and 4 on 15 (docs/log.md, "stop_listener").
 
+On all 18,687 labels, over 30 boards (docs/log.md, "stop_listener"):
+
+| STOP listener trained on | numbers | mean |
+|---|---|---|
+| guess + stretch (`cache/listener_gbt_stop.txt`, the default) | 3 on 7, 4 on 23 | 3.77 |
+| guess only (`cache/listener_gbt_stop_guess.txt`, `stop_model_path`) | 2 on 15, 3 on 14, 4 on 1 | 2.53 |
+
+Both are on the play server ("Stop listener" and "Stop listener, strict").
+
 ## Open for the next model
 
-- `--set guess` (the strict set) against guess + stretch.
+- Which label set becomes the default, once the user has played both.
 - A Sonnet check of the labels, when wanted.
