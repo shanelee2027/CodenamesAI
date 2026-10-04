@@ -79,7 +79,8 @@ class TestRegistry:
                                 "within_turn_listener", "assoc_feature_listener",
                                 "win_prob_listener", "board_value_listener",
                                 "assoc_profile_listener",
-                                "reply_lookahead_listener", "pick_index_lookahead_listener"}
+                                "reply_lookahead_listener", "pick_index_lookahead_listener",
+                                "stop_listener"}
 
     def test_the_paid_spymaster_is_never_picked_up_by_role(self):
         """Every game sonnet_spymaster plays costs money, so no arena may

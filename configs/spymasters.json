@@ -242,6 +242,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "win_prob_listener whose guesser can end its turn: the frozen search with the assoc profile booster picks the 200-clue shortlist, then every clue is re-valued at every number under cache/listener_gbt_stop.txt, a pick-index booster with a STOP row trained on gpt-oss's graded relatedness labels (the words a clue points at, asked without the number; scripts/pipeline/train_stop_listener.py). P(win) after the turn, exact over the found own words; STOP ends the turn like a neutral word. docs/versions/stop_listener.md.",
+   "name": "stop_listener",
+   "type": "stop_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

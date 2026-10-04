@@ -92,6 +92,7 @@ from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
 from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
+from codenames.spymasters.stop_listener import StopListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
          "/compare": "compare.html"}
@@ -205,6 +206,19 @@ SPYMASTERS: dict[str, dict] = {
         "about": "Chooses the clue that maximises the chance of winning after the turn and the "
                  "incumbent's reply. Its listener is the association-feature model, with a "
                  "pick-index booster for how the guesser's 2nd, 3rd and 4th picks go. ~1.5 s per clue."},
+    # win_prob_listener with a guesser that can end its turn
+    # (codenames/spymasters/stop_listener.py), trained on gpt-oss's
+    # "which words does this clue point at" labels. Its explanation shows
+    # pick 1 under that listener, with STOP as the pass.
+    "stop": {
+        "label": "Stop listener (win probability)", "model": "listener_gbt_assoc_profile.txt",
+        "outside_n": 0, "cls": StopListenerSpymaster, "kwargs": {"outside_n": 0}, "no_k1": True,
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz", "win_value.npz",
+                  "listener_gbt_stop.txt"],
+        "about": "Chooses the clue that maximises the chance of winning after the turn, with a "
+                 "guesser that stops when the clue points at nothing else, learned from which "
+                 "words gpt-oss says a clue points at (asked without the number). PASS in the "
+                 "explanation is that guesser's chance of stopping at once."},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).

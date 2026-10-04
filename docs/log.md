@@ -6512,3 +6512,83 @@ The two lookahead rows were added to `scripts/tools/report_win_rates.py`.
 With them, the common-boards set shrinks from 49 to 44, so the notebook's
 committed outputs (49 boards) were left as they were. Re-executing it would
 change its common column.
+
+## Relatedness labels: a listener that can end its turn (2026-10-04)
+
+**Why.** Playing pick_index_lookahead_listener, the user found its clues
+confusing for a human: "obscure 4" for Alien, Triangle, Spot, Sound. The
+listener knew the later words were weak. The objective made them worth it
+anyway: every listener so far was distilled from full rankings, and the turn
+model has the guesser keep picking until the number or a wrong word. After
+the real targets, a clue for 4 buys near-random guesses, and with a third of
+the board ours, those are often worth taking. A human stops when the clue
+points at nothing else, and those guesses do not exist. We had been
+optimising listener R² on data that has no stop in it.
+
+**The question** (codenames/relatedness.py, the user's design with three
+refinements they accepted):
+- The clue and the board, without the number. gpt-oss sorts the words into
+  "guess" (the clue clearly points at it), "stretch" (still worth a 2nd or
+  3rd guess) and the rest, each group in board order, not ranked.
+- Two graded levels instead of one set, so how aggressive "related" is can
+  be chosen afterwards (guess, or guess + stretch) without buying again.
+- Order within a set comes from gpt-oss's stored ranking of the same
+  position, not a second prompt.
+- No arena guesser. Evaluation is the user playing against it; a Sonnet
+  check can come later.
+
+**Pilots** (the same 200 generated training positions):
+
+| Prompt | guess + stretch, mean words | sets of 6+ |
+|---|---|---|
+| graded-v1 | 5.8 | 44% |
+| graded-v2 (stretch: "a link a reasonable player would see and accept") | 3.8 | 24% |
+
+v1's stretch took any loose association ("sexual" -> Shadow, Figure, Force,
+Parachute, ...). v2's stretch averages 2.0 words. Labels vary between runs
+of the same prompt, as the rankings do.
+
+**Collection.** graded-v2 on every generated training position: 18,543 to
+buy, capped at 19,000 calls, about 2 h at 2.4/s with 32 workers. Only the
+training positions, as the user asked; validation is a board-seed split of
+those.
+
+## stop_listener (2026-10-04)
+
+**The listener** (scripts/pipeline/train_stop_listener.py): the pick-index
+idea with a STOP row.
+- One choice event per pick. Pick j targets the j-th word of the label set,
+  in gpt-oss's ranking order. The pick after the last targets STOP. Depth 9,
+  equal weights.
+- Word rows: the assoc profile booster's columns minus `k` (the labels never
+  saw a number), plus the pick number and is_stop = 0.
+- The STOP row: only the clue-level columns (candidate count, peak and lead
+  of the top word, the clue's association profile), plus the pick number and
+  is_stop = 1; the rest are missing. Softmax over the rows then gives STOP an
+  absolute level against the words, which the ranking data never had.
+
+**The spymaster** (codenames/spymasters/stop_listener.py): win_prob_listener's
+frozen search picks the 200-clue shortlist. Then every clue is re-valued
+under the STOP listener at every number: P(win) after the turn, exact over
+the own words found (`turn_values`), with STOP ending the turn like a
+neutral word. Tested to equal pick_index_lookahead's enumeration when STOP
+has no mass. About 1.5 s per clue. It is on the play server ("Stop
+listener"); PASS in the explanation is pick 1's P(STOP).
+
+**Trial** on the first 1,324 labels (fit 1,126, val 198 positions; trial
+model only, to be replaced by the full one):
+
+| | R² | pick 1 | 2 | 3 | 4 | P(STOP) when it stopped / continued |
+|---|---|---|---|---|---|---|
+| fit | 0.476 | 0.690 | 0.481 | 0.408 | 0.389 | 0.39 / 0.16 |
+| val | 0.271 | 0.560 | 0.269 | 0.197 | 0.103 | 0.35 / 0.18 |
+
+**Expected:** smaller, more human numbers. **Found (trial model):** 26 of 30
+boards still get a 4. On the chosen clues P(STOP) is 0.02 to 0.09 even at
+pick 4, and P(win) still rises with the number (paramount: 0.36, 0.42, 0.47,
+0.48). Two reasons, the second one structural:
+- the search picks the clues whose guess + stretch sets are largest;
+- the number is only a cap here (the listener never sees it), so a larger
+  number only adds turns where the guesser has already chosen to continue.
+  It is nearly free, and a human reading "4" will chase 4 words, which this
+  model assumes they do not.
