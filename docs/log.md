@@ -6592,3 +6592,18 @@ pick 4, and P(win) still rises with the number (paramount: 0.36, 0.42, 0.47,
   number only adds turns where the guesser has already chosen to continue.
   It is nearly free, and a human reading "4" will chase 4 words, which this
   model assumes they do not.
+
+**The number, changed** (the user chose option B over "the smallest number
+within 0.01 of the best"). That option would have kept 4 on about 6 of the
+8 clues inspected: going from 3 to 4 gained 0.007 to 0.026 in P(win). Now
+the number is set first, as what the clue points at: the expected count of
+own words the guesser picks before STOP, with a wrong pick not ending the
+count, rounded, in [1, 4]. It is simulated, 1,000 runs with a fixed seed
+(sd about 0.07 on the count). Each clue is then valued at its own number,
+and the best P(win) is played. The play page shows the unrounded count.
+
+Trial model, 30 boards: numbers 3 on 15 and 4 on 15 (was 4 on 26). The
+counts are still 2.9 to 4.6 on the chosen clues: this listener rarely stops
+on the clues the search likes. Whether that is the guess + stretch set or
+the small training set is for the full model. 2.5 s per clue (the count
+needs 9 picks of booster rows, against 4 before).

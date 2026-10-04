@@ -222,7 +222,7 @@ function renderSides(revealed, winner){
         ${hasRate ? `<td class="rt">${o.rate !== undefined ? (100*o.rate).toFixed(0)+'%' : ''}</td>` : ''}
       </tr>`).join('');
     const detail = s.order
-      ? `<div class="value">${s.value === null ? 'Expected — net words' : s.value_kind === 'win' ? `P(win) after the turn ${(100 * s.value).toFixed(1)}%` : `Expected ${s.value.toFixed(2)} net words`}</div>
+      ? `<div class="value">${s.value === null ? 'Expected — net words' : s.value_kind === 'win' ? `P(win) after the turn ${(100 * s.value).toFixed(1)}%${s.points_at != null ? `; points at ${s.points_at.toFixed(1)} of our words` : ''}` : `Expected ${s.value.toFixed(2)} net words`}</div>
          <table><tr><td class="w" style="color:var(--muted)">First guess</td><td></td><td></td>
            ${hasRate ? '<td class="rt">named</td>' : ''}</tr>${rows}</table>`
       : `<div class="hidden-note">Model and probabilities shown after you vote.</div>`;

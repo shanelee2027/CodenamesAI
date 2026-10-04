@@ -17,14 +17,24 @@ At pick j the guesser picks among the remaining words and STOP, by softmax
 of the booster's scores, and the turn ends at STOP, at a word that is not
 ours, or after the number.
 
+**The number says what the clue points at.** This listener never sees the
+number (the labels had none), so to it the number is only a cap, and a larger
+one is nearly free: it only adds picks the guesser had already chosen to
+make. Choosing the number by P(win) gave 4 on 26 of 30 boards, and a human
+reading "4" chases 4 words. So the number is set first, as the own words the
+clue points at: the expected count of own words the guesser picks before it
+stops, a wrong pick not ending the count (a miss means the guesser misread
+the clue, not that the clue points at fewer words), rounded, between 1 and
+the cap. `points_at` simulates it (`SAMPLES` runs, fixed seed).
+
 **The search.** win_prob_listener's frozen search with the assoc profile
 booster picks the shortlist (its `shortlist` clues). Every shortlisted clue
-is then re-valued under the STOP listener at every number: P(win) after the
+is then valued under the STOP listener at its own number: P(win) after the
 turn, with V at each ending. STOP ends the turn like a neutral word, with
-nothing lost. The clue and number with the highest value is played. Pick j's
-scores do not depend on the number or on which words were picked, so a clue
-needs K booster rows per word (K = the largest number), and the turn's value
-is an exact recursion over which own words have been found.
+nothing lost. The clue with the highest value is played. Pick j's scores do
+not depend on the number or on which words were picked, so a clue needs
+DEPTH booster rows per word, and the turn's value is an exact recursion over
+which own words have been found.
 """
 
 from __future__ import annotations
@@ -45,6 +55,8 @@ DROP = ["k"]
 CLUE_LEVEL = ["n_candidates", "peak_z", "lead_margin", "orth_contains", "b_assoc_distinct", "b_assoc_overlap",
               "b_assoc_first", "b_rarity", "b_senses"]
 EXTRA = ["x", "is_stop"]
+DEPTH = 9                       # picks simulated for `points_at`: the training depth
+SAMPLES = 1000                  # sd ~0.07 on the count; ~0.6 s per 200 clues
 
 
 def turn_values(S: np.ndarray, n_own: int, roles: list[Role], V: np.ndarray, K: int) -> np.ndarray:
@@ -89,6 +101,28 @@ def turn_values(S: np.ndarray, n_own: int, roles: list[Role], V: np.ndarray, K: 
 
         out[k - 1] = value(frozenset())
     return out
+
+
+def points_at(S: np.ndarray, n_own: int, samples: int = SAMPLES, seed: int = 0) -> float:
+    """Expected own words picked before STOP, a wrong pick not ending the
+    turn. S is (depth, n_words + 1) as in `turn_values`; the guesser picks
+    at most `depth` times. Simulated with Gumbel noise."""
+    depth, n = S.shape[0], S.shape[1] - 1
+    rng = np.random.default_rng(seed)
+    picked = np.zeros((samples, n), dtype=bool)
+    going = np.ones(samples, dtype=bool)
+    count = np.zeros(samples)
+    rows = np.arange(samples)
+    for j in range(depth):
+        g = S[j] + rng.gumbel(size=(samples, n + 1))
+        g[:, :n][picked] = -np.inf
+        choice = g.argmax(axis=1)
+        going &= choice < n
+        if not going.any():
+            break
+        picked[rows[going], choice[going]] = True
+        count += going & (choice < n_own)
+    return float(count.mean())
 
 
 class StopListenerSpymaster(WinProbListenerSpymaster):
@@ -148,19 +182,31 @@ class StopListenerSpymaster(WinProbListenerSpymaster):
         finite = np.flatnonzero(np.isfinite(scores))
         if not own or finite.size == 0:
             return best_n, scores, margin
-        K = clue_number_cap(len(own), self.max_number)
-        S = self.stop_scores([sims.clue_words[i] for i in finite], words, K, sims)
+        cap = clue_number_cap(len(own), self.max_number)
+        S = self.stop_scores([sims.clue_words[i] for i in finite], words, max(DEPTH, cap), sims)
         scores, best_n = np.full_like(scores, -np.inf), best_n.copy()
         for t, s in S.items():
-            v = turn_values(s, len(own), roles, self.value.V, K)
-            scores[finite[t]], best_n[finite[t]] = v.max(), int(v.argmax()) + 1
+            k = self.number(s, len(own), cap)
+            scores[finite[t]] = turn_values(s[:k], len(own), roles, self.value.V, k)[-1]
+            best_n[finite[t]] = k
         return best_n, scores, margin
+
+    @staticmethod
+    def number(S: np.ndarray, n_own: int, cap: int) -> int:
+        """The number announced: the own words the clue points at, rounded, in [1, cap]."""
+        return int(min(max(np.floor(points_at(S, n_own) + 0.5), 1), cap))
 
     def clue_value(self, board, clue: str, number: int, sims) -> float | None:
         """P(win) after this clue's turn (the play server's explanation)."""
         own, words, roles = self._board(board)
         s = self.stop_scores([clue], words, number, sims).get(0)
         return None if s is None or not own else float(turn_values(s, len(own), roles, self.value.V, number)[-1])
+
+    def clue_points_at(self, board, clue: str, sims) -> float | None:
+        """The expected own words this clue points at, before rounding."""
+        own, words, _ = self._board(board)
+        s = self.stop_scores([clue], words, DEPTH, sims).get(0)
+        return None if s is None or not own else points_at(s, len(own))
 
     def listen(self, board, clue: str, sims) -> dict | None:
         """The first pick under the STOP listener, with STOP shown as the pass."""

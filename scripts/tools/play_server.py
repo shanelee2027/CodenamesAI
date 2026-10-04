@@ -331,6 +331,10 @@ class Engine:
             with _LOCK:
                 v = sm.clue_value(board, clue, number, self.sims)
             value, kind = (v, "win") if v is not None else (value, kind)
+        points = None
+        if hasattr(sm, "clue_points_at"):       # stop_listener: the own words the clue points at, unrounded
+            with _LOCK:
+                points = sm.clue_points_at(board, clue, self.sims)
         entries = [(w, ROLE_CODE[r], float(x)) for w, r, x in zip(words, roles, s)]
         if got["outside"] is not None:
             entries.append(("PASS", "pass", got["outside"]))
@@ -344,7 +348,8 @@ class Engine:
                for i in order[:self.SHOW]]
         own = sorted((i for i, e in enumerate(entries) if e[1] == "a"), key=lambda i: -entries[i][2])
         return {"targets": [entries[i][0] for i in own[:number]], "order": out,
-                "value": round(value, 3), "value_kind": kind}
+                "value": round(value, 3), "value_kind": kind,
+                **({"points_at": round(points, 2)} if points is not None else {})}
 
     def clue(self, seed: int, revealed: list[str], turn: str, key: str) -> dict:
         board = Board.generate(seed=seed)

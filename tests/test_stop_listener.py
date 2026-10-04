@@ -55,3 +55,18 @@ def test_builds_from_the_registry_with_its_own_files():
     files = {p.name for p in cls.model_files(kw)}
     assert {"listener_gbt_assoc_profile.txt", "listener_gbt_stop.txt", "assoc_profile.npz",
             "win_value.npz"} <= files
+
+
+def test_points_at_counts_own_picks_until_stop_and_skips_misses():
+    from codenames.spymasters.stop_listener import points_at
+
+    # Pick 1: a neutral word for sure; pick 2: own word 0; pick 3: own word 1; then STOP.
+    S = np.full((5, 2 + len(ROLES) + 1), -np.inf)
+    S[0, 2] = S[1, 0] = S[2, 1] = 0.0
+    S[3:, -1] = 0.0
+    assert points_at(S, 2) == pytest.approx(2.0)
+    # A coin flip between STOP and own word 0 at pick 1, then STOP: about a half.
+    S = np.full((3, 2 + len(ROLES) + 1), -np.inf)
+    S[0, [0, -1]] = 0.0
+    S[1:, -1] = 0.0
+    assert points_at(S, 2) == pytest.approx(0.5, abs=0.03)
