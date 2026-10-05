@@ -6640,3 +6640,20 @@ For example "laws 3" (Police, Bill, Code), "drake 2" (Duck, Dragon),
 "veterinary 2" (Dog, Lab). The strict listener gives the numbers a human
 would. Both are on the play server ("Stop listener" and "Stop listener,
 strict"); about 3 to 4 s per clue. The user judges by playing.
+
+## stop_net_words_listener (2026-10-04)
+
+The user asked for the two stop listeners with the old reward: expected net
+words (+1 own, −0.2 neutral, −1 opponent, −10 assassin, 0 for STOP) instead
+of P(win). Built as a subclass that only replaces the turn's value
+(`turn_net_words`, exact, tested on a hand-worked case). The shortlist,
+the STOP listener and the number rule are stop_listener's, and the k=1
+tiebreak stays off. The play server shows the value as net words: the
+spymaster now says which unit its value is in (`value_kind`).
+
+**Expected:** with the number fixed by what the clue points at, the
+objective only changes which clue wins, so the numbers should barely move.
+**Found** (30 boards): guess + stretch averages 3.53 (P(win): 3.77), with
+2 on 3, 3 on 8, 4 on 19. Guess averages 2.50 (2.53). The first boards'
+clues are mostly the same as under P(win). Both are on the play server:
+"Stop listener (net words)" and "Stop listener, strict (net words)".

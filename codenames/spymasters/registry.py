@@ -49,6 +49,7 @@ from codenames.spymasters.board_value_listener import BoardValueListenerSpymaste
 from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
 from codenames.spymasters.reply_lookahead_listener import ReplyLookaheadListenerSpymaster
 from codenames.spymasters.stop_listener import StopListenerSpymaster
+from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
 from codenames.spymasters.base import Spymaster
@@ -78,6 +79,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "reply_lookahead_listener": ReplyLookaheadListenerSpymaster,
     "pick_index_lookahead_listener": PickIndexLookaheadListenerSpymaster,
     "stop_listener": StopListenerSpymaster,
+    "stop_net_words_listener": StopNetWordsListenerSpymaster,
     "within_turn_listener": WithinTurnListenerSpymaster,
     "imitation_policy": ImitationPolicySpymaster,
     "gptoss_reward_policy": GptossRewardPolicySpymaster,

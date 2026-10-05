@@ -93,6 +93,7 @@ from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaste
 from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
 from codenames.spymasters.stop_listener import StopListenerSpymaster
+from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
          "/compare": "compare.html"}
@@ -228,6 +229,21 @@ SPYMASTERS: dict[str, dict] = {
                   "listener_gbt_stop_guess.txt"],
         "about": "The stop listener, trained only on the words gpt-oss says a clue clearly points "
                  "at (not the 'stretch' ones), so its guesser stops sooner and its numbers are smaller."},
+    # The two stop listeners with the incumbent's reward: expected net words
+    # (+1, -0.2, -1, -10) instead of P(win) (codenames/spymasters/stop_net_words_listener.py).
+    **{key: {"label": label, "model": "listener_gbt_assoc_profile.txt", "outside_n": 0,
+             "cls": StopNetWordsListenerSpymaster, "no_k1": True,
+             "kwargs": {"outside_n": 0, "stop_model_path": DEFAULT_CACHE_DIR / stop},
+             "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz",
+                       "win_value.npz", stop],
+             "about": about}
+       for key, label, stop, about in (
+           ("stop_net", "Stop listener (net words)", "listener_gbt_stop.txt",
+            "The stop listener, choosing by expected net words (+1 per own word, -0.2 neutral, "
+            "-1 opponent, -10 assassin) instead of the chance of winning."),
+           ("stop_net_guess", "Stop listener, strict (net words)", "listener_gbt_stop_guess.txt",
+            "The strict stop listener, choosing by expected net words (+1 per own word, -0.2 "
+            "neutral, -1 opponent, -10 assassin) instead of the chance of winning."))},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).
@@ -339,7 +355,7 @@ class Engine:
         if hasattr(sm, "clue_value"):           # a win-probability model: show the P(win) it chose on
             with _LOCK:
                 v = sm.clue_value(board, clue, number, self.sims)
-            value, kind = (v, "win") if v is not None else (value, kind)
+            value, kind = (v, getattr(sm, "value_kind", "win")) if v is not None else (value, kind)
         points = None
         if hasattr(sm, "clue_points_at"):       # stop_listener: the own words the clue points at, unrounded
             with _LOCK:

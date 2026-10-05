@@ -70,3 +70,16 @@ def test_points_at_counts_own_picks_until_stop_and_skips_misses():
     S[0, [0, -1]] = 0.0
     S[1:, -1] = 0.0
     assert points_at(S, 2) == pytest.approx(0.5, abs=0.03)
+
+
+def test_net_words_counts_own_words_and_charges_the_ending():
+    from codenames.spymasters.stop_net_words_listener import turn_net_words
+
+    costs = np.array([0.2, 0.2, 1.0, 1.0, 10.0])          # ROLES' costs
+    # Pick 1: own word 0 for sure. Pick 2: a third each own word 1, the assassin, STOP.
+    S = np.full((2, 2 + len(ROLES) + 1), -np.inf)
+    S[0, 0] = 0.0
+    S[1, [1, 6, 7]] = 0.0
+    v = turn_net_words(S, 2, costs, 2)
+    assert v[0] == pytest.approx(1.0)
+    assert v[1] == pytest.approx((2.0 + (1.0 - 10.0) + 1.0) / 3)

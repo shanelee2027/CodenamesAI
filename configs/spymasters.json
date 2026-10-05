@@ -256,6 +256,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "stop_listener valued in net words: the same shortlist, STOP listener and number (what the clue points at), but each clue is valued by the turn's expected net words under the role costs (+1 own, -0.2 neutral, -1 opponent, -10 assassin; 0 for STOP), not P(win). stop_model_path cache/listener_gbt_stop_guess.txt gives the strict listener. docs/versions/stop_net_words_listener.md.",
+   "name": "stop_net_words_listener",
+   "type": "stop_net_words_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

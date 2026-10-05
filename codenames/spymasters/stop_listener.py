@@ -187,9 +187,15 @@ class StopListenerSpymaster(WinProbListenerSpymaster):
         scores, best_n = np.full_like(scores, -np.inf), best_n.copy()
         for t, s in S.items():
             k = self.number(s, len(own), cap)
-            scores[finite[t]] = turn_values(s[:k], len(own), roles, self.value.V, k)[-1]
+            scores[finite[t]] = self.turn_value(s[:k], len(own), roles, k)
             best_n[finite[t]] = k
         return best_n, scores, margin
+
+    value_kind = "win"                  # what `turn_value` is in (the play server's label)
+
+    def turn_value(self, S: np.ndarray, n_own: int, roles: list[Role], k: int) -> float:
+        """What the search maximises: P(win) after a turn with number k."""
+        return float(turn_values(S, n_own, roles, self.value.V, k)[-1])
 
     @staticmethod
     def number(S: np.ndarray, n_own: int, cap: int) -> int:
@@ -197,10 +203,10 @@ class StopListenerSpymaster(WinProbListenerSpymaster):
         return int(min(max(np.floor(points_at(S, n_own) + 0.5), 1), cap))
 
     def clue_value(self, board, clue: str, number: int, sims) -> float | None:
-        """P(win) after this clue's turn (the play server's explanation)."""
+        """This clue's `turn_value` at `number` (the play server's explanation)."""
         own, words, roles = self._board(board)
         s = self.stop_scores([clue], words, number, sims).get(0)
-        return None if s is None or not own else float(turn_values(s, len(own), roles, self.value.V, number)[-1])
+        return None if s is None or not own else self.turn_value(s, len(own), roles, number)
 
     def clue_points_at(self, board, clue: str, sims) -> float | None:
         """The expected own words this clue points at, before rounding."""
