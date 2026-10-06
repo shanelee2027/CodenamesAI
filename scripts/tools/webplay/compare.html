@@ -53,6 +53,8 @@ button.act:active{transform:scale(.985)}
 button.act.primary{background:var(--gold);border-color:transparent;color:#1A1509}
 button.act:disabled{opacity:.5;cursor:default}
 .status{font-size:12px;color:var(--muted);margin-bottom:10px;min-height:16px}
+.record{font-size:12px;color:var(--muted);margin:-4px 0 10px;min-height:16px}
+.record b{color:inherit;font-weight:700}
 .status.err{color:var(--red);font-weight:600}
 .layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:14px;align-items:start}
 .board{display:grid;grid-template-columns:repeat(5,1fr);gap:4px}
@@ -126,6 +128,7 @@ __NAV__
   <button class="act primary" id="deal">Deal</button>
 </div>
 <div class="status" id="status">Pick two models and deal.</div>
+<div class="record" id="record"></div>
 
 <div class="layout">
   <div>
@@ -166,6 +169,8 @@ const post = (path, body) => fetch(path, {method:'POST',
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const ROLE = {a:'Blue (own)', b:'Red', n:'Neutral', x:'Assassin', pass:'Pass'};
 let cur = null, busy = false, votes = 0;
+// This pair's record in this tab only: never saved, reset when either model changes.
+let rec = null;
 
 function store(k, v){ try { localStorage.setItem('cmp.'+k, v); } catch(e){} }
 function load(k){ try { return localStorage.getItem('cmp.'+k); } catch(e){ return null; } }
@@ -179,10 +184,36 @@ async function init(){
   $('ma').value = pick(load('a'), ['incumbent']);
   $('mb').value = pick(load('b'), ['assoc_pass', 'assoc']);
   const b = load('blind'); if (b !== null) $('blind').checked = b === '1';
-  $('ma').onchange = () => store('a', $('ma').value);
-  $('mb').onchange = () => store('b', $('mb').value);
+  $('ma').onchange = () => { store('a', $('ma').value); resetRecord(); };
+  $('mb').onchange = () => { store('b', $('mb').value); resetRecord(); };
   $('blind').onchange = () => store('blind', $('blind').checked ? '1' : '0');
   renderEmpty();
+  resetRecord();
+}
+
+function label(sel){ return sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : sel.value; }
+
+function resetRecord(){
+  rec = {a: $('ma').value, b: $('mb').value, wa: 0, wb: 0, tie: 0, both_bad: 0};
+  renderRecord();
+}
+
+function renderRecord(){
+  if (!rec || rec.a === rec.b){ $('record').textContent = ''; return; }
+  const n = rec.wa + rec.wb + rec.tie + rec.both_bad;
+  $('record').innerHTML = n === 0 ? 'This pair, this session: no votes yet (not saved; resets when you change models).'
+    : `This pair, this session: <b>${esc(label($('ma')))}</b> ${rec.wa} – ${rec.wb} <b>${esc(label($('mb')))}</b>`
+      + ` · tie ${rec.tie} · both bad ${rec.both_bad} <span style="opacity:.7">(not saved)</span>`;
+}
+
+function countVote(v, winner){
+  // Only boards dealt for the pair currently selected count toward its record.
+  if (!rec || !cur || cur.pair[0] !== rec.a || cur.pair[1] !== rec.b) return;
+  if (winner === rec.a) rec.wa++;
+  else if (winner === rec.b) rec.wb++;
+  else if (v === 'tie') rec.tie++;
+  else if (v === 'both_bad') rec.both_bad++;
+  renderRecord();
 }
 
 function renderEmpty(){
@@ -241,10 +272,10 @@ async function deal(){
   busy = true; $('deal').disabled = true; setVote(false);
   status('Dealing boards until the two clues differ…');
   try {
-    const r = await post('/api/compare/next',
-      {left: $('ma').value, right: $('mb').value, blind: $('blind').checked});
+    const pair = [$('ma').value, $('mb').value];
+    const r = await post('/api/compare/next', {left: pair[0], right: pair[1], blind: $('blind').checked});
     if (r.error) throw new Error(r.error);
-    cur = r; $('note').value = '';
+    cur = r; cur.pair = pair; $('note').value = '';
     $('seed').textContent = '#' + r.seed;
     renderBoard(); renderSides(false, null);
     const n = r.revealed.filter(Boolean).length;
@@ -267,6 +298,7 @@ async function vote(v){
     const w = r.winner ? (r.winner === r.sides[0].key ? 'L' : 'R') : null;
     renderBoard(); renderSides(true, w);
     $('nvotes').textContent = ++votes;
+    countVote(v, r.winner);
     status('Recorded. Deal again for the next board.');
   } catch (e) { status(e.message, true); setVote(true); }
   busy = false;
