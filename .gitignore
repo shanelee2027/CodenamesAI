@@ -23,3 +23,10 @@ docs/*.aux
 docs/*.log
 docs/*.synctex.gz
 docs/*.out
+
+# The demo bundle's own files (scripts/tools/make_demo_bundle.py), for when it
+# is unpacked into a clone: everything else in it is on the repo's own paths.
+/DEMO.md
+/requirements-demo.txt
+/start.sh
+/start.bat

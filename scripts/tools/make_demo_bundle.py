@@ -11,8 +11,16 @@ No GPU anywhere: the listener is LightGBM and numpy. Measured on the
 development machine, a turn costs 0.8 s and the process peaks at 1.7 GB, so
 the real requirement is ~2 GB of free RAM.
 
+**The bundle mirrors the repo's layout** (`codenames/`, `scripts/tools/`,
+`cache/`), so the same zip works two ways: unpacked on its own, or unpacked
+into a clone of the repo, where its code lands on the same paths and its
+`cache/` fills the gitignored one. Its own files have names the repo does not
+use (DEMO.md, requirements-demo.txt, start.sh, start.bat), and .gitignore
+lists them, so a clone stays clean. In a clone newer than the bundle, extract
+only `cache/`, or the bundle's older code would overwrite the clone's.
+
 Usage:
-    python scripts/tools/make_demo_bundle.py --out ~/codenames-demo
+    python scripts/tools/make_demo_bundle.py          # -> cache/codenames-demo/ and cache/codenames-demo.zip
 """
 
 from __future__ import annotations
@@ -38,6 +46,10 @@ CACHE_FILES = [
     "listener_gbt_assoc_w0.3.txt", "listener_gbt_assoc_w0.3.assoc.json",
     "swow.npz", "entity_sims.npz", "lm_pmi.npz", "extra_sims.npz",
     "word_norms.npz", "wordnet_sims.npz", "lexical_sims.npz",
+    # Optional: the stop listeners (stop_listener, stop_net_words_listener;
+    # both label sets), with the assoc profile booster their search runs on.
+    "listener_gbt_assoc_profile.txt", "listener_gbt_stop.txt", "listener_gbt_stop_guess.txt",
+    "assoc_profile.npz", "assoc_sims.npz", "isa_sims.npz", "conceptnet_sims.npz", "win_value.npz",
 ]
 
 REQUIREMENTS = """\
@@ -64,11 +76,11 @@ if [ ! -d .venv ]; then
   echo "Creating virtual environment (one-off, a few minutes -- torch is large)..."
   python3 -m venv .venv
   ./.venv/bin/pip install --quiet --upgrade pip
-  ./.venv/bin/pip install --quiet -r requirements.txt
+  ./.venv/bin/pip install --quiet -r requirements-demo.txt
 fi
 
 echo "Starting. The first clue takes a second or two while the model loads."
-exec ./.venv/bin/python play_server.py "$@"
+exec ./.venv/bin/python scripts/tools/play_server.py "$@"
 """
 
 START_BAT = """\
@@ -80,11 +92,11 @@ if not exist .venv (
   echo Creating virtual environment ^(one-off, a few minutes -- torch is large^)...
   python -m venv .venv
   .venv\\Scripts\\pip install --quiet --upgrade pip
-  .venv\\Scripts\\pip install --quiet -r requirements.txt
+  .venv\\Scripts\\pip install --quiet -r requirements-demo.txt
 )
 
 echo Starting. The first clue takes a second or two while the model loads.
-.venv\\Scripts\\python play_server.py %*
+.venv\\Scripts\\python scripts\\tools\\play_server.py %*
 """
 
 README = """\
@@ -98,6 +110,20 @@ every clue is computed on the spot: nothing here is precomputed or canned.
     ./start.sh            # macOS / Linux
     start.bat             # Windows
 
+## Or inside a clone of the repo
+
+The bundle has the repo's layout. Unpack it into the clone's root: its
+`cache/` fills the clone's (gitignored) `cache/`, its code lands on the same
+paths, and its own files (this one, requirements-demo.txt, start.sh,
+start.bat) are gitignored, so `git status` stays clean. Then run `./start.sh`,
+or `python scripts/tools/play_server.py` from an environment that has the
+project installed (`pip install -e .`).
+
+If the clone is newer than the bundle, take only the data, so the bundle's
+older code does not overwrite it:
+
+    unzip codenames-demo.zip 'cache/*' -d path/to/CodenamesAI
+
 First run builds a virtual environment and installs dependencies, which takes
 a few minutes (torch is a large download). After that it starts in seconds and
 opens http://127.0.0.1:8000 automatically.
@@ -107,9 +133,11 @@ to disable the k=1 similarity tiebreak.
 
 ## Choosing the spymaster
 
-The game page has a menu: the incumbent, and the decoy-trained model at each
-outside-option weight the arena sweep tested. The choice applies from the next
-clue, so you can switch mid-game and compare.
+The game page has a menu of every model whose files are in `cache/`: the
+incumbent, the decoy-trained variants, and the four stop listeners ("Stop
+listener" and "Stop listener, strict", each by chance of winning or by net
+words). The stop listeners take 3-4 s a clue. The choice applies from the
+next clue, so you can switch mid-game and compare.
 
 ## The blind study
 
@@ -119,7 +147,7 @@ as you would in a real game, and press **Stop** when you no longer see a
 connection — that is the behaviour being measured. Every turn is appended to
 `cache/human_eval.jsonl`; send that file back, or read it here with
 
-    ./.venv/bin/python analyze_human_eval.py
+    ./.venv/bin/python scripts/tools/analyze_human_eval.py
 
 Choose what is compared with `./start.sh --eval-arms incumbent,decoy_out25`.
 
@@ -155,7 +183,8 @@ as a model of a guesser.
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--out", type=Path, default=PROJECT_ROOT / "cache" / "codenames-demo",
+                    help="the folder; a .zip of it is written beside it")
     ap.add_argument("--cache-dir", type=Path, default=PROJECT_ROOT / "cache")
     ap.add_argument("--model", type=Path, default=None,
                     help="booster to ship as listener_gbt.txt (default: the deployed one)")
@@ -166,11 +195,11 @@ def main() -> None:
 
     shutil.copytree(PROJECT_ROOT / "codenames", out / "codenames",
                     dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    shutil.copy2(PROJECT_ROOT / "scripts" / "tools" / "play_server.py", out / "play_server.py")
-    shutil.copy2(PROJECT_ROOT / "scripts" / "tools" / "analyze_human_eval.py",
-                 out / "analyze_human_eval.py")
-    shutil.copytree(PROJECT_ROOT / "scripts" / "tools" / "webplay", out / "webplay",
-                    dirs_exist_ok=True)
+    tools = out / "scripts" / "tools"
+    tools.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(PROJECT_ROOT / "scripts" / "tools" / "play_server.py", tools / "play_server.py")
+    shutil.copy2(PROJECT_ROOT / "scripts" / "tools" / "analyze_human_eval.py", tools / "analyze_human_eval.py")
+    shutil.copytree(PROJECT_ROOT / "scripts" / "tools" / "webplay", tools / "webplay", dirs_exist_ok=True)
 
     total, missing = 0, []
     for name in CACHE_FILES:
@@ -183,8 +212,8 @@ def main() -> None:
         shutil.copy2(src, out / "cache" / name)
         total += src.stat().st_size
 
-    (out / "requirements.txt").write_text(REQUIREMENTS)
-    (out / "README.md").write_text(README)
+    (out / "requirements-demo.txt").write_text(REQUIREMENTS)
+    (out / "DEMO.md").write_text(README)
     (out / "start.sh").write_text(START_SH)
     (out / "start.sh").chmod(0o755)
     (out / "start.bat").write_text(START_BAT)
@@ -195,7 +224,9 @@ def main() -> None:
         print(f"  MISSING (bundle still runs, with those features off): {missing}")
     size = sum(f.stat().st_size for f in out.rglob("*") if f.is_file())
     print(f"  total: {size / 1e6:.0f} MB")
-    print(f"\nCopy that folder to the laptop, then: cd {out.name} && ./start.sh")
+    z = shutil.make_archive(str(out), "zip", root_dir=out)
+    print(f"  zip -> {z} ({Path(z).stat().st_size / 1e6:.0f} MB)")
+    print(f"\nCopy the zip to the laptop and unpack it, on its own or into a clone (DEMO.md), then ./start.sh")
 
 
 if __name__ == "__main__":
