@@ -6657,3 +6657,16 @@ objective only changes which clue wins, so the numbers should barely move.
 2 on 3, 3 on 8, 4 on 19. Guess averages 2.50 (2.53). The first boards'
 clues are mostly the same as under P(win). Both are on the play server:
 "Stop listener (net words)" and "Stop listener, strict (net words)".
+
+## Demo bundle: the repo's layout (2026-10-06)
+
+`scripts/tools/make_demo_bundle.py` now ships the four stop listeners (8
+more cache files) and lays the bundle out like the repo (`codenames/`,
+`scripts/tools/`, `cache/`), so the same zip also unpacks into a clone. Its
+own files are named so as not to clash (DEMO.md, requirements-demo.txt,
+start.sh, start.bat) and are gitignored. It is built inside the project now,
+at `cache/codenames-demo.zip` (418 MB; 27 cache files, 545 MB unpacked),
+not in the home folder. Checked both ways with the project's environment: unpacked
+alone and into a fresh clone (git status clean), the play server loads its
+own copy of the code and offers all four stop listeners. Not checked:
+start.sh's fresh install of the requirements (a large torch download).
