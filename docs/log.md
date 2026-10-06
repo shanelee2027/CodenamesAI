@@ -6710,3 +6710,13 @@ Example (strict, λ = 0.5): cooking 3 (Pan, Fire, Chocolate), branch 2 (Bank,
 Trunk), laws 3 (Police, Bill, Code), drake 2 (Duck, Dragon), electric 3
 (Switch, Fence, Field). Three entries are on the play server and in the demo
 bundle: λ 0.5 for both listeners, and λ 1 strict.
+
+## The demo bundle reaches the laptop through a private release (2026-10-06)
+
+Files sent into the conversation are capped at 30 MiB, and the bundle is
+418 MB. The user chose a release on a new PRIVATE repo,
+shanelee2027/codenames-demo (`make_demo_bundle.py --publish`; tag `demo`,
+the zip replaced on each publish, the notes naming the commit). Not a
+release on CodenamesAI: that repo is public, and the bundle holds data built
+from SWOW and other association sources whose licences may not allow
+redistribution. `--publish` refuses to upload if the repo is not private.

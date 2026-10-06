@@ -19,17 +19,27 @@ use (DEMO.md, requirements-demo.txt, start.sh, start.bat), and .gitignore
 lists them, so a clone stays clean. In a clone newer than the bundle, extract
 only `cache/`, or the bundle's older code would overwrite the clone's.
 
+**Getting it to the laptop.** `--publish` uploads the zip to the release
+`demo` of the PRIVATE repo shanelee2027/codenames-demo, replacing the last
+one; download it from that page while logged in to GitHub. Never to a public
+place: the bundle holds data built from SWOW and other association sources
+whose licences may not allow redistribution, and CodenamesAI itself is public.
+
 Usage:
-    python scripts/tools/make_demo_bundle.py          # -> cache/codenames-demo/ and cache/codenames-demo.zip
+    python scripts/tools/make_demo_bundle.py              # -> cache/codenames-demo/ and cache/codenames-demo.zip
+    python scripts/tools/make_demo_bundle.py --publish    # and upload it to the private release
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
+import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+RELEASE_REPO, RELEASE_TAG = "shanelee2027/codenames-demo", "demo"
 
 # Everything the play path loads. Anything absent is skipped with a warning
 # rather than failing: several of these are optional feature blocks, and a
@@ -188,6 +198,8 @@ def main() -> None:
     ap.add_argument("--cache-dir", type=Path, default=PROJECT_ROOT / "cache")
     ap.add_argument("--model", type=Path, default=None,
                     help="booster to ship as listener_gbt.txt (default: the deployed one)")
+    ap.add_argument("--publish", action="store_true",
+                    help=f"upload the zip to the release {RELEASE_TAG!r} of the private repo {RELEASE_REPO}")
     args = ap.parse_args()
 
     out = args.out.expanduser().resolve()
@@ -227,6 +239,26 @@ def main() -> None:
     z = shutil.make_archive(str(out), "zip", root_dir=out)
     print(f"  zip -> {z} ({Path(z).stat().st_size / 1e6:.0f} MB)")
     print(f"\nCopy the zip to the laptop and unpack it, on its own or into a clone (DEMO.md), then ./start.sh")
+    if args.publish:
+        publish(Path(z))
+
+
+def publish(zip_path: Path) -> None:
+    """Upload to the private release, replacing the previous zip. Refuses a
+    repo that is not private."""
+    gh = lambda *a: subprocess.run(["gh", *a], check=True, capture_output=True, text=True).stdout  # noqa: E731
+    if json.loads(gh("repo", "view", RELEASE_REPO, "--json", "visibility"))["visibility"] != "PRIVATE":
+        raise SystemExit(f"{RELEASE_REPO} is not private; not uploading")
+    commit = subprocess.run(["git", "-C", str(PROJECT_ROOT), "log", "-1", "--format=%h %cd %s", "--date=short"],
+                            check=True, capture_output=True, text=True).stdout.strip()
+    notes = f"Built from CodenamesAI {commit}. Unzip, then ./start.sh (or start.bat); DEMO.md inside."
+    if subprocess.run(["gh", "release", "view", RELEASE_TAG, "-R", RELEASE_REPO], capture_output=True).returncode:
+        gh("release", "create", RELEASE_TAG, "-R", RELEASE_REPO, "--title", "Demo bundle", "--notes", notes)
+    else:
+        gh("release", "edit", RELEASE_TAG, "-R", RELEASE_REPO, "--notes", notes)
+    print(f"uploading {zip_path.stat().st_size / 1e6:.0f} MB ...", flush=True)
+    gh("release", "upload", RELEASE_TAG, str(zip_path), "-R", RELEASE_REPO, "--clobber")
+    print(f"published -> https://github.com/{RELEASE_REPO}/releases/tag/{RELEASE_TAG}")
 
 
 if __name__ == "__main__":
