@@ -6802,3 +6802,46 @@ and lower the number. 4s fall from 17% to 10%. By the model's own estimate,
 device 4 (Screen, Drill, Plot, Shoe) to film 2 (Screen, Plot); structure 4 to
 structure 3 (dropping Trunk). Opening boards (9 own words) differed less than
 mid-game ones. Results: cache/report/promise_cost_sweep_listener_gbt_stop.json.
+
+## Clue history probe: does gpt-oss catch up on a missed clue? (2026-10-06)
+
+**Question** (the user's): human guessers usually guess a word missed on an
+earlier clue on a later turn. Can gpt-oss, if told the earlier clue?
+Capability only, no model design. Our arena guesser cannot by construction:
+each call sees only the board and the current clue.
+
+**Test** (`scripts/tools/probe_clue_history.py`): positions from the
+recorded games, a team's turn right after its own previous clue came up
+short, one per game. The leftover word L: the previous clue re-ranked by
+gpt-oss over the current board, the team's top word, kept when ranked 1st or
+2nd overall (300 kept of 600 tried). Four rankings of the current clue: none
+(the arena prompt), history (the previous clue, its number, the guesses),
+history + hint ("a word your spymaster meant for an earlier clue may still be
+on the board"), placebo (another game's previous clue). 1,453 calls (~$0.12;
+the standard-prompt ones partly cached), 298 positions complete. Backup:
+cache/backups/llm_store_2026-10-06_pre_history_probe.db.
+
+| condition | L in top k+1 | L first | L mean rank | own found (k+1 guesses) |
+|---|---|---|---|---|
+| none | 53.0% | 31.2% | 5.52 | 1.90 |
+| history | 51.7% | 31.9% | 5.75 | 1.87 |
+| history + hint | 53.7% | 32.9% | 5.46 | 1.88 |
+| placebo | 51.7% | 29.2% | 5.64 | 1.78 |
+
+Paired against none, L entered / left the top k+1: history 10 / 14, history
++ hint 10 / 8, placebo 10 / 14.
+
+**Expected:** history to move L up, more with the hint. **Found:** no effect.
+History and placebo are indistinguishable (the same 10 / 14), and the hint
+adds +0.7 points. The moves are call-to-call noise.
+
+Caveats:
+- The prompt still asks to rank words "for this clue", and does not say the
+  guesser may spend its extra (k+1) guess on an earlier clue. A turn-level
+  prompt ("you may guess up to k+1 words; which, in order?") is the fairer
+  test of capability, and is not run.
+- L is in the top k+1 on 53% of positions without any history: often the
+  spymaster repeats or rephrases the earlier clue ("tongue" 4, then "tongue"
+  3; "bankruptcy" twice; "nintendo" twice), so the current clue already
+  points at L.
+- reasoning_effort=low, as in the arena.
