@@ -140,14 +140,18 @@ def main() -> None:
     from codenames.listener_features import ExtraSims
     from codenames.similarity import DEFAULT_CACHE_DIR
 
-    sets = load_sets()
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+    from eval_listener_accuracy import with_all_columns
+
+    # Every booster reads its own columns; the assoc profile booster needs the
+    # 11 profile columns that positions cached before them lack.
+    sets = {name: with_all_columns(ps) for name, ps in load_sets().items() if name != "train"}
     bst = lgb.Booster(model_file=str(args.booster))
     vw = WordVectors()
     senses = ExtraSims.load(DEFAULT_CACHE_DIR / "wordnet_senses.npz")
     stats = ClueStats.load(DEFAULT_CACHE_DIR)
     clue_index = {w.lower(): i for i, w in enumerate(stats.clue_words)}
-    E = {name: events(ps, gbt_scores(bst, ps), vw, senses, clue_index)
-         for name, ps in sets.items() if name != "train"}
+    E = {name: events(ps, gbt_scores(bst, ps), vw, senses, clue_index) for name, ps in sets.items()}
 
     thetas = {arm: fit(E["val"], free) for arm, free in ARMS}
     for name, ev in E.items():

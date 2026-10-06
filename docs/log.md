@@ -6746,3 +6746,26 @@ setting drops the queue. Checked: the first deal 4.2 s; after 20 s of reading
 3 were ready, and the next three deals took 0.0 s; switching pairs computed
 afresh. The prefetch shares the engine's one lock, so a game on the play page
 at the same time can wait up to one board's computation.
+
+## profile_temperature_listener (2026-10-06)
+
+The user wanted the best GBT with the expected-reward objective, but not pick
+index, which needs a booster run per pick. Per-pick temperatures had given
+the assoc booster +0.006 R² (0.329 to 0.335) at no cost in speed, and every
+base gained about the same, so the assoc profile booster (0.331) was
+**expected** to reach about 0.337.
+
+- Fitted τ for picks 2 / 3 / 4+ on gpt-oss val:
+  `train_sequential_listener.py --booster cache/listener_gbt_assoc_profile.txt
+  --arm temperature`. It now appends the profile columns
+  (`with_all_columns`) to positions cached before they existed, as the
+  report does. Result: 1.09 / 1.26 / 1.41 (assoc: 1.09 / 1.25 / 1.42).
+- `report_listener_accuracy.py` gained two rows (profile frozen, profile +
+  temperatures). The rerun (8 minutes) left all 81 existing rows identical.
+
+**Found:** R² 0.3372 [0.320, 0.353] on the Sonnet 5.5 set, +0.017 [+0.012,
++0.021] over the incumbent: level with the assoc pick-index booster
+(0.3374), at single-score speed. Picks 2 / 3 / 4: 0.219 / 0.159 / 0.089
+(profile frozen: 0.212 / 0.149 / 0.064). On 30 opening boards, mean number
+2.73 (2 on 13, 3 on 12, 4 on 5) against 3.10 without temperatures; 1.0 s
+per clue.

@@ -125,6 +125,12 @@ def main() -> None:
                 rows.append(("later picks", base, f"pick index + history, {arm}",
                              *e.nll(hb.predict(Xh, raw_score=True), ones, 0 * ones)))
 
+        # The assoc profile booster: no pick-index or history models on its columns.
+        sc, flat, r = frozen("listener_gbt_assoc_profile.txt")
+        rows.append(("later picks", "profile", "frozen", *r))
+        rows.append(("later picks", "profile", "+ per-pick temperatures (profile_temperature_listener)",
+                     *e.nll(flat, *e.transform(seq("sequential_listener_assoc_profile_temperature.json"), e.drop(sc)))))
+
         # Neural correction: the net reads the first 44 columns, and adds to the
         # GBT scores it was trained with (cross-fitted on train, the full GBT elsewhere).
         if torch.cuda.is_available():

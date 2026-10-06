@@ -60,6 +60,8 @@ CACHE_FILES = [
     # both label sets), with the assoc profile booster their search runs on.
     "listener_gbt_assoc_profile.txt", "listener_gbt_stop.txt", "listener_gbt_stop_guess.txt",
     "assoc_profile.npz", "assoc_sims.npz", "isa_sims.npz", "conceptnet_sims.npz", "win_value.npz",
+    # Optional: profile_temperature_listener's fitted temperatures.
+    "sequential_listener_assoc_profile_temperature.json",
 ]
 
 REQUIREMENTS = """\

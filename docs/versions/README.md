@@ -45,6 +45,8 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
 - [`overpromise_listener`](overpromise_listener.md): stop_net_words_listener
   with a cost per promised word the guesser stops short of; the number is
   chosen by the objective again.
+- [`profile_temperature_listener`](profile_temperature_listener.md):
+  assoc_profile_listener with per-pick temperatures fitted for its booster.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.

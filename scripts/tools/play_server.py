@@ -93,6 +93,7 @@ from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaste
 from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
 from codenames.spymasters.assoc_profile_listener import AssocProfileListenerSpymaster
+from codenames.spymasters.profile_temperature_listener import ProfileTemperatureListenerSpymaster
 from codenames.spymasters.stop_listener import StopListenerSpymaster
 from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
 from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymaster
@@ -197,6 +198,16 @@ SPYMASTERS: dict[str, dict] = {
         "about": "The association-feature listener, plus how vague the clue's associations are and "
                  "whether each board word's own associations name the clue. Chooses by expected net "
                  "words (+1, -0.2, -1, -10); its guesser never stops."},
+    # The association-profile listener with per-pick temperatures fitted for
+    # its booster (codenames/spymasters/profile_temperature_listener.py).
+    "profile_temperature": {
+        "label": "Association-profile listener + pick temperatures", "model": "listener_gbt_assoc_profile.txt",
+        "outside_n": 0, "cls": ProfileTemperatureListenerSpymaster, "kwargs": {"outside_n": 0},
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz",
+                  "sequential_listener_assoc_profile_temperature.json"],
+        "about": "The association-profile listener, but the guesser's 2nd, 3rd and 4th picks are "
+                 "less certain than its first (temperatures 1.09, 1.26, 1.41, fitted on gpt-oss), so "
+                 "clues that rely on weak later words are worth less. Expected net words (+1, -0.2, -1, -10)."},
     # The ConceptNet listener with picks 2+ modelled as their own choices
     # (codenames/spymasters/within_turn_listener.py).
     "within_turn": {

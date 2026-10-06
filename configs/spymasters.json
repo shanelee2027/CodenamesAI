@@ -285,6 +285,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "assoc_profile_listener with per-pick temperatures: at pick j the guesser picks by softmax(s / tau_j), pick 1 at 1 and tau_2..4+ = 1.09 / 1.26 / 1.41 fitted for the assoc profile booster on gpt-oss val (cache/sequential_listener_assoc_profile_temperature.json; scripts/pipeline/train_sequential_listener.py --arm temperature). pick_temperature_listener's exact reward (expected own words minus role costs); single-score speed. docs/versions/profile_temperature_listener.md.",
+   "name": "profile_temperature_listener",
+   "type": "profile_temperature_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }
