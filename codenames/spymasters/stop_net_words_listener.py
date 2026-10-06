@@ -18,10 +18,13 @@ from codenames.game import Role
 from codenames.spymasters.stop_listener import StopListenerSpymaster
 
 
-def turn_net_words(S: np.ndarray, n_own: int, costs: np.ndarray, K: int) -> np.ndarray:
+def turn_net_words(S: np.ndarray, n_own: int, costs: np.ndarray, K: int,
+                   promise_cost: float = 0.0) -> np.ndarray:
     """Expected net words for numbers 1..K. S is (K, n_words + 1) as in
     stop_listener.turn_values; `costs` holds the bad words' costs, in their
-    order after the own words. Exact, over the set of own words found."""
+    order after the own words. A STOP after j picks on a clue for k costs
+    `promise_cost` * (k - j), the promised words not attempted
+    (overpromise_listener). Exact, over the set of own words found."""
     n = S.shape[1] - 1
     lam = np.exp(S - S.max(axis=1, keepdims=True))
     out = np.zeros(K)
@@ -37,7 +40,7 @@ def turn_net_words(S: np.ndarray, n_own: int, costs: np.ndarray, K: int) -> np.n
             own_left = [i for i in range(n_own) if i not in found]
             w_own, w_bad, w_stop = lam[j, own_left], lam[j, n_own:n], lam[j, n]
             z = w_own.sum() + w_bad.sum() + w_stop
-            v = (w_bad @ (got - costs) + w_stop * got) / z
+            v = (w_bad @ (got - costs) + w_stop * (got - promise_cost * (k - j))) / z
             for i, w in zip(own_left, w_own):
                 v += w / z * value(found | {i})
             memo[found] = v

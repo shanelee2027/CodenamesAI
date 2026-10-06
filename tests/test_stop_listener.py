@@ -83,3 +83,18 @@ def test_net_words_counts_own_words_and_charges_the_ending():
     v = turn_net_words(S, 2, costs, 2)
     assert v[0] == pytest.approx(1.0)
     assert v[1] == pytest.approx((2.0 + (1.0 - 10.0) + 1.0) / 3)
+
+
+def test_promise_cost_charges_unattempted_words_at_stop_only():
+    from codenames.spymasters.stop_net_words_listener import turn_net_words
+
+    costs = np.array([0.2, 0.2, 1.0, 1.0, 10.0])
+    # Pick 1: own word 0 for sure. Pick 2: half STOP, half the assassin. Pick 3: STOP.
+    S = np.full((3, 3 + len(ROLES) + 1), -np.inf)
+    S[0, 0] = 0.0
+    S[1, [7, 8]] = 0.0
+    S[2, -1] = 0.0
+    v = turn_net_words(S, 3, costs, 3, promise_cost=0.5)
+    assert v[0] == pytest.approx(1.0)                                   # the number is reached
+    assert v[1] == pytest.approx(0.5 * (1 - 0.5 * 1) + 0.5 * (1 - 10))  # STOP short by 1; the assassin is not charged
+    assert v[2] == pytest.approx(0.5 * (1 - 0.5 * 2) + 0.5 * (1 - 10))  # STOP short by 2

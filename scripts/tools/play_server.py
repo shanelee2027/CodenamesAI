@@ -94,6 +94,7 @@ from codenames.spymasters.pick_temperature_listener import PickTemperatureListen
 from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
 from codenames.spymasters.stop_listener import StopListenerSpymaster
 from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
+from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
          "/compare": "compare.html"}
@@ -244,6 +245,23 @@ SPYMASTERS: dict[str, dict] = {
            ("stop_net_guess", "Stop listener, strict (net words)", "listener_gbt_stop_guess.txt",
             "The strict stop listener, choosing by expected net words (+1 per own word, -0.2 "
             "neutral, -1 opponent, -10 assassin) instead of the chance of winning."))},
+    # The net-words stop listeners with a cost per promised word the guesser
+    # does not attempt, the number chosen by the objective
+    # (codenames/spymasters/overpromise_listener.py).
+    **{key: {"label": label, "model": "listener_gbt_assoc_profile.txt", "outside_n": 0,
+             "cls": OverpromiseListenerSpymaster, "no_k1": True,
+             "kwargs": {"outside_n": 0, "stop_model_path": DEFAULT_CACHE_DIR / stop, "promise_cost": lam},
+             "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz",
+                       "win_value.npz", stop],
+             "about": f"{about} Each promised word the guesser stops short of costs {lam} words, and the "
+                      "number is the one with the best expected net words after that cost."}
+       for key, label, stop, lam, about in (
+           ("overpromise", "Overpromise penalty 0.5", "listener_gbt_stop.txt", 0.5,
+            "The stop listener (net words)."),
+           ("overpromise_guess", "Overpromise penalty 0.5, strict", "listener_gbt_stop_guess.txt", 0.5,
+            "The strict stop listener (net words)."),
+           ("overpromise_guess_1", "Overpromise penalty 1, strict", "listener_gbt_stop_guess.txt", 1.0,
+            "The strict stop listener (net words)."))},
     # The trained clue policies (codenames/clue_policy.py): one forward pass,
     # no listener, so no bundle and no `listen` for the explanation. Each
     # announces at most what its checkpoint was trained to (the first two: 4).

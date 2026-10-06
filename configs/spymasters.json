@@ -270,6 +270,21 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "stop_net_words_listener with a cost for overpromising: a STOP after j picks on a clue for k costs promise_cost per promised word not attempted (k - j), and the number is chosen by the objective again (best expected net words minus that cost), not by what the clue points at. stop_model_path cache/listener_gbt_stop_guess.txt gives the strict listener. docs/versions/overpromise_listener.md.",
+   "name": "overpromise_listener",
+   "type": "overpromise_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0,
+    "promise_cost": 0.5
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }

@@ -183,15 +183,22 @@ class StopListenerSpymaster(WinProbListenerSpymaster):
         if not own or finite.size == 0:
             return best_n, scores, margin
         cap = clue_number_cap(len(own), self.max_number)
-        S = self.stop_scores([sims.clue_words[i] for i in finite], words, max(DEPTH, cap), sims)
+        S = self.stop_scores([sims.clue_words[i] for i in finite], words, self.picks_needed(cap), sims)
         scores, best_n = np.full_like(scores, -np.inf), best_n.copy()
         for t, s in S.items():
-            k = self.number(s, len(own), cap)
-            scores[finite[t]] = self.turn_value(s[:k], len(own), roles, k)
-            best_n[finite[t]] = k
+            best_n[finite[t]], scores[finite[t]] = self.choose(s, len(own), roles, cap)
         return best_n, scores, margin
 
     value_kind = "win"                  # what `turn_value` is in (the play server's label)
+
+    def picks_needed(self, cap: int) -> int:
+        """Picks of booster scores `choose` reads: `points_at` simulates DEPTH."""
+        return max(DEPTH, cap)
+
+    def choose(self, S: np.ndarray, n_own: int, roles: list[Role], cap: int) -> tuple[int, float]:
+        """(number, value) for one clue: the number it points at, and the turn's value there."""
+        k = self.number(S, n_own, cap)
+        return k, self.turn_value(S[:k], n_own, roles, k)
 
     def turn_value(self, S: np.ndarray, n_own: int, roles: list[Role], k: int) -> float:
         """What the search maximises: P(win) after a turn with number k."""

@@ -6670,3 +6670,43 @@ not in the home folder. Checked both ways with the project's environment: unpack
 alone and into a fresh clone (git status clean), the play server loads its
 own copy of the code and offers all four stop listeners. Not checked:
 start.sh's fresh install of the requirements (a large torch download).
+
+## overpromise_listener (2026-10-06)
+
+**The question.** The user pointed out that the less strict stop listener's
+mean number (3.77 on 30 opening boards) is well above the incumbent's (2.93
+on the same boards; pick_index_lookahead 3.47), when a listener that can
+pass should be more conservative, not less. They proposed penalising
+passing: free for the game state, but a sign the clue was not good.
+
+**My explanation then:** in the incumbent's model the guesser never stops,
+so a large number forces guesses past the clue's real words, and that risk
+is the only brake. With STOP the brake is gone. Built option B of two: λ
+per promised word not attempted (k − j at a STOP after j picks), with the
+number chosen by the objective again. Option A, a flat λ per early stop,
+would charge stopping after 1 of 4 the same as after 3 of 4.
+
+**Sweep** (30 opening boards, number by expected net words minus the cost):
+
+| STOP listener | λ = 0 | 0.25 | 0.5 | 1 |
+|---|---|---|---|---|
+| guess + stretch | 3.13 | 3.03 | 3.00 | 2.97 |
+| guess | 3.10 | 2.63 | 2.57 | 2.27 |
+
+**Expected:** a large λ effect on both. **Found:**
+- λ = 0 already gives 3.13 for guess + stretch, against 3.53 for
+  stop_net_words_listener with the same objective and listener. So the high
+  numbers came mostly from stop_listener's number rule (the rounded count of
+  what the clue points at, misses not ending the count), and from the
+  P(win) objective (3.77), not from STOP making the number free under net
+  words. That corrects the explanation above: under net words, a guesser
+  that rarely stops still walks into bad words, and that is still a brake.
+- The penalty barely moves guess + stretch (3.13 to 2.97), because that
+  guesser rarely stops, so there is little to charge.
+- The strict listener stops often, so λ has an effect: 3.10, then 2.63 at
+  0.25 and 2.27 at 1 (no 4s).
+
+Example (strict, λ = 0.5): cooking 3 (Pan, Fire, Chocolate), branch 2 (Bank,
+Trunk), laws 3 (Police, Bill, Code), drake 2 (Duck, Dragon), electric 3
+(Switch, Fence, Field). Three entries are on the play server and in the demo
+bundle: λ 0.5 for both listeners, and λ 1 strict.

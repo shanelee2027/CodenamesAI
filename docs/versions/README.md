@@ -42,6 +42,9 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
   that can end its turn, trained on which words gpt-oss says a clue points at.
 - [`stop_net_words_listener`](stop_net_words_listener.md): stop_listener
   valued in expected net words (+1, -0.2, -1, -10) instead of P(win).
+- [`overpromise_listener`](overpromise_listener.md): stop_net_words_listener
+  with a cost per promised word the guesser stops short of; the number is
+  chosen by the objective again.
 
 The incumbent has been evaluated on the frozen suite once, against a Sonnet
 spymaster (docs/log.md): 58% of games, sign p = 0.017.
