@@ -92,6 +92,7 @@ from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
 from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
+from codenames.spymasters.assoc_profile_listener import AssocProfileListenerSpymaster
 from codenames.spymasters.stop_listener import StopListenerSpymaster
 from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
 from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymaster
@@ -186,6 +187,16 @@ SPYMASTERS: dict[str, dict] = {
         "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz"],
         "about": "The ConceptNet listener, plus how often gpt-oss names each word when asked "
                  "for free associations to the clue."},
+    # assoc_features plus the clue's association profile and reverse
+    # associations (codenames/spymasters/assoc_profile_listener.py): the
+    # highest-R2 single-score booster, with the incumbent's net-words reward.
+    "assoc_profile": {
+        "label": "Association-profile listener", "model": "listener_gbt_assoc_profile.txt", "outside_n": 0,
+        "cls": AssocProfileListenerSpymaster, "kwargs": {"outside_n": 0},
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz"],
+        "about": "The association-feature listener, plus how vague the clue's associations are and "
+                 "whether each board word's own associations name the clue. Chooses by expected net "
+                 "words (+1, -0.2, -1, -10); its guesser never stops."},
     # The ConceptNet listener with picks 2+ modelled as their own choices
     # (codenames/spymasters/within_turn_listener.py).
     "within_turn": {

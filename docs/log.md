@@ -6720,3 +6720,17 @@ the zip replaced on each publish, the notes naming the commit). Not a
 release on CodenamesAI: that repo is public, and the bundle holds data built
 from SWOW and other association sources whose licences may not allow
 redistribution. `--publish` refuses to upload if the repo is not private.
+
+## assoc_profile_listener on the play server (2026-10-06)
+
+The user asked for the best single-score booster with the incumbent's
+expected-reward objective. That model already existed (assoc_profile_listener:
+the assoc profile booster, R² 0.331 on the Sonnet 5.5 set against 0.321 for
+the incumbent; expected net words, a guesser that never stops) but was not on
+the play server. Added as "Association-profile listener"; the demo bundle
+already held its files. On the 30 opening boards: 2 on 8, 3 on 11, 4 on 11,
+mean 3.10 (the incumbent 2.93).
+
+The demo bundle's file list still lacks the boosters of several older menu
+entries (e.g. the association-feature listener), so those are hidden on the
+laptop. Left as is: the user chose to add only this one.
