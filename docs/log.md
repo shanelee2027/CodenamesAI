@@ -6769,3 +6769,36 @@ base gained about the same, so the assoc profile booster (0.331) was
 (profile frozen: 0.212 / 0.149 / 0.064). On 30 opening boards, mean number
 2.73 (2 on 13, 3 on 12, 4 on 5) against 3.10 without temperatures; 1.0 s
 per clue.
+
+## overpromise_listener's λ on 400 positions (2026-10-06)
+
+The user found the 30-opening-board comparison of λ 0.5 and 1 (less strict
+STOP listener) too thin. `scripts/tools/sweep_promise_cost.py`: the cost is
+linear in λ (value = A − λB: A expected net words, B expected promised words
+stopped short of), so one search per position gives the clue at every λ,
+through the model's own final selection; checked equal to the spymaster's
+choice on the first 5 positions. 400 compare-page positions (deal_position,
+0-8 cards revealed, seed 0), ~2.6 s each.
+
+| λ | mean k | k=2 | k=3 | k=4 | net words | shortfall | differs from 0.5 |
+|---|---|---|---|---|---|---|---|
+| 0 | 2.95 | 30% | 42% | 27% | 2.040 | 0.123 | 21% |
+| 0.25 | 2.85 | 35% | 43% | 21% | 2.037 | 0.102 | 11% |
+| 0.5 | 2.74 | 41% | 42% | 17% | 2.030 | 0.083 | — |
+| 0.75 | 2.67 | 44% | 42% | 13% | 2.023 | 0.072 | 8% |
+| 1 | 2.61 | 47% | 42% | 10% | 2.017 | 0.065 | 13% |
+| 1.5 | 2.53 | 51% | 41% | 6% | 2.002 | 0.053 | 22% |
+| 2 | 2.47 | 55% | 39% | 5% | 1.990 | 0.046 | 29% |
+
+(k=1 is 1-2% throughout.) Net words and shortfall are the model's own
+expectations for the clue it chose.
+
+**Expected:** from the 30 opening boards, almost no difference between 0.5
+and 1. **Found:** 53 of 400 positions (13%) differ; 20 of those keep the clue
+and lower the number. 4s fall from 17% to 10%. By the model's own estimate,
+λ 1 gives up 0.013 net words per turn (0.6%) to cut the expected shortfall by
+22%. The changed clues are mostly the dropped weak 4th word or a tighter
+2-word clue: brakes 4 (Lock, Train, Sound, Plate) to depot 2 (Train, Stock);
+device 4 (Screen, Drill, Plot, Shoe) to film 2 (Screen, Plot); structure 4 to
+structure 3 (dropping Trunk). Opening boards (9 own words) differed less than
+mid-game ones. Results: cache/report/promise_cost_sweep_listener_gbt_stop.json.
