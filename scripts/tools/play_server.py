@@ -366,6 +366,7 @@ class Engine:
         return word, int(number), float(score)
 
     SHOW = 6
+    RISKS = 3
 
     def explain(self, board, key: str, clue: str, number: int) -> dict:
         """How spymaster `key` reads its own clue: the `number` own words it
@@ -412,7 +413,11 @@ class Engine:
                 **({"rate": round(float(min(rate(entries[i][2]), 1.0)), 3)} if rate else {})}
                for i in order[:self.SHOW]]
         own = sorted((i for i, e in enumerate(entries) if e[1] == "a"), key=lambda i: -entries[i][2])
-        return {"targets": [entries[i][0] for i in own[:number]], "order": out,
+        # The words that are not ours the listener rates highest at pick 1: what
+        # the clue could be taken for instead (shown with the targets on /compare).
+        risks = [{"word": entries[i][0], "role": entries[i][1]} for i in order
+                 if entries[i][1] not in ("a", "pass")][:self.RISKS]
+        return {"targets": [entries[i][0] for i in own[:number]], "risks": risks, "order": out,
                 "value": round(value, 3), "value_kind": kind,
                 **({"points_at": round(points, 2)} if points is not None else {})}
 
@@ -748,7 +753,7 @@ class CompareStudy:
             sides.append({"key": k, "label": SPYMASTERS[k]["label"], "clue": clue,
                           "number": number,
                           **self.engine.explain(board, k, clue, number)})
-        public = ("clue", "number", "targets")
+        public = ("clue", "number", "targets", "risks")
         return {"pending": {"seed": seed, "words": list(board.words), "blind": blind,
                             "pre": sorted(pre), "sides": sides, "agreed": agreed},
                 "public": {"seed": seed, "words": list(board.words),

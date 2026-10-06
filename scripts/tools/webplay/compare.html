@@ -13,6 +13,7 @@
   --ink:#241F19; --muted:#6E6558;
   --blue:#3A6EA5; --red:#B4504D; --tan:#C9B693; --black:#26282D;
   --gold:#B4842A; --teal:#2F7F78; --spent:0.30;
+  --ink-a:#2F5F92; --ink-b:#A3423F; --ink-n:#8A7448; --ink-x:#26282D;
   --shadow:0 1px 2px rgba(36,31,25,.18);
 }
 @media (prefers-color-scheme: dark){
@@ -21,6 +22,7 @@
     --ink:#ECE7DE; --muted:#9A948A;
     --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
     --gold:#D4A33C; --teal:#46A39B; --spent:0.22; --shadow:0 1px 2px rgba(0,0,0,.5);
+    --ink-a:#7FA8D6; --ink-b:#E08A86; --ink-n:#C9B693; --ink-x:#ECE7DE;
   }
 }
 :root[data-theme="dark"]{
@@ -28,6 +30,7 @@
   --ink:#ECE7DE; --muted:#9A948A;
   --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
   --gold:#D4A33C; --teal:#46A39B; --spent:0.22; --shadow:0 1px 2px rgba(0,0,0,.5);
+  --ink-a:#7FA8D6; --ink-b:#E08A86; --ink-n:#C9B693; --ink-x:#ECE7DE;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
@@ -87,6 +90,9 @@ button.act:disabled{opacity:.5;cursor:default}
   overflow-wrap:anywhere}
 .num{color:var(--gold)} .side.R .num{color:var(--teal)}
 .targets{font-size:12.5px;margin-bottom:6px} .targets b{font-weight:600}
+.targets .w-a{color:var(--ink-a)} .targets .w-b{color:var(--ink-b)} .targets .w-n{color:var(--ink-n)}
+.targets .w-x{color:var(--ink-x);text-decoration:underline wavy;text-underline-offset:3px}
+.targets .sep{color:var(--muted);margin:0 6px}
 .value{font-size:11.5px;color:var(--muted);margin-bottom:4px}
 table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
 td{padding:2px 0;vertical-align:middle}
@@ -260,7 +266,8 @@ function renderSides(revealed, winner){
     return `<div class="side ${side}${winner === side ? ' won' : ''}">
       <div class="who">${who}</div>
       <div class="word">${esc(s.clue)} <span class="num">${s.number}</span></div>
-      <div class="targets">Meant for: <b>${(s.targets || []).map(esc).join(', ') || '—'}</b></div>
+      <div class="targets">Meant for: <b class="w-a">${(s.targets || []).map(esc).join(', ') || '—'}</b>${(s.risks || []).length ? `<span class="sep">·</span>Risks: ` + s.risks.map(r =>
+        `<b class="w-${r.role}" title="${ROLE[r.role]}">${esc(r.word)}</b>`).join(', ') : ''}</div>
       ${detail}
     </div>`;
   }).join('');
