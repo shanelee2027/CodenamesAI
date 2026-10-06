@@ -250,7 +250,8 @@ async function deal(){
     const n = r.revealed.filter(Boolean).length;
     status(`${n} card${n === 1 ? '' : 's'} already revealed.` +
       (r.agreed ? ` Dealt past ${r.agreed} board${r.agreed === 1 ? '' : 's'} where both gave the same clue.`
-                : ' The first board dealt already differed.'));
+                : ' The first board dealt already differed.') +
+      (r.queued ? ` ${r.queued} more ready.` : ' Dealing more in the background.'));
     setVote(true);
   } catch (e) { status(e.message, true); }
   busy = false; $('deal').disabled = false;

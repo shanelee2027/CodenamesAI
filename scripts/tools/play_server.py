@@ -658,16 +658,64 @@ class CompareStudy:
 
     MAX_TRIES = 40
     VOTES = ("left", "right", "tie", "both_bad")
+    # Boards dealt ahead for the pair last asked for, while the user reads the
+    # current one: a deal is then instant unless the user deals faster than
+    # the models clue. A board's clock (t_shown) starts when it is handed
+    # out, not when it was computed. Asking for another pair (or blind
+    # setting) drops the queue.
+    PREFETCH = 3
 
     def __init__(self, engine: Engine, log_path: Path):
         self.engine, self.log_path = engine, log_path
         self.session = secrets.token_hex(4)
         self._lock = threading.Lock()
         self._pending: dict[str, dict] = {}
+        self._cv = threading.Condition()
+        self._want: tuple | None = None
+        self._queue: list[dict] = []
+        self._worker: threading.Thread | None = None
 
     def next(self, left: str, right: str, blind: bool) -> dict:
         if left == right:
             raise ValueError("pick two different spymasters")
+        key = (left, right, blind)
+        with self._cv:
+            if self._want != key:
+                self._want, self._queue = key, []
+            item = self._queue.pop(0) if self._queue else None
+            self._cv.notify_all()
+            if self._worker is None:
+                self._worker = threading.Thread(target=self._prefetch, daemon=True)
+                self._worker.start()
+        if item is None:
+            item = self._deal(*key)
+        token = secrets.token_hex(8)
+        with self._lock:
+            self._pending[token] = {**item["pending"], "t_shown": time.time()}
+        with self._cv:
+            queued = len(self._queue) if self._want == key else 0
+        return {**item["public"], "token": token, "queued": queued}
+
+    def _prefetch(self) -> None:
+        """Background: keep PREFETCH boards ready for the pair last asked for."""
+        while True:
+            with self._cv:
+                while self._want is None or len(self._queue) >= self.PREFETCH:
+                    self._cv.wait()
+                key = self._want
+            try:
+                item = self._deal(*key)
+            except Exception:                   # e.g. no differing clue: wait for the next request
+                with self._cv:
+                    if self._want == key:
+                        self._want = None
+                continue
+            with self._cv:
+                if self._want == key:
+                    self._queue.append(item)
+
+    def _deal(self, left: str, right: str, blind: bool) -> dict:
+        """One position where the two clue differently, with both explanations."""
         agreed = 0
         for _ in range(self.MAX_TRIES):
             seed, board, pre = deal_position()
@@ -689,17 +737,14 @@ class CompareStudy:
             sides.append({"key": k, "label": SPYMASTERS[k]["label"], "clue": clue,
                           "number": number,
                           **self.engine.explain(board, k, clue, number)})
-        token = secrets.token_hex(8)
-        with self._lock:
-            self._pending[token] = {"seed": seed, "words": list(board.words), "blind": blind,
-                                    "pre": sorted(pre), "sides": sides, "agreed": agreed,
-                                    "t_shown": time.time()}
         public = ("clue", "number", "targets")
-        return {"token": token, "seed": seed, "words": list(board.words),
-                "roles": [ROLE_CODE[c.role] for c in board.cards],
-                "revealed": [i in pre for i in range(len(board.words))],
-                "agreed": agreed, "blind": blind,
-                "sides": [{f: sd[f] for f in public} if blind else sd for sd in sides]}
+        return {"pending": {"seed": seed, "words": list(board.words), "blind": blind,
+                            "pre": sorted(pre), "sides": sides, "agreed": agreed},
+                "public": {"seed": seed, "words": list(board.words),
+                           "roles": [ROLE_CODE[c.role] for c in board.cards],
+                           "revealed": [i in pre for i in range(len(board.words))],
+                           "agreed": agreed, "blind": blind,
+                           "sides": [{f: sd[f] for f in public} if blind else sd for sd in sides]}}
 
     def vote(self, token: str, choice: str, note: str) -> dict:
         if choice not in self.VOTES:

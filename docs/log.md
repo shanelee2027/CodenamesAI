@@ -6734,3 +6734,15 @@ mean 3.10 (the incumbent 2.93).
 The demo bundle's file list still lacks the boosters of several older menu
 entries (e.g. the association-feature listener), so those are hidden on the
 laptop. Left as is: the user chose to add only this one.
+
+## Compare page deals ahead (2026-10-06)
+
+At the user's request, /compare now keeps up to 3 boards ready for the pair
+of models last dealt, computed in a background thread while the user reads
+(`CompareStudy.PREFETCH`). Server-side rather than in the page, so a board's
+time-to-vote clock (t_shown) starts when it is shown, not when it was
+computed, and no abandoned tokens pile up. Changing either model or the blind
+setting drops the queue. Checked: the first deal 4.2 s; after 20 s of reading
+3 were ready, and the next three deals took 0.0 s; switching pairs computed
+afresh. The prefetch shares the engine's one lock, so a game on the play page
+at the same time can wait up to one board's computation.
