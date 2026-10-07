@@ -6887,3 +6887,69 @@ gains (12 minutes to recompute).
 
 The association-cost figure is now computed from the stored token counts:
 56,049 lists, 5.9M in / 6.8M out, about $1.38 at today's price.
+
+## Clue history probe, turn level: still no catch-up (2026-10-07)
+
+**Question.** The first probe asked for a ranking "for this clue", which
+makes earlier clues off-topic by construction. Does gpt-oss use an earlier
+clue when it is asked for its *turn* and invited, but not told, to use it?
+The script is `scripts/tools/probe_clue_history_turn.py`. It used the same
+300 positions and the same leftover word L as the first probe.
+
+**Set-up.**
+- The guesser is asked for up to k + 1 guesses, in order, and may stop
+  earlier.
+- The history lists every earlier clue of its own spymaster in the game,
+  with the words found and "N not found yet".
+- A permission sentence is added: "you can use your guesses on them if you
+  think that's best."
+- The structured arms also ask the guesser to name, for each earlier clue
+  that still has words unfound, the board word it now thinks was meant, or
+  null.
+- Run at low effort: 1,457 calls, about $0.10, none unanswerable.
+
+| arm | L guessed | L first | guesses | stops before k+1 | own found | names L for the earlier clue |
+|---|---|---|---|---|---|---|
+| turn | 46.3% | 28.7% | 2.22 | 98.0% | 1.72 | |
+| turn + history | 45.7% | 29.0% | 2.28 | 95.7% | 1.66 | |
+| turn + placebo | 46.0% | 29.7% | 2.25 | 97.0% | 1.66 | |
+| structured + history | 45.7% | 29.0% | 2.40 | 83.3% | 1.72 | 17.3% |
+| structured + placebo | 46.7% | 30.0% | 2.42 | 80.7% | 1.68 | |
+
+Paired against `turn`, history newly brings L into the guesses on 13
+positions and drops it on 15. The placebo does 9 and 10.
+
+**Asked directly** (structured + history), the answer for the earlier clue
+was:
+
+| answer | share |
+|---|---|
+| null | 56.7% |
+| L | 17.3% |
+| a word not ours | 11.0% |
+| the earlier clue left out of the answer | 9.3% |
+| another of our words | 5.7% |
+
+It named any word for an earlier clue at 37.7% of positions. It then
+guessed one of those words at only 11.0%, and that word was ours at 9.0%.
+
+**Expected:** some catch-up once the prompt is a turn with permission.
+**Found:** none.
+- L is guessed at the same rate with history, with no history, and with
+  another game's history.
+- The guesser almost never takes the extra guess: it stops at k on 96–98%
+  of turns in the plain arms. Asking for the structured answer raises the
+  extra-guess use only slightly, and equally with the placebo.
+- The clearest sign is the direct question. Re-asked fresh on the same
+  board, the earlier clue ranks L first or second (that is how L was
+  chosen). Asked inside the turn prompt, gpt-oss says no word is meant for
+  it in 57% of positions. Even when it names a word, it rarely spends a
+  guess on it.
+
+At low effort, gpt-oss does not reason across clues in this way, whether
+it is invited (this probe) or only shown the history (the first probe).
+Not tried: medium effort (about $0.05 for the best arm).
+
+DeepInfra spend for the two probes: about $0.22. Real balance is about
+$0.51 (website $0.73 on 2026-10-06, minus both runs); not re-read from the
+API.
