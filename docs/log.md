@@ -6845,3 +6845,45 @@ Caveats:
   3; "bankruptcy" twice; "nintendo" twice), so the current clue already
   points at L.
 - reasoning_effort=low, as in the arena.
+
+## Professor notebook: seven selected results (2026-10-07)
+
+`notebooks/selected_results_1007.ipynb` (built by
+`scripts/tools/build_selected_results_notebook.py`, then executed with
+nbconvert). Sections in the user's order:
+1. incumbent vs the Sonnet 5 spymaster;
+2. prompt phrasings;
+3. association features;
+4. the RL policies (brief);
+5. the pick-index listener;
+6. per-pick temperatures;
+7. V(a, b) against the board-reading V.
+
+It makes no API calls. Data comes from:
+- the two report CSVs;
+- the stored games (llm_store.db and sim_games.db);
+- prompt_variants.db and associations.db.
+
+Every listener row is Sonnet 5.5 R² by pick with its training R². Every win
+rate is the gpt-oss suite against the incumbent. The exception is section 1,
+which is Sonnet guessing and is labelled as such.
+
+**Expected:** every number would match the log. **Found:** it does, except
+for one improvement and one small difference.
+- **The second-guess shape table now matches draw counts.** The ranked
+  prompts keep only the samples that began with the fixed first word, so
+  they have fewer draws, and fewer draws show fewer distinct words. The
+  2026-09-25 shape table did not correct for this. With the counts matched
+  (164 positions), the re-ask is still flatter: 2.42 against 2.10 distinct
+  words, and 0.89 against 0.74 bits (unmatched: 2.52 against 2.07, 0.93
+  against 0.73). The conclusion stands and the gap is somewhat smaller.
+- **The board V on gpt-oss is −1.1 [−8.0, +6.3]** (report CSV, 87 boards),
+  where the log has −1.2 [−8.1, +5.8] from compare_sim_runs.py. Both are a
+  bootstrap over the same boards; they differ only in the resampling.
+
+Two tables quote stored script output instead of recomputing it, and the
+notebook says so: the listener R² per prompt, and the board-value log-loss
+gains (12 minutes to recompute).
+
+The association-cost figure is now computed from the stored token counts:
+56,049 lists, 5.9M in / 6.8M out, about $1.38 at today's price.
