@@ -62,6 +62,9 @@ CACHE_FILES = [
     "assoc_profile.npz", "assoc_sims.npz", "isa_sims.npz", "conceptnet_sims.npz", "win_value.npz",
     # Optional: profile_temperature_listener's fitted temperatures.
     "sequential_listener_assoc_profile_temperature.json",
+    # Optional: the assoc booster (Association-feature listener) and, with it,
+    # pick_index_lookahead_listener's pick-index booster and reply offsets.
+    "listener_gbt_assoc_features.txt", "listener_gbt_pick_indexassoc_depth9.txt", "reply_offset_pick_index.npz",
 ]
 
 REQUIREMENTS = """\

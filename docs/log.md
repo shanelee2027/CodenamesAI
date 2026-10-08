@@ -6953,3 +6953,26 @@ Not tried: medium effort (about $0.05 for the best arm).
 DeepInfra spend for the two probes: about $0.22. Real balance is about
 $0.51 (website $0.73 on 2026-10-06, minus both runs); not re-read from the
 API.
+
+## Demo bundle: the Association-feature and pick-index lookahead entries (2026-10-07)
+
+On the laptop, "Pick-index lookahead (win probability)" and "Association-feature
+listener" were missing from the menu. The play server hides any entry whose
+files are not in `cache/`, and the bundle lacked three of them:
+- `listener_gbt_assoc_features.txt` (32 MB);
+- `listener_gbt_pick_indexassoc_depth9.txt` (59 MB);
+- `reply_offset_pick_index.npz` (4 KB).
+
+They are now in `CACHE_FILES`. The zip is 461 MB.
+
+**Checked from inside the built bundle,** with its own code and its own
+cache:
+- both entries are listed;
+- each gives a clue on one board in about 2 s.
+
+A first check run piped through `tail` printed nothing for 10 minutes and
+timed out. The rerun, logging each step, finished in seconds. The cause was
+not found and did not recur.
+
+Republished to the private release (`shanelee2027/codenames-demo`, tag
+`demo`).
