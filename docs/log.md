@@ -7290,3 +7290,22 @@ only 7 turns (9%). The guess-only set was smaller on 30 (38%: k = 2 16/38,
 k = 3 9/23, k = 4 5/5), close to the 38% of turns where the sure answer
 covers the number. So `subset=stretch` plays almost like the old guesser,
 and `subset=guess` is the version that actually declines words.
+
+## The comfort arena: menu models vs assoc_profile_listener, guess-only two-step guesser
+
+**Set-up.** Suite `configs/eval_suite_gptoss_subset_guess.json`
+(holdout_v1_gptoss_subset_guess, suite_id dc9083567bfcf453): the two-step
+guesser with the strict set (`subset=guess`). Chosen over guess + stretch
+because the stretch set was short of the number on only 9% of pilot turns,
+so that guesser almost never declines a word. The fixed opponent is
+assoc_profile_listener, the new incumbent. The ten other models on the play
+server's menu are played in turn, with the menu's settings:
+- win_prob_listener + assoc booster (`model_path`, `turn_model=frozen`; the
+  stored identity 105dc03b7f48);
+- pick_index_lookahead_listener;
+- profile_temperature_listener;
+- stop_listener, strict and loose;
+- stop_net_words_listener, strict and loose;
+- overpromise_listener 0.5 strict and loose, and 1.0 strict.
+Expected cost: about 14 calls per game, about $0.20 per model, about $2 for
+all ten. DeepInfra credit before the run: about $10.42 (auto top-up off).
