@@ -686,3 +686,54 @@ class TestBuildGuesser:
         from codenames.guessers.registry import build_guesser
         with pytest.raises((ValueError, KeyError)):
             build_guesser(spec)
+
+
+class TestSubsetFirstGuesser:
+    """Two calls: which words the clue points at (no number), then the order
+    of those words (with the number). The turn stops when the set runs out."""
+
+    WORDS = ["Apple", "Banana", "Car", "Doghouse", "Elephant"]
+
+    def _guesser(self, texts: list[str], tmp_path, subset: str = "stretch"):
+        from codenames.guessers.subset_first import SubsetFirstGuesser
+
+        class Completions:
+            def __init__(self):
+                self.calls = []
+
+            def create(self, **kwargs):
+                self.calls.append(kwargs)
+                return SimpleNamespace(choices=[_FakeOpenAIChoice(texts.pop(0))], usage=None)
+
+        completions = Completions()
+        inner = OpenAICompatGuesser(model="m", client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+                                    cache_path=tmp_path / "store.db")
+        return SubsetFirstGuesser(inner, tmp_path / "store.db", subset=subset), completions
+
+    def test_ranks_only_the_set_then_stops(self, tmp_path):
+        from codenames.game import STOP
+        g, c = self._guesser(['{"guess": ["Car"], "stretch": ["Doghouse"]}', '["Doghouse", "Car"]'], tmp_path)
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=3) == ["Doghouse", "Car", STOP]
+        first, second = (call["messages"][0]["content"] for call in c.calls)
+        assert "3 word" not in first and '"guess"' in first          # step 1 does not see the number
+        assert "Apple" not in second and "Car" in second              # step 2 ranks only the set
+
+    def test_guess_only_set_and_no_second_call_for_one_word(self, tmp_path):
+        from codenames.game import STOP
+        g, c = self._guesser(['{"guess": ["Car"], "stretch": ["Doghouse"]}'], tmp_path, subset="guess")
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=2) == ["Car", STOP]
+        assert len(c.calls) == 1
+
+    def test_an_empty_set_is_a_pass(self, tmp_path):
+        from codenames.game import STOP
+        g, _ = self._guesser(['{"guess": [], "stretch": []}'], tmp_path)
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=2) == [STOP]
+
+    def test_spec_and_identity(self):
+        from codenames.guessers.registry import build_guesser
+        g = build_guesser("deepinfra:openai/gpt-oss-120b:low:subset=stretch")
+        assert g.cache_model_id == "deepinfra/openai/gpt-oss-120b+effort=low+subset=stretch"
+        # the relatedness labels are stored under the plain guesser's identity, so bought ones are reused
+        assert g.asker.model == "deepinfra/openai/gpt-oss-120b+effort=low"
+        with pytest.raises(ValueError):
+            build_guesser("deepinfra:openai/gpt-oss-120b:low:subset=maybe")

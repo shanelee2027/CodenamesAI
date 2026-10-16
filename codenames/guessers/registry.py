@@ -139,7 +139,9 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
     Temperature is accepted for OpenAI-compatible providers only: Claude Sonnet
     5 and later reject the sampling parameters outright. `stop=1` lets the
     guesser end its turn early (OpenAICompatGuesser.allow_stop), likewise
-    OpenAI-compatible only.
+    OpenAI-compatible only. `subset=stretch` (or `subset=guess`) makes it the
+    two-call guesser that picks the words a clue points at before ranking
+    them, and stops when they run out (codenames/guessers/subset_first.py).
     """
     provider, sep, rest = spec.partition(":")
     if not sep:
@@ -161,21 +163,29 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
     fields = tail.split(":") if tail else []
     effort = fields.pop(0) if fields and "=" not in fields[0] else ""
     options = {}
+    subset = None
     for f in fields:
         key, eq, value = f.partition("=")
-        if not eq or key not in ("temperature", "stop"):
+        if not eq or key not in ("temperature", "stop", "subset"):
             raise ValueError(f"unknown guesser option {f!r} in {spec!r}; "
-                             "supported: temperature=<t>, stop=1")
+                             "supported: temperature=<t>, stop=1, subset=stretch|guess")
+        if key == "subset":
+            subset = value
+            continue
         options[key if key == "temperature" else "allow_stop"] = (
             float(value) if key == "temperature" else value.lower() in ("1", "true", "yes"))
     if provider == "anthropic":
-        if options:
+        if options or subset:
             raise ValueError(f"{spec!r}: Anthropic guessers take no options here (temperature is "
                              "rejected by the API; stop is not implemented for them)")
         return LLMGuesser(model=model, effort=effort or None, cache_path=DEFAULT_DB_PATH)
     if provider in PROVIDERS:
         kwargs = {"reasoning_effort": effort} if effort else {}
-        return OpenAICompatGuesser(model=model, provider=provider, cache_path=DEFAULT_DB_PATH,
-                                   **kwargs, **options)
+        g = OpenAICompatGuesser(model=model, provider=provider, cache_path=DEFAULT_DB_PATH,
+                                **kwargs, **options)
+        if subset is None:
+            return g
+        from codenames.guessers.subset_first import SubsetFirstGuesser
+        return SubsetFirstGuesser(g, DEFAULT_DB_PATH, subset=subset)
     raise ValueError(f"unknown guesser provider {provider!r} in {spec!r}; "
                      f"use anthropic or one of {sorted(PROVIDERS)}")

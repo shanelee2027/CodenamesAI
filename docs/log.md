@@ -7188,3 +7188,105 @@ was:
 **Caveat.** Both the question and the outcome are gpt-oss's, so part of the
 tracking is the model agreeing with itself. That is the point of a gpt-oss
 comfort proxy, but it is not evidence about humans.
+
+## Comfort probe at scale: 300 turns per model
+
+**Run.** `probe_comfort.py --per-model 300 --questions sure --max-calls 1300`.
+1,200 turns, 993 new calls (the pilot's turns were cached), about $0.07,
+none unanswerable. Output: `cache/report/comfort_probe_300_sure.json`.
+
+**Expected:** the pilot's numbers hold, and the models differ a little.
+**Found:** the question behaves the same at scale. 93.4% of 1,659 sure
+words are the team's, and AUC for "gpt-oss found all N" is 0.777. Sure
+covers the number on 38% of turns.
+
+| spymaster | mean k | sure ÷ k (95% CI) | by k = 1 / 2 / 3 / 4 | k-mix standardised | all N found |
+|---|---|---|---|---|---|
+| learned_listener | 2.36 | 0.650 [0.616, 0.683] | 1.00 / 0.65 / 0.51 / 0.46 | 0.648 | 66% |
+| assoc_profile_listener | 2.30 | 0.680 [0.647, 0.714] | 0.98 / 0.66 / 0.57 / 0.48 | 0.665 | 64% |
+| win_prob (assoc booster) | 2.59 | 0.609 [0.572, 0.648] | 0.98 / 0.65 / 0.48 / 0.40 | 0.628 | 50% |
+| pick_index_lookahead | 2.52 | 0.632 [0.594, 0.667] | 0.98 / 0.67 / 0.51 / 0.40 | 0.639 | 49% |
+
+At a given number, the four models are about equally comfortable. The
+differences in sure ÷ k come mostly from how often a model asks for 3 or 4
+(win_prob gives 84 fours in 300 turns, assoc_profile 44). The metric counts
+that on purpose: a bigger number is less comfortable. Still, it means
+"comfort" as measured so far is mostly the number, plus a smaller per-clue
+part (assoc_profile's 0.57 at k = 3 against 0.48–0.51 for the others).
+
+## Is the stop listener a free stand-in for "sure"?
+
+**Why.** The clarity knob needs a "how sure would the guesser be" score for
+thousands of candidate clues per board, which cannot each be a gpt-oss call.
+`scripts/tools/check_sure_proxy.py` scores the 1,200 turns above with the
+stop listeners at pick 1: the count of words scored above STOP (capped at k,
+÷ k), and a smooth count.
+
+**Expected:** the strict listener (trained on the "guess" group) tracks
+"sure" reasonably well.
+**Found:** it tracks it, but loosely, and it is far too generous.
+
+| proxy | Spearman with sure ÷ k | AUC all N found | overlap with sure words |
+|---|---|---|---|
+| sure ÷ k (gpt-oss) | 1 | 0.777 | — |
+| strict count | 0.472 | 0.709 | 52% of its words are sure; holds 91% of the sure words |
+| strict soft | 0.434 | 0.635 | |
+| loose count | 0.268 | 0.574 | 34%; 95% |
+| loose soft | 0.138 | 0.516 | |
+
+The strict count orders the four models as gpt-oss's answer does
+(assoc_profile > learned > pick_index > win_prob), but its mean is 0.86–0.95
+against 0.61–0.68: it calls most clues fully clear. Usable as a first knob,
+but a predictor fitted to the sure answers themselves would likely do
+better.
+
+## A two-step guesser: which words, then in what order
+
+**Why.** The user's proposal for every future arena: a guesser that first
+decides which words the clue points at, then orders only those, and stops
+when they run out. The arena's gpt-oss ranks the whole board and takes the
+top N, so it never declines a word. The one-call STOP guesser (2026-09-26)
+put the stop inside the ranking and stopped on only 12–14% of turns, with
+11 of 100 boards refused.
+
+**Options considered.**
+- (a) Two calls. Step 1 is the existing relatedness prompt
+  (`codenames/relatedness.py`, graded-v2): no number, each word sorted into
+  "guess", "stretch" or neither. Step 2 is the usual ranking prompt, with the
+  number, over only the chosen words. Reuses both caches, and the set does
+  not depend on the number. Costs a second call per turn.
+- (b) One call that asks for the set and the order together. Cheaper, but
+  the number is in view when the set is chosen, nothing already bought is
+  reused, and it is not what was asked for ("ask it two different times").
+Chose (a).
+
+**Built.** `codenames/guessers/subset_first.py::SubsetFirstGuesser`, spec
+`deepinfra:openai/gpt-oss-120b:low:subset=stretch` (or `subset=guess`).
+The ranking call is skipped when the set has under two words. The turn
+plays the ranked set, at most N words, then STOP; an empty set is a pass.
+Relatedness labels are stored under the plain guesser's identity, so the
+stop listener's purchased labels are reused. Suite
+`configs/eval_suite_gptoss_subset.json` (holdout_v1_gptoss_subset,
+suite_id bbc27fcbe60cae74), same 100 boards. llm_store.db backed up first
+(`cache/backups/llm_store_2026-10-16_pre_subset_guesser.db`).
+
+**Design choices.**
+- The default set is guess + stretch. "Stretch" is defined as the words you
+  would still try as a 2nd or 3rd word when the number asks for more, which
+  matches "up to the number".
+- The order within the set is whatever gpt-oss's ranking says; guess words
+  are not forced ahead of stretch words.
+
+**Pilot.** learned_listener vs assoc_profile_listener, 5 boards (10 games),
+`--boards 5`. 139 calls (75 relatedness, 64 ranking), about 14 per game, so
+about $0.20 for a 200-game model. It took 766 s, slowed by sharing
+DeepInfra with the comfort run. No board refused.
+
+**Expected:** the guesser stops on a good share of turns.
+**Found:** with guess + stretch it hardly ever stops: 6 of 79 turns (8%),
+all after one correct word, no passes. From the stored step-1 answers on
+the same 79 turns, the guess + stretch set was smaller than the number on
+only 7 turns (9%). The guess-only set was smaller on 30 (38%: k = 2 16/38,
+k = 3 9/23, k = 4 5/5), close to the 38% of turns where the sure answer
+covers the number. So `subset=stretch` plays almost like the old guesser,
+and `subset=guess` is the version that actually declines words.
