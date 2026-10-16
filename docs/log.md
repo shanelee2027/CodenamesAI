@@ -7126,3 +7126,65 @@ uniform-within-set rule.
 - The clues came from September models.
 - The related set comes from gpt-oss labels, so "narrower than gpt-oss's"
   is measured against that model, not against the human's own set.
+
+## Comfort probe: which question gets a usable comfort signal out of gpt-oss? (2026-10-16)
+
+**Why.** Shane would rather not develop models on his own /eval turns: he is
+one player, and he knows how the models work. The proposal instead: ask
+gpt-oss about each clue, and use the mean answer as a comfort score to
+compare spymasters. It need not be calibrated, only ordered.
+
+"How confident are you" measures how likely the guesser thinks it is to be
+right, which is close to the expected value the spymasters already maximise.
+So two questions were piloted that ask about the clue instead
+(`scripts/tools/probe_comfort.py`). Each is its own call from the guesser's
+seat, showing no intended words and no earlier answer:
+- `sure`: list the words you are SURE the clue is meant for (fewer than the
+  number, or none, allowed), then those you would only be guessing at;
+- `clarity`: 1–5, each level described.
+
+**Turns.** 25 random clues from each of four spymasters' stored gpt-oss
+suite games:
+- learned_listener;
+- assoc_profile_listener;
+- win_prob_listener with the assoc booster;
+- pick_index_lookahead_listener.
+
+Each turn keeps what gpt-oss did with that clue in the game, i.e. whether it
+found all N. A useful question should spread its answers and track that.
+
+**A bug on the way.** The first run rebuilt each board from its seed with
+the default vocabulary. Suite boards use the held-out words, so gpt-oss was
+shown the wrong boards. It showed: only 6.2% of its "sure" words were the
+team's, and AUC was 0.53. The script now regenerates boards with
+`load_holdout_wordlist()` and checks each against the stored board (all
+match). The wrong-board responses stay in the table under their own prompts
+and are not read. Cost: 196 + 198 calls, about $0.03 together.
+
+**Result** (100 turns; gpt-oss found all N on 48% of them):
+
+| | answers | precision | tracks "all N found" (AUC) |
+|---|---|---|---|
+| `sure` | count vs number: k=1 always 1; k=2 split 1/2; k=3 mostly 1; k=4 mostly 1–2; sure ≥ number on 36% | 92.0% of 150 sure words are the team's | **0.794** |
+| `clarity` | 2: 49, 3: 30, 4: 15, 5: 6 (never 1) | — | 0.744 |
+
+**Expected:** some signal from the clarity rating, less from the count.
+**Found:** both carry signal, and `sure` is better on every count.
+- Its words are checkable, and 92% are right, so "sure" means something.
+- It tracks the outcome more closely (0.79 against 0.74).
+- It is directly comparable to the number.
+- Clarity piles half its answers on 2.
+
+`sure` ÷ number is the metric to take forward.
+
+By spymaster (25 turns each, pilot only, not a comparison), sure ÷ number
+was:
+- learned_listener 0.59;
+- assoc_profile 0.65;
+- win_prob assoc 0.69;
+- pick-index lookahead 0.58, with the highest mean number (2.92) and the
+  lowest all-N rate (36%).
+
+**Caveat.** Both the question and the outcome are gpt-oss's, so part of the
+tracking is the model agreeing with itself. That is the point of a gpt-oss
+comfort proxy, but it is not evidence about humans.
