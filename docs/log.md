@@ -7054,3 +7054,75 @@ All 25 pass, three runs in a row.
 *Demo bundle:* the decoy and association-trained boosters are no longer in
 `CACHE_FILES`. `listener_gbt.txt` stays, because the pick-index lookahead
 plays the September incumbent's reply with it. Not republished yet.
+
+## A coarse guesser, step 1: which of our models predicts the human guesser? (2026-10-16)
+
+**Why.** Shane and the professor want clue *comfort* weighed against winning,
+and the weighting chosen automatically. The plan has three steps:
+1. find a guesser model that plays like a human;
+2. simulate games against it for a grid of comfort weightings;
+3. keep the weighting that wins most, re-checked on fresh boards.
+
+Comfort terms can only help when the spymaster's model of the guesser is
+wrong about the guesser it faces. Against the true guesser, plain expected
+value is already optimal. So the weights measure that mismatch, and step 1
+decides what "human-like" means.
+
+**Data.** `cache/human_eval.jsonl`: Shane's 255 /eval turns.
+- Clues are from 4 September-era arms.
+- Every pick's role matches the regenerated board (551 of 551 picks).
+- 51 turns stopped before the number, 131 stopped at it, and 73 ended on a
+  wrong word.
+- The +1 guess was never used, and there was never an outright pass.
+
+**Scored** (`scripts/tools/score_human_turns.py`, no API calls, about
+5 minutes), in two parts:
+1. *which word next*: McFadden R² against uniform over the words left;
+2. *stop before the number*: 602 decisions, 51 of them stops.
+
+Nothing is fitted on the human turns. The coarse model's m and eps are
+shown at fixed values.
+
+| Which word | all | pick 1 | pick 2 | pick 3+ |
+|---|---|---|---|---|
+| frozen (assoc_profile booster) | 0.567 | 0.661 | 0.550 | 0.304 |
+| per-pick temperatures | **0.577** | 0.661 | **0.564** | **0.332** |
+| stop listener's words | 0.568 | 0.652 | 0.559 | 0.318 |
+| stop listener (strict)'s words | 0.566 | 0.656 | 0.551 | 0.309 |
+| coarse: rank 2, then uniform over the related set, eps 0.2 | 0.556 | 0.661 | 0.550 | 0.225 |
+| coarse: rank 1, then uniform, eps 0.2 | 0.503 | 0.661 | 0.415 | 0.225 |
+
+| Stop before k | log-loss | AUC | mean P(stop): stopped / went on |
+|---|---|---|---|
+| base rate (fitted, reference) | 0.290 | 0.500 | 0.085 / 0.085 |
+| stop listener | 0.281 | 0.859 | 0.059 / 0.017 |
+| **stop listener (strict)** | **0.225** | **0.856** | 0.313 / 0.094 |
+| coarse: stop when the related set is used up | 0.301 | 0.500 | constant |
+
+**Expected:** the coarse guesser ("ranks the top one or two, then related or
+not") would fit the human's later picks best. **Found, not as expected:**
+- **This human's later picks still follow the scores' order.**
+  - Uniform-within-the-set is worse than the plain ranking at picks 3+
+    (0.225 against 0.304).
+  - Flattening the ranking with the per-pick temperatures is better
+    (0.332).
+  - "Less sure later" is supported; "unordered after two" is not.
+- **The human stops while gpt-oss's related set still has words.**
+  - At the 51 early stops, the stop listener's set at pick 1 still held 3.0
+    unpicked words on average (never empty), and the strict set held 1.3
+    (empty 5 times).
+  - So the set-exhaustion rule never fires.
+  - The human's "related" is narrower than gpt-oss's, even its strict one.
+- **The strict stop listener predicts the stops well** (AUC 0.86, log-loss
+  0.225 against 0.290 for the base rate), but it is under-confident:
+  31% when the human stopped.
+
+**For the simulated human guesser** this suggests per-pick temperatures for
+the order and the strict stop listener's P(STOP) for when to stop. Not the
+uniform-within-set rule.
+
+**Caveats.**
+- One player, 255 turns, and only about 100 events at picks 3+.
+- The clues came from September models.
+- The related set comes from gpt-oss labels, so "narrower than gpt-oss's"
+  is measured against that model, not against the human's own set.
