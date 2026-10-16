@@ -47,13 +47,9 @@ RELEASE_REPO, RELEASE_TAG = "shanelee2027/codenames-demo", "demo"
 CACHE_FILES = [
     "similarity_tensor.npy", "similarity_meta.json", "clue_vocab.json",
     "board_vocab.json", "clue_stats.npz", "clue_stats_meta.json",
+    # listener_gbt.txt is the September incumbent's booster: no menu entry
+    # uses it as its listener, but the pick-index lookahead plays its reply.
     "listener_gbt.txt", "word_stats.npz", "acronym_mask.npz",
-    # Optional: the decoy-trained booster, so the game's spymaster menu can
-    # offer the decoy variants. 25 MB; absent, those entries are just hidden.
-    "listener_gbt_decoy.txt",
-    # Optional: the association-trained booster and its rate link, for the
-    # assoc / assoc_pass / assoc_pass_strong entries. Both or neither.
-    "listener_gbt_assoc_w0.3.txt", "listener_gbt_assoc_w0.3.assoc.json",
     "swow.npz", "entity_sims.npz", "lm_pmi.npz", "extra_sims.npz",
     "word_norms.npz", "wordnet_sims.npz", "lexical_sims.npz",
     # Optional: the stop listeners (stop_listener, stop_net_words_listener;

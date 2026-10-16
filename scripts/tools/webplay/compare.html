@@ -187,8 +187,8 @@ async function init(){
   $('ma').innerHTML = opts; $('mb').innerHTML = opts;
   const ids = r.spymasters.map(s => s.id);
   const pick = (saved, pref) => ids.includes(saved) ? saved : (ids.find(i => pref.includes(i)) || ids[0]);
-  $('ma').value = pick(load('a'), ['incumbent']);
-  $('mb').value = pick(load('b'), ['assoc_pass', 'assoc']);
+  $('ma').value = pick(load('a'), ['assoc_profile']);
+  $('mb').value = pick(load('b'), ['profile_temperature']);
   const b = load('blind'); if (b !== null) $('blind').checked = b === '1';
   $('ma').onchange = () => { store('a', $('ma').value); resetRecord(); };
   $('mb').onchange = () => { store('b', $('mb').value); resetRecord(); };

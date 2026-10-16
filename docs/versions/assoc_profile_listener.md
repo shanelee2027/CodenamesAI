@@ -70,3 +70,20 @@ learned_listener on holdout_v1_gptoss: 57.2%, boards won both ways 20 vs 7
 (p = 0.019), on 90 boards. Paired with the assoc booster under the same
 objective (28 vs 10), it is −1.1 points per game [−7.9, +5.6]: no detectable
 difference. Not adopted; the assoc booster stays the listener for play.
+
+**Played as itself** (2026-10-16): the incumbent's decision rule (expected
+net words, costs 0.2 / 1 / 10) with this booster, against learned_listener
+on holdout_v1_gptoss. 97 boards were played both ways; 3 were discarded
+because gpt-oss returned no usable ranking.
+
+| | win% | 95% CI | boards won both ways | assassin losses | mean number | own words per clue | own share |
+|---|---|---|---|---|---|---|---|
+| assoc_profile_listener | **56.7%** | [0.50, 0.63] | **22** | 11 | 2.24 | 1.75 | 84.5% |
+| learned_listener | 43.3% | [0.37, 0.50] | 9 | 12 | 2.28 | 1.72 | 82.7% |
+
+Sign test on the 31 decisive boards: p = 0.029. It is the first booster to
+beat the incumbent significantly under the incumbent's own rule. The earlier
+ones (is-a, ConceptNet, assoc) were 52–55% and not significant. It does so
+without the assassin price the win-probability models pay (11 against 12
+losses). **Adopted** on 2026-10-16 as the incumbent on the play server.
+learned_listener is still the fixed opponent of the gpt-oss suite.

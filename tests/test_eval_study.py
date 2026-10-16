@@ -91,7 +91,7 @@ class FakeEngine:
 
 @pytest.fixture
 def study(tmp_path):
-    return ps.EvalStudy(FakeEngine(), ["decoy", "decoy_out25"], tmp_path / "eval.jsonl")
+    return ps.EvalStudy(FakeEngine(), ["assoc_profile", "profile_temperature"], tmp_path / "eval.jsonl")
 
 
 class TestBlindness:
@@ -99,16 +99,16 @@ class TestBlindness:
         out = study.next("tester")
         assert set(out) == {"token", "words", "clue", "number", "revealed"}
         blob = json.dumps(out)
-        assert "decoy" not in blob and "out25" not in blob
+        assert "assoc_profile" not in blob and "temperature" not in blob
         hidden = [r for r in out["revealed"] if r is None]
         assert len(hidden) >= 25 - study.MAX_PREREVEAL, "only pre-revealed roles are sent"
 
     def test_arms_stay_balanced_within_one(self, study):
-        counts = {"decoy": 0, "decoy_out25": 0}
+        counts = {"assoc_profile": 0, "profile_temperature": 0}
         for n in range(1, 41):
             out = study.next("t")
             counts[study._pending[out["token"]]["arm"]] += 1
-            assert abs(counts["decoy"] - counts["decoy_out25"]) <= 1, n
+            assert abs(counts["assoc_profile"] - counts["profile_temperature"]) <= 1, n
 
     def test_the_assassin_is_never_pre_revealed(self, study):
         for _ in range(60):
@@ -144,7 +144,7 @@ class TestPrefetch:
         assert study._pending[out["token"]]["t_shown"] >= t
 
     def test_without_prefetch_nothing_runs_in_the_background(self, tmp_path):
-        s = ps.EvalStudy(FakeEngine(), ["decoy", "decoy_out25"], tmp_path / "e.jsonl", prefetch=False)
+        s = ps.EvalStudy(FakeEngine(), ["assoc_profile", "profile_temperature"], tmp_path / "e.jsonl", prefetch=False)
         s.next("t")
         assert len(s.engine.calls) == 1 and not s._ready
 
@@ -158,10 +158,10 @@ class TestRecording:
         res = study.stop(out["token"])
         assert res["done"] and res["recorded"] == 1
         row = json.loads((tmp_path / "eval.jsonl").read_text().strip())
-        assert row["player"] == "alice" and row["arm"] in {"decoy", "decoy_out25"}
+        assert row["player"] == "alice" and row["arm"] in {"assoc_profile", "profile_temperature"}
         assert row["ended_by"] == "stopped" and row["own_found"] == 1
         assert row["first_pick_own"] is True and row["stopped"] is True
-        assert row["model"] == "listener_gbt_decoy.txt"
+        assert row["model"] == "listener_gbt_assoc_profile.txt"
         assert row["picks"][0]["role"] == "a"
 
     def test_the_key_comes_back_only_once_the_turn_is_over(self, study):
@@ -186,41 +186,43 @@ class FakeCompareEngine:
         self.agree, self.boards = agree, 0
 
     def best_clue(self, board, key, turn_index):
-        if key == "incumbent":
+        if key == "assoc_profile":
             self.boards += 1
         same = self.boards <= self.agree
-        return ("clue" if same or key == "incumbent" else "other"), 2, 1.0
+        return ("clue" if same or key == "assoc_profile" else "other"), 2, 1.0
 
     def explain(self, board, key, clue, number):
         return {"targets": ["T1", "T2"], "value": 1.5,
-                "order": [{"word": "T1", "role": "a", "p": 0.9}]}
+                "order": [{"word": "T1", "role": "a", "p": 0.9}],
+                "risks": [{"word": "R1", "role": "b"}]}
 
 
 class TestCompare:
     def test_agreeing_boards_are_dealt_past_and_counted(self, tmp_path):
         study = ps.CompareStudy(FakeCompareEngine(agree=3), tmp_path / "v.jsonl")
-        out = study.next("incumbent", "assoc_pass", blind=False)
+        study.PREFETCH = 0       # no background deal sharing the fake's board counter
+        out = study.next("assoc_profile", "stop", blind=False)
         assert out["agreed"] == 3
         assert {s["clue"] for s in out["sides"]} == {"clue", "other"}
 
     def test_blind_sends_only_clue_and_targets_until_the_vote(self, tmp_path):
         study = ps.CompareStudy(FakeCompareEngine(), tmp_path / "v.jsonl")
-        out = study.next("incumbent", "assoc_pass", blind=True)
-        assert all(set(s) == {"clue", "number", "targets"} for s in out["sides"])
+        out = study.next("assoc_profile", "stop", blind=True)
+        assert all(set(s) == {"clue", "number", "targets", "risks"} for s in out["sides"])
         blob = json.dumps(out)
-        assert "incumbent" not in blob and "assoc" not in blob
+        assert "assoc_profile" not in blob and "stop" not in blob
         res = study.vote(out["token"], "right", "why")
-        assert {s["key"] for s in res["sides"]} == {"incumbent", "assoc_pass"}
+        assert {s["key"] for s in res["sides"]} == {"assoc_profile", "stop"}
         row = json.loads((tmp_path / "v.jsonl").read_text())
         assert row["winner"] == row["right"] and row["note"] == "why"
 
     def test_a_board_takes_one_vote(self, tmp_path):
         study = ps.CompareStudy(FakeCompareEngine(), tmp_path / "v.jsonl")
-        out = study.next("incumbent", "assoc_pass", blind=False)
+        out = study.next("assoc_profile", "stop", blind=False)
         study.vote(out["token"], "tie", "")
         with pytest.raises(ValueError):
             study.vote(out["token"], "left", "")
 
     def test_same_model_twice_is_refused(self, tmp_path):
         with pytest.raises(ValueError):
-            ps.CompareStudy(FakeCompareEngine(), tmp_path / "v.jsonl").next("decoy", "decoy", False)
+            ps.CompareStudy(FakeCompareEngine(), tmp_path / "v.jsonl").next("stop", "stop", False)

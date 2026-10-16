@@ -50,7 +50,7 @@ by the third decimal. Pass --no-k1 to turn it off.
 
 Usage:
     python scripts/tools/play_server.py                    # http://127.0.0.1:8000
-    python scripts/tools/play_server.py --eval-arms incumbent,decoy_out25
+    python scripts/tools/play_server.py --eval-arms assoc_profile,profile_temperature
 """
 
 from __future__ import annotations
@@ -82,21 +82,14 @@ from codenames.board import Board, OpponentBoardView, Role, clue_number_cap
 from codenames.clue_stats import ClueStats
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 from codenames.spymasters.base import TurnContext
-from codenames.spymasters.association_listener import AssociationListenerSpymaster
-from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaster
-from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import ListenerBundle, LearnedListenerSpymaster
-from codenames.spymasters.assoc_feature_listener import AssocFeatureListenerSpymaster
-from codenames.spymasters.conceptnet_listener import ConceptnetListenerSpymaster
-from codenames.spymasters.isa_listener import IsaListenerSpymaster
-from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
-from codenames.spymasters.pick_temperature_listener import PickTemperatureListenerSpymaster
 from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
 from codenames.spymasters.assoc_profile_listener import AssocProfileListenerSpymaster
 from codenames.spymasters.profile_temperature_listener import ProfileTemperatureListenerSpymaster
 from codenames.spymasters.stop_listener import StopListenerSpymaster
 from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
 from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymaster
+from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
          "/compare": "compare.html"}
@@ -126,78 +119,25 @@ ROLE_CODE = {Role.OWN: "a", Role.OPPONENT: "b", Role.NEUTRAL: "n", Role.ASSASSIN
 DEFAULT_EVAL_LOG = DEFAULT_CACHE_DIR / "human_eval.jsonl"
 DEFAULT_COMPARE_LOG = DEFAULT_CACHE_DIR / "compare_votes.jsonl"
 
-# Every spymaster the pages can use. The decoy variants share ONE loaded
-# booster: they differ only in `outside_n`, which is read at scoring time, so
-# offering all of them costs about the memory of the two model files. An entry
-# whose model file is missing is simply not offered -- the laptop demo bundle
-# may not carry the decoy booster.
+# Every spymaster the pages can use. The menu is for the author's own play,
+# so it carries only the current models; older ones stay in the registry
+# (configs/spymasters.json) and their docs, just not here. An entry whose
+# model file is missing is simply not offered -- the laptop demo bundle may
+# not carry every booster.
 SPYMASTERS: dict[str, dict] = {
-    "incumbent": {"label": "Incumbent", "model": "listener_gbt.txt", "outside_n": 0,
-                  "about": "The deployed listener. No decoy training, no outside option."},
-    "decoy": {"label": "Decoy-trained", "model": "listener_gbt_decoy.txt", "outside_n": 0,
-              "about": "Retrained with 5,039 decoy positions; outside option off."},
-    **{f"decoy_out{n}": {
-        "label": f"Decoy-trained, outside n={n}", "model": "listener_gbt_decoy.txt",
-        "outside_n": n,
-        "about": f"Prices 'the guesser picks something the clue never meant' as {n} "
-                 f"random vocabulary words ending the turn at zero."}
-       for n in (5, 10, 25, 50)},
-    # The association-count listener (codenames/spymasters/association_listener.py).
-    # Its scores carry an absolute level, so its pass is a FIXED score: the one
-    # a word needs to be named in `pass_rate` of free-association lists.
-    **{key: {
-        "label": label, "model": "listener_gbt_assoc_w0.3.txt", "outside_n": 0,
-        "cls": AssociationListenerSpymaster, "kwargs": {"pass_rate": rate},
-        "needs": ["listener_gbt_assoc_w0.3.assoc.json"], "about": about}
-       for key, label, rate, about in (
-           ("assoc", "Association-trained, no pass", None,
-            "Retrained with free-association counts as a second target; outside option off."),
-           ("assoc_pass", "Association-trained, pass 0.05", 0.05,
-            "Association-trained, and a pass priced at a word named in 5% of "
-            "free-association lists."),
-           ("assoc_pass_strong", "Association-trained, pass 0.2", 0.2,
-            "As above with the pass at 20%: vague clues are punished hard."))},
-    # The incumbent with per-pick listener temperatures in its reward
-    # (codenames/spymasters/pick_temperature_listener.py). Same booster, so it
-    # shares the incumbent's bundle; only the reward differs.
-    "pick_temperature": {
-        "label": "Pick temperatures", "model": "listener_gbt.txt", "outside_n": 0,
-        "cls": PickTemperatureListenerSpymaster, "kwargs": {"outside_n": 0},
-        "about": "The incumbent, but later picks are scored flatter (temperatures 1.0, 1.1, "
-                 "1.3, 1.5), since the listener is overconfident after its first pick."},
-    # The incumbent's search with a listener that has WordNet is-a features
-    # (codenames/spymasters/isa_listener.py): its own booster and table.
-    "isa": {
-        "label": "Is-a listener", "model": "listener_gbt_isa.txt", "outside_n": 0,
-        "cls": IsaListenerSpymaster, "kwargs": {"outside_n": 0}, "needs": ["isa_sims.npz"],
-        "about": "The incumbent's search, but its listener knows 'is a kind of' (WordNet), "
-                 "so for 'fruit' it no longer rates Pie like an orange."},
-    # isa_listener plus ConceptNet relations and phrases
-    # (codenames/spymasters/conceptnet_listener.py).
-    "conceptnet": {
-        "label": "ConceptNet listener", "model": "listener_gbt_conceptnet.txt", "outside_n": 0,
-        "cls": ConceptnetListenerSpymaster, "kwargs": {"outside_n": 0},
-        "needs": ["isa_sims.npz", "conceptnet_sims.npz"],
-        "about": "The is-a listener, plus ConceptNet's typed relations and phrases "
-                 "(Donald Duck, firefly)."},
-    # conceptnet_listener plus gpt-oss's free associations as listener inputs
-    # (codenames/spymasters/assoc_feature_listener.py).
-    "assoc_features": {
-        "label": "Association-feature listener", "model": "listener_gbt_assoc_features.txt", "outside_n": 0,
-        "cls": AssocFeatureListenerSpymaster, "kwargs": {"outside_n": 0},
-        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz"],
-        "about": "The ConceptNet listener, plus how often gpt-oss names each word when asked "
-                 "for free associations to the clue."},
     # assoc_features plus the clue's association profile and reverse
     # associations (codenames/spymasters/assoc_profile_listener.py): the
-    # highest-R2 single-score booster, with the incumbent's net-words reward.
+    # highest-R2 single-score booster, with the September incumbent's
+    # net-words reward. The incumbent since 2026-10-16 (docs/log.md).
     "assoc_profile": {
-        "label": "Association-profile listener", "model": "listener_gbt_assoc_profile.txt", "outside_n": 0,
+        "label": "Incumbent (association-profile listener)", "model": "listener_gbt_assoc_profile.txt", "outside_n": 0,
         "cls": AssocProfileListenerSpymaster, "kwargs": {"outside_n": 0},
         "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz"],
-        "about": "The association-feature listener, plus how vague the clue's associations are and "
-                 "whether each board word's own associations name the clue. Chooses by expected net "
-                 "words (+1, -0.2, -1, -10); its guesser never stops."},
+        "about": "The incumbent since 2026-10-16: the September spymaster with the best plain booster "
+                 "(67 features: ConceptNet, gpt-oss's free associations, how vague the clue's associations "
+                 "are and whether each board word's own associations name the clue). Chooses by expected "
+                 "net words (+1, -0.2, -1, -10); its guesser never stops. Beat the September incumbent "
+                 "56.7% on the gpt-oss suite (22 boards swept vs 9, p = 0.03)."},
     # The association-profile listener with per-pick temperatures fitted for
     # its booster (codenames/spymasters/profile_temperature_listener.py).
     "profile_temperature": {
@@ -208,14 +148,18 @@ SPYMASTERS: dict[str, dict] = {
         "about": "The association-profile listener, but the guesser's 2nd, 3rd and 4th picks are "
                  "less certain than its first (temperatures 1.09, 1.26, 1.41, fitted on gpt-oss), so "
                  "clues that rely on weak later words are worth less. Expected net words (+1, -0.2, -1, -10)."},
-    # The ConceptNet listener with picks 2+ modelled as their own choices
-    # (codenames/spymasters/within_turn_listener.py).
-    "within_turn": {
-        "label": "Within-turn listener", "model": "listener_gbt_conceptnet.txt", "outside_n": 0,
-        "cls": WithinTurnListenerSpymaster, "kwargs": {"outside_n": 0},
-        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "sequential_listener.json", "word_vectors.npz"],
-        "about": "The ConceptNet listener, but after the first pick the guesser is modelled as "
-                 "flatter and pulled toward words like the ones it already picked (Cap, then Glove)."},
+    # win_prob_listener with the assoc booster and frozen scores
+    # (codenames/spymasters/win_prob_listener.py): the configuration that won
+    # 59.1% against learned_listener on the gpt-oss suite (105dc03b7f48). The
+    # k=1 tiebreak is off, as in that run.
+    "win_prob_assoc": {
+        "label": "Win probability (association-feature listener)", "model": "listener_gbt_assoc_features.txt",
+        "outside_n": 0, "cls": WinProbListenerSpymaster, "kwargs": {"outside_n": 0}, "no_k1": True,
+        "score_is": "win",
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "win_value.npz"],
+        "about": "Chooses the clue that maximises the chance of winning after the turn (V(a, b) from "
+                 "10,266 gpt-oss games), with the association-feature listener and one score per word. "
+                 "Its guesser never stops. ~1 s per clue."},
     # Win-probability objective with the assoc booster, a pick-index model of
     # the turn and a one-move lookahead at the incumbent's reply
     # (codenames/spymasters/pick_index_lookahead_listener.py). Its value is a
@@ -284,30 +228,7 @@ SPYMASTERS: dict[str, dict] = {
             "The strict stop listener (net words)."),
            ("overpromise_guess_1", "Overpromise penalty 1, strict", "listener_gbt_stop_guess.txt", 1.0,
             "The strict stop listener (net words)."))},
-    # The trained clue policies (codenames/clue_policy.py): one forward pass,
-    # no listener, so no bundle and no `listen` for the explanation. Each
-    # announces at most what its checkpoint was trained to (the first two: 4).
-    **{key: {"label": label, "model": model, "outside_n": 0, "cls": cls, "policy": True,
-             "needs": ["policy_features.npy", "policy_features_aux.npz"], "about": about}
-       for key, label, model, cls, about in (
-           ("imitation_policy", "Imitation policy (k <= 4)", "policy_imitation.pt",
-            ImitationPolicySpymaster, "A network trained to copy the incumbent's clues, capped at 4."),
-           ("gptoss_reward_policy", "RL policy, per-turn reward (k <= 4)", "policy_gptoss_reward.pt",
-            GptossRewardPolicySpymaster, "The imitation policy after 275 REINFORCE steps on gpt-oss's "
-            "per-turn reward (the run was flat), capped at 4."),
-           ("imitation_policy_uncapped", "Imitation policy, uncapped", "policy_imitation_uncapped.pt",
-            ImitationPolicySpymaster, "A network trained to copy the uncapped incumbent; may "
-            "announce every own word left."))},
 }
-# Uncapped twins: the same model allowed to announce every own word left
-# rather than at most 4 (max_number=None). The listener's k feature was only
-# ever trained on 1-4, so above that its numbers are an extrapolation.
-for _key in ("incumbent", "pick_temperature", "isa", "conceptnet", "assoc_features", "within_turn", "decoy_out25", "assoc", "assoc_pass", "assoc_pass_strong"):
-    _spec = SPYMASTERS[_key]
-    SPYMASTERS[f"{_key}_uncapped"] = {
-        **_spec, "label": f"{_spec['label']}, uncapped",
-        "kwargs": {**(_spec.get("kwargs") or {"outside_n": _spec["outside_n"]}), "max_number": None},
-        "about": f"{_spec['about']} No cap on the number: up to every own word left."}
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
 # single user never needs two clues at once. ~0.7-1.1 s per clue.
@@ -322,6 +243,10 @@ class Engine:
         self.clue_stats = ClueStats.load(cache_dir=cache_dir)
         self._bundles: dict[str, ListenerBundle] = {}
         self._spymasters: dict[str, LearnedListenerSpymaster] = {}
+        # The search score of each clue given, for entries whose score is the
+        # value they chose on ("score_is": "win") but which have no
+        # `clue_value` to recompute it: the explanation shows that score.
+        self._scores: dict[tuple, float] = {}
 
     def available(self) -> list[str]:
         return [k for k, v in SPYMASTERS.items()
@@ -363,6 +288,8 @@ class Engine:
         if not picks:
             return None
         word, number, score = picks[0]
+        if SPYMASTERS[key].get("score_is"):
+            self._scores[(key, board.seed, frozenset(board.revealed), word, int(number))] = float(score)
         return word, int(number), float(score)
 
     SHOW = 6
@@ -397,6 +324,9 @@ class Engine:
             with _LOCK:
                 v = sm.clue_value(board, clue, number, self.sims)
             value, kind = (v, getattr(sm, "value_kind", "win")) if v is not None else (value, kind)
+        elif SPYMASTERS[key].get("score_is"):
+            v = self._scores.get((key, board.seed, frozenset(board.revealed), clue, int(number)))
+            value, kind = (v, SPYMASTERS[key]["score_is"]) if v is not None else (value, kind)
         points = None
         if hasattr(sm, "clue_points_at"):       # stop_listener: the own words the clue points at, unrounded
             with _LOCK:
@@ -869,12 +799,11 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--no-k1", dest="k1", action="store_false",
                     help="disable the k=1 similarity tiebreak")
-    ap.add_argument("--spymaster", default="incumbent", choices=sorted(SPYMASTERS),
+    ap.add_argument("--spymaster", default="assoc_profile", choices=sorted(SPYMASTERS),
                     help="the game page's starting choice")
-    ap.add_argument("--eval-arms", default="decoy,decoy_out25",
+    ap.add_argument("--eval-arms", default="assoc_profile,profile_temperature",
                     help="comma-separated spymasters the blind study compares. The default "
-                         "differs ONLY in the outside option -- same booster -- which is the "
-                         "comparison the arena sweep made and gpt-oss could not settle.")
+                         "differs ONLY in the per-pick temperatures -- same booster, same reward.")
     ap.add_argument("--eval-log", type=Path, default=DEFAULT_EVAL_LOG)
     ap.add_argument("--compare-log", type=Path, default=DEFAULT_COMPARE_LOG)
     ap.add_argument("--no-open", dest="open_browser", action="store_false")

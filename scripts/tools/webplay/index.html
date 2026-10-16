@@ -243,7 +243,7 @@ $('sm').onchange = e => {
   if(B && !over) say(`Spymaster set to <b>${SM[smKey].label}</b> — from the next clue.`);
 };
 
-// ?seed=12345 replays a specific board; ?spymaster=decoy_out10 picks a model.
+// ?seed=12345 replays a specific board; ?spymaster=profile_temperature picks a model.
 const qs=new URLSearchParams(location.search);
 fetch('/api/spymasters').then(r=>r.json()).then(d=>{
   const sel=$('sm');

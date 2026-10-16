@@ -6970,9 +6970,87 @@ cache:
 - both entries are listed;
 - each gives a clue on one board in about 2 s.
 
-A first check run piped through `tail` printed nothing for 10 minutes and
-timed out. The rerun, logging each step, finished in seconds. The cause was
-not found and did not recur.
+A first check run printed nothing for 10 minutes and timed out. The rerun,
+logging each step, finished in seconds. (Found 2026-10-16: the first check
+wrapped `best_clue` in `play_server._LOCK`, which `best_clue` takes itself.
+The lock is not reentrant, so the script deadlocked on itself. Not a bug in
+the bundle.)
 
 Republished to the private release (`shanelee2027/codenames-demo`, tag
 `demo`).
+
+## assoc_profile_listener against learned_listener, and the play server menu cut to current models (2026-10-16)
+
+**Question (Shane).** Should the best plain booster become the incumbent?
+That is the association-profile booster: one score per word, no
+temperatures, no pick index. Its spymaster, assoc_profile_listener, uses the
+September incumbent's rule (expected net words). It had only been played
+inside win_prob_listener.
+
+**Run.**
+- `run_eval_suite.py assoc_profile_listener learned_listener --suite
+  configs/eval_suite_gptoss.json --max-workers 6 --threads-per-worker 16`.
+- 597 s for 200 games.
+- 3 boards discarded: gpt-oss gave no usable ranking.
+- llm_store.db was backed up first:
+  `cache/backups/llm_store_2026-10-16_pre_assoc_profile_suite.db`.
+
+**Expected:** a lead in the 52–55% band of earlier boosters under this rule,
+probably not significant.
+
+**Found:** 56.7% [0.50, 0.63]. Boards won both ways were 22 against 9
+(p = 0.029). Assassin losses were 11 against 12, mean number 2.24 against
+2.28, and own share of guesses 84.5% against 82.7%.
+- It is the first significant booster gain under the old rule.
+- It has the same assassin rate as the incumbent. The win-probability
+  models' leads came with about twice the assassin losses.
+- The number of games one booster wins is still noisy at 100 boards. This
+  lead is 1–4 points above the earlier boosters', within their intervals.
+
+**Adopted as the incumbent for play** (the menu label "Incumbent"). Still
+open (option A or B, asked): whether it also replaces learned_listener as
+the R² reference and as the suite's fixed opponent. Every report and doc
+still means learned_listener by "incumbent".
+
+**Play server menu** (`scripts/tools/play_server.py`), 37 entries cut to
+11, at Shane's request.
+
+*Removed:*
+- every older plain booster (the September incumbent, is-a, ConceptNet,
+  association-feature);
+- the association-trained and pass models;
+- the decoy and outside-option models;
+- pick temperatures and within-turn on old boosters;
+- the clue policies;
+- every uncapped twin.
+
+The models stay in the registry and their docs. The menu just no longer
+offers them.
+
+*Added:* `win_prob_assoc`, which is win_prob_listener with the assoc
+booster, frozen scores and no k=1 tiebreak, the configuration of the 59.1%
+suite result.
+- Its explanation shows the P(win) it chose on.
+- win_prob_listener has no `clue_value`, so the server now keeps the search
+  score of each clue it gives, for entries marked `score_is`.
+- Without that, the explanation fell back to expected net words (1.88 for a
+  clue chosen at P(win) 0.515).
+
+*Defaults:*
+- the game page now starts on assoc_profile;
+- the compare page defaults to assoc_profile against profile_temperature;
+- the blind study's arms are assoc_profile and profile_temperature (they
+  were decoy and decoy_out25, both now removed).
+
+*Tests.* `tests/test_eval_study.py` used removed keys and now uses current
+ones. Two of its compare tests had been failing since 2026-10-06, unnoticed:
+- the fake engine returned no `risks`, which the compare page has needed
+  since then;
+- the agreed-board count raced the background prefetch thread on the fake's
+  shared counter. That test now sets `PREFETCH = 0`.
+
+All 25 pass, three runs in a row.
+
+*Demo bundle:* the decoy and association-trained boosters are no longer in
+`CACHE_FILES`. `listener_gbt.txt` stays, because the pick-index lookahead
+plays the September incumbent's reply with it. Not republished yet.
