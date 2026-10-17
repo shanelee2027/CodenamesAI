@@ -7361,3 +7361,28 @@ The "stopped early" column is the arena guesser's own version of the comfort
 metric: the share of turns where the words it calls clear do not cover the
 number. It comes free with every game, so the separate "sure" probe on these
 games may be unnecessary.
+
+**Tests for the comfort columns (2026-10-17).** Each board is played both
+ways, so for each pairing and board I took the model's early-stop rate (and
+mean number) minus assoc_profile's in the same games. Then a one-sample t-test
+over the 100 boards (df 99).
+
+| model | stopped early, it vs opp | t | p | mean number diff | t | p |
+|---|---|---|---|---|---|---|
+| win_prob (assoc) | 37.8% vs 30.8% | +3.07 | 0.003 | +0.39 | +6.33 | <0.0001 |
+| pick_index_lookahead | 39.1% vs 29.5% | +4.04 | 0.0001 | +0.36 | +6.24 | <0.0001 |
+| profile_temperature | 24.1% vs 28.9% | −2.86 | 0.005 | −0.21 | −8.02 | <0.0001 |
+| stop (loose) | 36.6% vs 30.2% | +1.95 | 0.054 | +0.28 | +6.22 | <0.0001 |
+| stop, strict | 15.9% vs 28.5% | −6.74 | <0.0001 | −0.33 | −9.64 | <0.0001 |
+| stop_net (loose) | 38.9% vs 32.5% | +2.96 | 0.004 | +0.15 | +4.15 | 0.0001 |
+| stop_net, strict | 17.7% vs 28.3% | −6.19 | <0.0001 | −0.33 | −10.41 | <0.0001 |
+| overpromise 0.5, strict | 14.4% vs 28.7% | −8.18 | <0.0001 | −0.36 | −11.78 | <0.0001 |
+| overpromise 0.5 (loose) | 28.0% vs 29.0% | −0.82 | 0.41 | −0.11 | −3.18 | 0.002 |
+| overpromise 1.0, strict | 11.3% vs 27.3% | −8.69 | <0.0001 | −0.42 | −13.99 | <0.0001 |
+
+Unlike the win rates, the comfort differences are clear: eight of ten
+pairings differ from the incumbent at p < 0.01. The early-stop rate moves
+with the number, as sure ÷ number did, so most of a model's comfort is how
+much it asks for. The win-rate tests are a sign test on boards won both ways
+(table above); a board-level t statistic is not used for them because a board
+pair has only three outcomes.
