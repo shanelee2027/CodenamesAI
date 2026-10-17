@@ -737,3 +737,10 @@ class TestSubsetFirstGuesser:
         assert g.asker.model == "deepinfra/openai/gpt-oss-120b+effort=low"
         with pytest.raises(ValueError):
             build_guesser("deepinfra:openai/gpt-oss-120b:low:subset=maybe")
+
+
+def test_a_two_step_guesser_refusal_discards_the_board_like_a_ranking_refusal():
+    from codenames.two_team_arena import _is_guesser_refusal
+    assert _is_guesser_refusal(RuntimeError("no usable answer for clue 'supporter': no JSON object"))
+    assert _is_guesser_refusal(RuntimeError("did not return a usable ranking for clue 'x'"))
+    assert not _is_guesser_refusal(RuntimeError("something else"))

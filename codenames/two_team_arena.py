@@ -319,8 +319,9 @@ def _is_guesser_refusal(exc: Exception) -> bool:
     backfill board order (codenames/guessers/openai_compat.py), which is right
     -- a fabricated ranking would be cached and poison every later run. It is a
     property of the position, not a bug, so the board is discarded and the run
-    continues."""
-    return isinstance(exc, RuntimeError) and "usable ranking" in str(exc)
+    continues. The two-step guesser's first call (which words the clue points
+    at, codenames/relatedness.py) refuses the same way."""
+    return isinstance(exc, RuntimeError) and ("usable ranking" in str(exc) or "no usable answer for clue" in str(exc))
 
 
 # Concurrent clue computations allowed per worker process under threads.

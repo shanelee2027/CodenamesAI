@@ -7309,3 +7309,55 @@ server's menu are played in turn, with the menu's settings:
 - overpromise_listener 0.5 strict and loose, and 1.0 strict.
 Expected cost: about 14 calls per game, about $0.20 per model, about $2 for
 all ten. DeepInfra credit before the run: about $10.42 (auto top-up off).
+
+**A crash on the way.** stop_net's run died at 195 of 200 games. On seed 25,
+the first (relatedness) call for the clue 'supporter' gave no parsable answer
+three times. The arena discards a board only when the error says "usable
+ranking" (`two_team_arena.py::_is_guesser_refusal`), so this error ended the
+run instead. The predicate now also accepts the relatedness refusal ("no usable
+answer for clue"), with a test. A rerun played the 4 missing boards
+(stored games are kept; see `missing_seeds`). overpromise_guess had started
+before the fix; its rerun found nothing missing.
+
+**Result** (all vs assoc_profile_listener, 100 boards played both ways
+unless noted; "stopped early" is the share of the model's turns where the
+guesser's clear set ran out before the number, the comfort deficit as this
+guesser sees it; assoc_profile's own rate across all ten pairings is 29.4%):
+
+| model | win% | boards both ways | sign p | assassin (it vs opp) | mean k | own% | stopped early | passes |
+|---|---|---|---|---|---|---|---|---|
+| win_prob (assoc booster) (99 boards) | **54.5** | 23 vs 14 | 0.19 | 12 vs 10 | 2.62 | 86.1 | 37.8% | 3.4% |
+| overpromise 0.5, strict | 52.0 | 21 vs 17 | 0.63 | 5 vs 8 | 1.84 | 90.6 | 14.4% | 0.0% |
+| pick_index_lookahead | 50.5 | 22 vs 21 | 1.00 | 16 vs 8 | 2.56 | 86.2 | 39.1% | 3.7% |
+| profile_temperature | 50.0 | 12 vs 12 | 1.00 | 7 vs 9 | 2.01 | 90.3 | 24.1% | 0.7% |
+| stop (loose) | 49.0 | 19 vs 21 | 0.87 | **19 vs 4** | 2.50 | 84.3 | 36.6% | 2.7% |
+| stop, strict (99 boards) | 47.5 | 15 vs 20 | 0.50 | 9 vs 7 | 1.91 | 88.3 | 15.9% | 0.3% |
+| stop_net (loose) | 47.0 (1 draw) | 17 vs 22 | 0.52 | **13 vs 3** | 2.40 | 87.1 | 38.9% | 6.7% |
+| overpromise 0.5 (loose) | 47.0 | 13 vs 19 | 0.38 | 8 vs 8 | 2.09 | 89.3 | 28.0% | 1.7% |
+| overpromise 1.0, strict | 45.5 | 13 vs 22 | 0.18 | 5 vs 8 | 1.73 | 91.4 | 11.3% | 0.0% |
+| stop_net, strict | 45.0 | 15 vs 25 | 0.15 | 6 vs 7 | 1.88 | 90.0 | 17.7% | 0.5% |
+
+Cost: $0.71 for the whole arena, against the $2 estimate (DeepInfra month
+usage $2.28 → $2.99). About 20 minutes per model, longer for the stop
+models.
+
+**Expected:** with a guesser that declines words, the models built around
+stopping (the stop and overpromise families) gain on the incumbent.
+**Found:** none of the ten beats assoc_profile_listener significantly; every
+sign p is above 0.15. Two patterns are clear even so:
+- **The loose stop listeners lose to the assassin.** stop loses 19 to 4
+  (Fisher p = 0.002) and stop_net 13 to 3 (p = 0.019). They expect the
+  guesser to go on to "stretch" words, which this guesser does not, so they
+  ask for more than it will take, and its later guesses are worse.
+- **There is a trade-off between win rate and comfort.** The strict stop and
+  overpromise models give the smallest numbers (1.7–1.9), so the guesser runs
+  out of clear words on only 11–18% of their turns, against the incumbent's
+  29% and win_prob and pick_index's 38–39%. They win 45–52%. overpromise 0.5
+  strict is the only model at or above 50% that is also more comfortable than
+  the incumbent (52.0%, 14.4% stopped early, 5 assassin losses to 8). Its win
+  edge is not significant.
+
+The "stopped early" column is the arena guesser's own version of the comfort
+metric: the share of turns where the words it calls clear do not cover the
+number. It comes free with every game, so the separate "sure" probe on these
+games may be unnecessary.
