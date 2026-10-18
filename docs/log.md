@@ -7442,3 +7442,13 @@ against 51.2% and 0.839). The win difference is not significant (sign p =
 - On the axis that is measured precisely (comfort), overpromise 0.5 strict
   gives up nothing measurable in wins. That makes it the natural candidate
   for "comfortable without losing".
+
+## Play server: all four overpromise combinations (2026-10-18)
+
+Shane wants to compare clues from the loose and strict overpromise models at
+penalties 0.5 and 1 on /compare. The menu had three of the four; added
+`overpromise_1` (loose stop listener, promise_cost 1.0). The four labels now
+say which set each stop listener was trained on: "loose (guess + stretch)"
+or "strict (guess only)". Background from the comfort arena: strict 0.5
+beat loose 0.5 on 27 boards to 16 (57 the same; sign p = 0.13). That arena's
+guesser stops when the "guess" set runs out, which favours the strict model.

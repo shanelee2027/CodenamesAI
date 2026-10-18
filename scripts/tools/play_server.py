@@ -222,12 +222,18 @@ SPYMASTERS: dict[str, dict] = {
              "about": f"{about} Each promised word the guesser stops short of costs {lam} words, and the "
                       "number is the one with the best expected net words after that cost."}
        for key, label, stop, lam, about in (
-           ("overpromise", "Overpromise penalty 0.5", "listener_gbt_stop.txt", 0.5,
-            "The stop listener (net words)."),
-           ("overpromise_guess", "Overpromise penalty 0.5, strict", "listener_gbt_stop_guess.txt", 0.5,
-            "The strict stop listener (net words)."),
-           ("overpromise_guess_1", "Overpromise penalty 1, strict", "listener_gbt_stop_guess.txt", 1.0,
-            "The strict stop listener (net words)."))},
+           ("overpromise", "Overpromise penalty 0.5, loose (guess + stretch)", "listener_gbt_stop.txt", 0.5,
+            "The stop listener (net words), trained on guess + stretch: it expects the guesser to "
+            "stop when the stretch words run out."),
+           ("overpromise_1", "Overpromise penalty 1, loose (guess + stretch)", "listener_gbt_stop.txt", 1.0,
+            "The stop listener (net words), trained on guess + stretch: it expects the guesser to "
+            "stop when the stretch words run out."),
+           ("overpromise_guess", "Overpromise penalty 0.5, strict (guess only)", "listener_gbt_stop_guess.txt", 0.5,
+            "The strict stop listener (net words), trained on guess only: it expects the guesser to "
+            "stop when the clearly-meant words run out."),
+           ("overpromise_guess_1", "Overpromise penalty 1, strict (guess only)", "listener_gbt_stop_guess.txt", 1.0,
+            "The strict stop listener (net words), trained on guess only: it expects the guesser to "
+            "stop when the clearly-meant words run out."))},
 }
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
