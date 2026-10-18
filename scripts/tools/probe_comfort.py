@@ -25,6 +25,11 @@ A useful question spreads its answers across clues and tracks that outcome.
 Raw responses go to table `comfort_probe` of cache/llm_store.db.
 
     python scripts/tools/probe_comfort.py --per-model 25 --max-calls 260
+
+`--suite <config>` samples instead from every spymaster with games in that
+suite (e.g. the comfort arena, configs/eval_suite_gptoss_subset_guess.json:
+its boards are the same held-out ones, and its outcome is the two-step
+guesser's).
 """
 
 from __future__ import annotations
@@ -76,7 +81,7 @@ Respond with ONLY a JSON object of the form {{"clarity": <1-5>}} -- no other tex
 }
 
 
-def turns_of(con, sid: str) -> list[dict]:
+def turns_of(con, sid: str, suite: str = SUITE) -> list[dict]:
     """Every turn `sid` gave in its suite games, from the guesser's seat."""
     from codenames.board import Board, load_holdout_wordlist
 
@@ -84,7 +89,7 @@ def turns_of(con, sid: str) -> list[dict]:
     out = []
     for label, seed, board_json, turns_json in con.execute(
             "SELECT label, seed, board, turns FROM game_records WHERE suite_id = ? AND spymaster_id LIKE ?",
-            (SUITE, f"%{sid}%")):
+            (suite, f"%{sid}%")):
         seat = dict(kv.split("=", 1) for kv in label.split("|", 1)[1].split(","))
         board = json.loads(board_json)
         words = Board.generate(seed=seed, vocabulary=vocab).words
@@ -126,6 +131,8 @@ def main() -> None:
     ap.add_argument("--max-workers", type=int, default=16)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--questions", nargs="+", default=list(QUESTIONS))
+    ap.add_argument("--suite", type=Path, default=None,
+                    help="a suite config: sample every spymaster with games in it, not MODELS")
     args = ap.parse_args()
 
     from codenames.guessers.openai_compat import OpenAICompatGuesser
@@ -137,9 +144,18 @@ def main() -> None:
         number INTEGER, prompt TEXT NOT NULL, answer TEXT NOT NULL, raw TEXT NOT NULL)""")
     con.commit()
     rng = random.Random(args.seed)
+    suite, models, tag = SUITE, MODELS, ""
+    if args.suite is not None:
+        from codenames.eval_suite import load_eval_suite
+
+        s = load_eval_suite(args.suite)
+        suite, tag = s.suite_id, f"{s.name}_"
+        ids = {kv.split("=", 1)[1] for (sm,) in con.execute(
+            "SELECT DISTINCT spymaster_id FROM game_records WHERE suite_id = ?", (suite,)) for kv in sm.split(",")}
+        models = {i: i for i in sorted(ids)}
     sample = []
-    for name, sid in MODELS.items():
-        ts = turns_of(con, sid)
+    for name, sid in models.items():
+        ts = turns_of(con, sid, suite)
         rng.shuffle(ts)
         sample += [{**t, "spymaster": name} for t in ts[:args.per_model]]
 
@@ -220,7 +236,7 @@ def main() -> None:
     print(f"\n   base rate: gpt-oss found all N on {y.mean():.0%} of these turns")
 
     print("\nBy spymaster (pilot sizes; not a comparison)")
-    for name in MODELS:
+    for name in models:
         ts = [t for t in done if t["spymaster"] == name]
         if not ts:
             continue
@@ -232,7 +248,7 @@ def main() -> None:
         line += f"  all found {np.mean([t['all_found'] for t in ts]):.0%}"
         print(line)
 
-    out = PROJECT_ROOT / "cache" / "report" / "comfort_probe_pilot.json"
+    out = PROJECT_ROOT / "cache" / "report" / f"comfort_probe_{tag}{args.per_model}_{'_'.join(args.questions)}.json"
     out.write_text(json.dumps({"args": vars(args), "calls": calls["n"], "summary": summary, "turns": sample},
                               indent=1, default=str))
     print(f"\nsaved -> {out}")

@@ -7386,3 +7386,59 @@ with the number, as sure ÷ number did, so most of a model's comfort is how
 much it asks for. The win-rate tests are a sign test on boards won both ways
 (table above); a board-level t statistic is not used for them because a board
 pair has only three outcomes.
+
+## Comfort arena: the scoreboard (2026-10-18)
+
+**Comfort from the stored first answers.** Every turn of the arena already has
+the two-step guesser's first answer stored (the words it says the clue clearly
+points at, asked without the number). Comfort per turn is
+min(|clear set|, k) / k, the same quantity as the probe's sure ÷ number.
+`scripts/tools/plot_comfort_frontier.py` computes it with no API calls,
+together with each model's win rate on boards played both ways. Intervals are
+bootstrapped over boards. I used this rather than the "stopped early" rate
+because a turn cut short by a wrong guess never shows whether the clear set
+would have run out.
+
+**A deadlock on the way.** One stop_net game (seed 55) ran 80 turns to the
+cap and was drawn. The guesser passed on assoc_profile's "cereal" for 4 and on
+stop_net's "wrong" for 3, 40 and 39 times. Neither spymaster changes its clue
+after a pass, and a pass leaves the board unchanged, so the same position
+repeats. The scoreboard counts each position once (77 repeats dropped). It is
+one game in 2,000, but it is a real gap: with a guesser that can pass, a
+spymaster should not repeat a clue that was just passed on.
+
+**Check against the "sure" probe.** `probe_comfort.py --suite
+configs/eval_suite_gptoss_subset_guess.json --per-model 100 --questions sure`:
+1,100 turns, 962 calls, about $0.07, none unanswerable. 93.5% of sure words
+are the team's, and AUC for all N found is 0.794, as in the earlier runs.
+
+| model | win% (95% CI) | comfort, stored answers (95% CI) | sure ÷ k probe | frontier |
+|---|---|---|---|---|
+| win_prob (assoc) | 54.5 [49.0, 60.6] | 0.756 [0.729, 0.783] | 0.590 | yes |
+| overpromise 0.5, strict | 52.0 [46.5, 58.0] | 0.929 [0.919, 0.939] | 0.783 | yes |
+| assoc_profile (incumbent, pooled) | 51.2 [49.3, 53.0] | 0.839 [0.826, 0.851] | 0.683 | |
+| pick_index_lookahead | 50.5 [44.0, 57.0] | 0.749 [0.724, 0.774] | 0.606 | |
+| profile_temperature | 50.0 [45.5, 54.5] | 0.869 [0.854, 0.886] | 0.730 | |
+| stop | 49.0 [43.0, 55.0] | 0.781 [0.759, 0.803] | 0.594 | |
+| stop, strict | 47.5 [41.9, 53.0] | 0.919 [0.907, 0.932] | 0.754 | |
+| stop_net | 47.0 [41.0, 53.5] | 0.790 [0.766, 0.813] | 0.642 | |
+| overpromise 0.5 | 47.0 [41.5, 52.5] | 0.847 [0.829, 0.865] | 0.707 | |
+| overpromise 1.0, strict | 45.5 [40.0, 51.0] | 0.944 [0.934, 0.954] | 0.793 | yes |
+| stop_net, strict | 45.0 [39.0, 51.5] | 0.910 [0.894, 0.924] | 0.731 | |
+
+**Expected:** the two comfort measures roughly agree.
+**Found:** they rank the eleven models almost identically (Spearman 0.973).
+The stored answers sit higher (the "guess" group is looser than "sure"), but
+the order is the same. So the free stored-answer comfort can stand in for the
+probe when comparing models.
+
+**The frontier** (cache/report/comfort_frontier_holdout_v1_gptoss_subset_guess.png)
+is win_prob → overpromise 0.5 strict → overpromise 1.0 strict. The incumbent
+is not on it: overpromise 0.5 strict is ahead on both axes (52.0% and 0.929
+against 51.2% and 0.839). The win difference is not significant (sign p =
+0.63). The comfort difference is (early-stop t = −8.2 above).
+- Caveat: the incumbent's point pools its games against all ten models, so
+  its 51.2% is its average against this field, not a head-to-head.
+- On the axis that is measured precisely (comfort), overpromise 0.5 strict
+  gives up nothing measurable in wins. That makes it the natural candidate
+  for "comfortable without losing".
