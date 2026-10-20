@@ -45,6 +45,10 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
 - [`overpromise_listener`](overpromise_listener.md): stop_net_words_listener
   with a cost per promised word the guesser stops short of; the number is
   chosen by the objective again.
+- [`win_prob_overpromise_listener`](win_prob_overpromise_listener.md):
+  stop_listener's P(win) objective (strict STOP listener) with
+  overpromise_listener's cost per promised word not attempted, converted to
+  win probability at the current score; the number is the objective's.
 - [`profile_temperature_listener`](profile_temperature_listener.md):
   assoc_profile_listener with per-pick temperatures fitted for its booster.
 

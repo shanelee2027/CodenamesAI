@@ -7452,3 +7452,59 @@ say which set each stop listener was trained on: "loose (guess + stretch)"
 or "strict (guess only)". Background from the comfort arena: strict 0.5
 beat loose 0.5 on 27 boards to 16 (57 the same; sign p = 0.13). That arena's
 guesser stops when the "guess" set runs out, which favours the strict model.
+
+## win_prob_overpromise_listener: built (2026-10-20)
+
+**The model** (designed with Shane; docs/versions/win_prob_overpromise_listener.md):
+stop_listener's P(win) objective, under the strict STOP listener by default,
+plus overpromise_listener's cost. A STOP after j picks on a clue for k costs
+promise_cost × (k − j) × w, with w = `WinValue.one_word(a, b)`, the win
+probability of one more own word at the turn's starting score. The number is
+the objective's argmax over k in [1, 4]. Registered as
+`win_prob_overpromise_listener` (promise_cost 0.5); on the play server as
+"Win probability + overpromise penalty 0.5 / 1, strict (guess only)".
+
+**Tests** (tests/test_stop_listener.py): with no charge, `turn_values_promise`
+equals stop_listener's `turn_values` on a random S; with a charge, every
+value is lower, the gap grows with k, and for k = 1 it is exactly the charge
+times P(STOP at pick 1); the registry entry builds the class and names the
+strict STOP booster. 25 passed with test_spymasters.py.
+
+**The value on /compare.** It is P(win) minus the cost, so the class says
+`value_kind = "win_charged"`, and compare.html labels it "P(win) after the
+turn minus the overpromise cost" instead of plain "P(win) after the turn".
+The menu entries' "about" says so too. Checked in a separate process
+(play_server.Engine, no port): both keys build, give a clue and explain it.
+
+**Numbers on 30 boards** (no API; holdout vocabulary, seeds 0–29, first
+clue). Team A opens with 9 own words against 8; the same boards from team B's
+side (`OpponentBoardView`) are 8 against 9.
+
+| model | team A: 1 | 2 | 3 | 4 | mean | team B: 1 | 2 | 3 | 4 | mean |
+|---|---|---|---|---|---|---|---|---|---|---|
+| stop, strict | 0 | 11 | 19 | 0 | 2.63 | 15 | 0 | 15 | 0 | 2.00 |
+| overpromise 0.5, strict | 0 | 14 | 15 | 1 | 2.57 | 0 | 19 | 10 | 1 | 2.40 |
+| overpromise 1.0, strict | 0 | 18 | 12 | 0 | 2.40 | 0 | 21 | 9 | 0 | 2.30 |
+| win_prob_overpromise, λ = 0 | 0 | 1 | 12 | 17 | 3.53 | 1 | 0 | 24 | 5 | 3.10 |
+| win_prob_overpromise, λ = 0.5 | 0 | 1 | 12 | 17 | 3.53 | 7 | 0 | 22 | 1 | 2.57 |
+| win_prob_overpromise, λ = 1 | 0 | 1 | 12 | 17 | 3.53 | 8 | 0 | 22 | 0 | 2.47 |
+
+**Expected:** the number falls as λ rises. **Found:** only from team B's
+side. On team A's opening clue λ changes nothing: the same clue and number
+on all 30 boards. The cause is V, not the code. V is smoothed and then made
+monotone by isotonic regression, which leaves flat stretches, and
+`one_word(9, 8)` = 1 − V(8, 8) − (1 − V(8, 9)) = 0 (both V are 0.637). So
+the cost is zero on the starting team's first clue. The same flatness shapes
+the numbers from team B's side: after(8, 9)'s P(win) by own words found is
+0.522, 0.599, **0.599**, 0.819, so a second word is worth nothing and no
+P(win) model there ever says 2 (stop strict, which counts what the clue points
+at, picks clues for 1 or 3). From team A's side, the first word is worth
+nothing (0.363, 0.363, 0.456, 0.599).
+
+How often the cost vanishes in play: across the comfort arena's games for
+overpromise 0.5 strict and stop strict, one_word is 0 on 12–13% of the
+model's turns (all 100 games it opens with 9 v 8, plus a few endgame scores:
+6 v 2, 7 v 3, 8 v 4). Elsewhere it averages 0.15. The arena run goes ahead
+with the model as designed; a smoother w (for example V's own words averaged
+over the next few words, or a fitted smooth V) is a possible fix, for Shane
+to decide.

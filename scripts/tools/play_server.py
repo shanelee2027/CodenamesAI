@@ -89,6 +89,7 @@ from codenames.spymasters.profile_temperature_listener import ProfileTemperature
 from codenames.spymasters.stop_listener import StopListenerSpymaster
 from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
 from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymaster
+from codenames.spymasters.win_prob_overpromise_listener import WinProbOverpromiseListenerSpymaster
 from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
@@ -234,6 +235,23 @@ SPYMASTERS: dict[str, dict] = {
            ("overpromise_guess_1", "Overpromise penalty 1, strict (guess only)", "listener_gbt_stop_guess.txt", 1.0,
             "The strict stop listener (net words), trained on guess only: it expects the guesser to "
             "stop when the clearly-meant words run out."))},
+    # The strict stop listener's P(win) objective with the overpromise cost:
+    # each promised word the guesser stops short of costs `promise_cost` own
+    # words, in win probability at the current score; the number is the
+    # objective's (codenames/spymasters/win_prob_overpromise_listener.py).
+    **{key: {"label": label, "model": "listener_gbt_assoc_profile.txt", "outside_n": 0,
+             "cls": WinProbOverpromiseListenerSpymaster, "no_k1": True,
+             "kwargs": {"outside_n": 0, "stop_model_path": DEFAULT_CACHE_DIR / "listener_gbt_stop_guess.txt",
+                        "promise_cost": lam},
+             "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz",
+                       "win_value.npz", "listener_gbt_stop_guess.txt"],
+             "about": "The strict stop listener (trained on guess only), choosing by the chance of winning "
+                      f"after the turn. Each promised word the guesser stops short of costs {lam} of an own "
+                      "word's worth in win probability at the current score, and the number is the one with "
+                      "the best value after that cost. The value shown is P(win) minus that cost."}
+       for key, label, lam in (
+           ("win_prob_overpromise", "Win probability + overpromise penalty 0.5, strict (guess only)", 0.5),
+           ("win_prob_overpromise_1", "Win probability + overpromise penalty 1, strict (guess only)", 1.0))},
 }
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a

@@ -98,3 +98,40 @@ def test_promise_cost_charges_unattempted_words_at_stop_only():
     assert v[0] == pytest.approx(1.0)                                   # the number is reached
     assert v[1] == pytest.approx(0.5 * (1 - 0.5 * 1) + 0.5 * (1 - 10))  # STOP short by 1; the assassin is not charged
     assert v[2] == pytest.approx(0.5 * (1 - 0.5 * 2) + 0.5 * (1 - 10))  # STOP short by 2
+
+
+def test_win_prob_promise_with_no_charge_is_stop_listeners_value():
+    from codenames.spymasters.win_prob_overpromise_listener import turn_values_promise
+
+    rng = np.random.default_rng(3)
+    n_own, K = 3, 4
+    S = rng.normal(0, 1.5, (K, n_own + len(ROLES) + 1))
+    assert turn_values_promise(S, n_own, ROLES, _Value.V, K, 0.0) == pytest.approx(
+        turn_values(S, n_own, ROLES, _Value.V, K))
+
+
+def test_win_prob_promise_charge_lowers_the_value_more_for_larger_numbers():
+    from codenames.spymasters.win_prob_overpromise_listener import turn_values_promise
+
+    rng = np.random.default_rng(4)
+    n_own, K = 4, 4
+    S = rng.normal(0, 1.5, (K, n_own + len(ROLES) + 1))
+    free = turn_values_promise(S, n_own, ROLES, _Value.V, K, 0.0)
+    charged = turn_values_promise(S, n_own, ROLES, _Value.V, K, 0.05)
+    gap = free - charged
+    assert np.all(gap >= 0)
+    assert np.all(np.diff(gap) > 0)
+    # k = 1: the charge is paid only when pick 1 is STOP, once.
+    z = np.exp(S[0]).sum()
+    assert gap[0] == pytest.approx(0.05 * np.exp(S[0, -1]) / z)
+
+
+def test_win_prob_promise_builds_from_the_registry_with_the_strict_stop_model():
+    from codenames.spymasters.registry import spymaster_spec
+    from codenames.spymasters.win_prob_overpromise_listener import WinProbOverpromiseListenerSpymaster
+
+    cls, kw = spymaster_spec("win_prob_overpromise_listener")
+    assert cls is WinProbOverpromiseListenerSpymaster
+    assert kw["promise_cost"] == 0.5
+    files = {p.name for p in cls.model_files(kw)}
+    assert "listener_gbt_stop_guess.txt" in files and "listener_gbt_stop.txt" not in files
