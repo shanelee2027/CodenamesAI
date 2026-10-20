@@ -216,7 +216,7 @@ held-out guesses.
 \toprule
 model & $R^2$ & win\% & boards won both ways & sign $p$ \\
 \midrule
-Gaussian ($\sigma = 1.5$) & -- & \textcolor{red}{TBD} & \textcolor{red}{TBD} & \textcolor{red}{TBD} \\
+Gaussian ($\sigma = 1.5$) & -- & 31.4$^\dagger$ & 4 vs 36 & $2 \times 10^{-7}$ \\
 GBT listener (incumbent) & 0.3205 & 50 & -- & -- \\
 \quad + per-pick temperatures & 0.3271 & 44.3 & 8 vs 19 & 0.05 \\
 association features & 0.3293 & 53.1 & 23 vs 17 & 0.43 \\
@@ -226,6 +226,11 @@ win probability, association listener & 0.3293 & 59.1 & 28 vs 10 & 0.005 \\
 \bottomrule
 \end{tabular}
 \end{center}
+{\small $^\dagger$ On 86 boards. On the other 14, gpt-oss would not rank the words
+for one of the Gaussian model's clues (for example \clue{problematic}{} and
+\clue{colleague}{}) in three separate tries, so those boards are left out. These
+are the boards where the Gaussian model gave its vaguest clues, so if anything this
+overstates it.}
 
 \section{Looking at the clues, and the next step}
 

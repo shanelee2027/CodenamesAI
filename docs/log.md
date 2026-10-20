@@ -7574,3 +7574,14 @@ point moves to 50.5%, 0.837 with two more pairings):
   net-words overpromise model. So the charge can favour clues where the
   guesser goes on to a wrong word rather than stops. At λ = 1 the count is
   11 vs 7 (p = 0.47), so this is not established.
+
+## 2026-10-20 — Gaussian (σ = 1.5) vs learned_listener on holdout_v1_gptoss, for the midterm summary table
+
+Expected: the Gaussian model loses clearly to the GBT listener under gpt-oss, as it did under Sonnet (28% for it there).
+Found, on 86 of 100 boards: Gaussian 31.4% [0.25, 0.39], boards won both ways 4 vs 36 (exact sign p = 1.9e-7),
+assassin losses 21 vs 10 (Fisher p = 0.058), mean number 2.31 vs 2.12.
+First run: 41 boards refused under concurrent load from another arena. Replay 1 (3 workers): 33 refused. Replay 2: 14
+refused. Replay 3 (2 workers, nothing else running): the same 14 refused (e.g. 'problematic', 'colleague'), so these
+refusals are persistent for these boards' clues and not load-related. The 14 are left out; they are the boards with the
+Gaussian model's vaguest clues, so excluding them probably flatters it. The first replay sat idle for hours because its
+wait loop's `pgrep -f` pattern matched its own command line; started directly instead.
