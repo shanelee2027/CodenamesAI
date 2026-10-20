@@ -61,3 +61,19 @@ On team A's opening λ does nothing (one_word(9, 8) = 0, above). From team
 B's side the number falls with λ, but never to 2: V is flat there too, and a
 second own word is worth no win probability (P(win) by words found 0.522,
 0.599, 0.599, 0.819). About 2 s per clue.
+
+**Comfort arena** (docs/log.md, 2026-10-20; two-step gpt-oss guesser with
+the strict "guess" set, against assoc_profile_listener, 100 boards × 2;
+$0.16 for both runs):
+
+| promise_cost | win% (95% CI) | boards both ways | sign p | assassin (it vs opp) | mean k (it vs opp) | comfort (95% CI) | stopped early (it vs opp), t, p |
+|---|---|---|---|---|---|---|---|
+| 0.5 | 51.5 [46.0, 57.0] | 18 vs 15 | 0.73 | 16 vs 4 (Fisher p 0.010) | 2.24 vs 2.25 | 0.851 [0.828, 0.872] | 25.3% vs 30.1%, −2.22, 0.029 |
+| 1.0 | 53.5 [48.5, 59.0] | 19 vs 12 | 0.28 | 11 vs 7 (p 0.47) | 2.14 vs 2.24 | 0.873 [0.852, 0.892] | 21.9% vs 30.2%, −3.25, 0.0016 |
+
+promise_cost 1.0 is on the win-vs-comfort frontier, between win_prob (54.5%,
+0.756) and overpromise 0.5 strict (52.0%, 0.929), 0.7 points above the line
+joining them. 0.5 is dominated by overpromise 0.5 strict and loses to the
+assassin 16 to 4. Neither beats the incumbent on wins significantly; both
+are more comfortable than it (fewer early stops), but much less so than the
+net-words overpromise models.

@@ -7508,3 +7508,69 @@ model's turns (all 100 games it opens with 9 v 8, plus a few endgame scores:
 with the model as designed; a smoother w (for example V's own words averaged
 over the next few words, or a fitted smooth V) is a possible fix, for Shane
 to decide.
+
+## win_prob_overpromise_listener in the comfort arena (2026-10-20)
+
+**Set-up.** The comfort arena as on 2026-10-17 (suite
+`configs/eval_suite_gptoss_subset_guess.json`, two-step gpt-oss guesser with
+the strict "guess" set, assoc_profile_listener as the fixed opponent, 100
+boards × 2 games). Two runs: promise_cost 0.5
+(`win_prob_overpromise_listener:d629472b76bf`) and 1.0
+(`--challenger-param promise_cost=1.0`, `:4a004e7828b3`). Store backed up
+first (`cache/backups/llm_store_2026-10-20_pre_win_prob_overpromise.db`,
+SQLite backup API, because the play server holds a WAL open). DeepInfra
+credit $9.38 before, $9.22 after (auto top-up off): **$0.16** for both runs,
+against ~$0.15 expected. 22 and 13 minutes.
+
+**Expected:** between win_prob (wins) and overpromise strict (comfort), and
+with luck above the old frontier (win_prob → overpromise 0.5 strict →
+overpromise 1.0 strict).
+
+| model | win% (95% CI) | boards both ways | sign p | assassin (it vs opp), Fisher p | mean k (it vs opp) | comfort (95% CI) | stopped early (it vs opp) | t | p |
+|---|---|---|---|---|---|---|---|---|---|
+| win_prob + overpromise 0.5, strict | 51.5 [46.0, 57.0] | 18 vs 15 | 0.73 | **16 vs 4**, 0.010 | 2.24 vs 2.25 (t −0.04, p 0.96) | 0.851 [0.828, 0.872] | 25.3% vs 30.1% | −2.22 | 0.029 |
+| win_prob + overpromise 1.0, strict | 53.5 [48.5, 59.0] | 19 vs 12 | 0.28 | 11 vs 7, 0.47 | 2.14 vs 2.24 (t −1.92, p 0.058) | 0.873 [0.852, 0.892] | 21.9% vs 30.2% | −3.25 | 0.0016 |
+
+(Win% and comfort with board-bootstrap intervals from
+`plot_comfort_frontier.py`; sign and Fisher p from run_eval_suite; the t-tests
+are paired per board against assoc_profile in the same games, df 99, as on
+2026-10-17.)
+
+**The scoreboard** now (`plot_comfort_frontier.py`; the incumbent's pooled
+point moves to 50.5%, 0.837 with two more pairings):
+
+| model | win% | comfort | frontier |
+|---|---|---|---|
+| win_prob (assoc) | 54.5 | 0.756 | yes |
+| **win_prob + overpromise 1.0, strict** | 53.5 | 0.873 | **yes** |
+| overpromise 0.5, strict | 52.0 | 0.929 | yes |
+| win_prob + overpromise 0.5, strict | 51.5 | 0.851 | |
+| assoc_profile (incumbent, pooled) | 50.5 | 0.837 | |
+| overpromise 1.0, strict | 45.5 | 0.944 | yes |
+
+**Found:**
+- **λ = 1 joins the frontier**, between win_prob and overpromise 0.5 strict:
+  1 point fewer wins than win_prob and much more comfortable (0.873 against
+  0.756), and 1.5 points more wins than overpromise 0.5 strict but less
+  comfortable (0.873 against 0.929). The old frontier's straight line
+  between those two gives 52.8% at comfort 0.873, so it sits 0.7 points
+  above it: it pushes the frontier out a little, well inside the noise (win
+  CI ±5 points). Its win edge over the incumbent is not significant (sign
+  p = 0.28); its comfort edge is (early-stop t = −3.25).
+- **λ = 0.5 is dominated** by overpromise 0.5 strict on both axes, and loses
+  to the assassin 16 to 4 (Fisher p = 0.010), the loose stop listener's
+  pattern. Most of these are 2s and 3s on vague clues ("headquarters" 3 →
+  Center, Beijing, Apple, then the assassin; "hydraulic" 3; "underwater" 3).
+- λ = 1 beating λ = 0.5 on both axes is not something the penalty predicts
+  on its own; the win and comfort intervals of the two overlap heavily, so
+  most of it is likely noise. The mean number does fall with λ (2.24 → 2.14),
+  as it should, but the comfort gain is much smaller than overpromise's
+  (0.851–0.873 against 0.929–0.944): the P(win) objective still asks for
+  more, and on 12–13% of turns (the opening clue of every game it starts) the
+  charge is zero because one_word(9, 8) = 0 (see the build entry).
+- **A guess at the assassin losses** (not tested): the charge falls on
+  stopping, not on wrong words, and under P(win) the assassin costs only the
+  current P(win) (about 3–4 own words at w ≈ 0.15), against −10 words in the
+  net-words overpromise model. So the charge can favour clues where the
+  guesser goes on to a wrong word rather than stops. At λ = 1 the count is
+  11 vs 7 (p = 0.47), so this is not established.

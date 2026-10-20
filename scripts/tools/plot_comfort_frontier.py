@@ -52,6 +52,8 @@ NAMES = {
     "overpromise_listener:99e8202fc302": "overpromise 0.5, strict",
     "overpromise_listener:d4572b2f5e53": "overpromise 0.5",
     "overpromise_listener:5634934c5eae": "overpromise 1.0, strict",
+    "win_prob_overpromise_listener:d629472b76bf": "win_prob + overpromise 0.5, strict",
+    "win_prob_overpromise_listener:4a004e7828b3": "win_prob + overpromise 1.0, strict",
 }
 
 
