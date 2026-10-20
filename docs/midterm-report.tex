@@ -21,15 +21,15 @@
 
 \section{Setup}
 
-The goal is still the one from the proposal: a model that gives Codenames clues
-meant for human guessers, with no language model producing the clue. The
-spymaster sees the board, its team's words, the opponent's, the neutrals and the
-assassin, and outputs one clue word and a number.
+The goal is the same as in the proposal: a model that gives Codenames clues meant
+for human guessers, without a language model producing the clue. Given the board
+and which words belong to which team, the spymaster outputs one clue word and a
+number.
 
-\paragraph{Evaluating models.} I can't play hundreds of games myself for every
-model, so the guesser in every game is a language model. It is only ever the
-guesser: it never sees the roles and never writes a clue. Each turn it is shown
-the clue, the number and the unrevealed words, with this prompt:
+To compare models we need a guesser, and we cannot have a person play hundreds of
+games for every model, so the guesser is a language model. It only ever guesses.
+It does not see the roles and does not write clues. Each turn it is given the
+clue, the number and the unrevealed words, with the prompt
 
 \begin{quote}\small
 You are playing the guesser role in the board game Codenames. Your spymaster gave
@@ -39,47 +39,46 @@ them for this clue, most likely first. Respond with ONLY a JSON array of the wor
 [\ldots]
 \end{quote}
 
-The turn then reveals the guesser's top $N$ words in order and stops at the first
-word that isn't ours. Under this prompt the guesser always takes exactly $N$
-guesses, unless it hits a wrong word first.
+The turn then reveals the top $N$ words of its ranking in order and ends at the
+first word that is not ours. So under this prompt the guesser always takes exactly
+$N$ guesses unless it hits a wrong word first. At first the guesser was Claude
+Sonnet 5. That cost a few dollars per 100 games, which limited how many
+comparisons we could run, so we switched to gpt-oss-120b (open weights, served by
+DeepInfra) with the same prompt. It costs about \$0.07 per thousand calls, so a
+full comparison costs around ten cents.
 
-At first the guesser was Claude Sonnet 5. That cost several dollars per 100
-games, which limited how many comparisons I could run. I switched to
-gpt-oss-120b (an open-weight model, served by DeepInfra), with the same prompt.
-It costs about \$0.07 per thousand calls, so a full comparison costs
-about ten cents.
+Two models are compared by playing each other on a fixed set of 100 boards. Each
+board is played twice with the sides swapped, so neither model benefits from
+moving first or from getting an easy board. The boards use 150 words that no model
+was trained on. Most comparisons are against a fixed opponent, the current
+incumbent. For each pair we report the win rate, and as the main test a sign test
+on the boards that one model won in both seatings.
 
-\paragraph{The arena.} Two models play each other on a fixed set of 100 boards.
-Each board is played twice with the sides swapped, so neither model benefits
-from going first or from an easy board. The boards are drawn from 150 words that
-no model was trained on. Most comparisons are against a fixed opponent, the
-current \emph{incumbent}. The headline statistic is a sign test on the boards one
-model won in both seatings; the win rate is reported beside it.
-
-\paragraph{Two numbers per model.} Most of my models are split into two parts: a
-\emph{listener}, which predicts what a guesser will pick for a given clue, and a
-\emph{decision rule}, which searches about 11,000 candidate clues with the
-listener and picks the best one. The listener can be scored on its own: I use
-McFadden $R^2$ (1 minus the model's log-loss on the guess actually made, over the
-log-loss of guessing uniformly among the words left). This is measured on a
-held-out set of 4,378 guesses by Claude Sonnet 5.5 on words no model trained on.
-Win rate measures the whole spymaster; $R^2$ measures how well it understands the
-guesser. The two don't always move together.
+Most of the models below have two parts. The first is a \emph{listener}, which
+predicts what a guesser picks for a given clue. The second is a \emph{decision
+rule}, which searches about 11,000 candidate clues using the listener and gives
+the best one. The listener can be scored on its own, which we do with McFadden
+$R^2$, that is, one minus the model's log-loss on the guess actually made divided
+by the log-loss of guessing uniformly among the words left. This is measured on a
+held-out set of 4,378 guesses by Claude Sonnet 5.5 on words that no model was
+trained on. So $R^2$ measures how well a model understands the guesser, and win
+rate measures how well the whole spymaster plays. As we will see, the two do not
+always move together.
 
 \section{The Gaussian model}
 
-The first real model scores a clue by expected reward under an assumed guesser.
-It takes the similarity between the clue and each board word in an embedding
-space (ConceptNet Numberbatch), standardized per word. It then assumes the
-guesser perceives each similarity with independent Gaussian noise of standard
-deviation $\sigma$ and picks words in order of the noisy similarity. Under that
-assumption the expected reward of announcing $k$ (own words count $+1$; a neutral
-costs $0.2$, an opponent word $1$, the assassin $10$) has a closed form, so every
-clue and number in the pool can be scored exactly.
+First we assume that the guesser perceives the similarity between the clue and
+each board word as the similarity in an embedding space (ConceptNet Numberbatch,
+standardized per word) plus independent Gaussian noise with standard deviation
+$\sigma$, and that it picks words in decreasing order of the noisy similarity. An
+own word is worth $+1$, and a neutral, opponent and assassin word cost $0.2$, $1$
+and $10$. Under this assumption the expected reward of announcing $k$ has a closed
+form, so we can score every clue and number in the pool exactly and give the best
+one.
 
-$\sigma$ is the only parameter: how much the guesser's sense of similarity
-differs from the embedding's. I swept it, against a simple centroid baseline,
-with Sonnet guessing, 50 boards each played both ways:
+The only parameter is $\sigma$, which says how far the guesser's sense of
+similarity is from the embedding's. We swept it against a simple centroid
+baseline, with Sonnet guessing, on 50 boards each played both ways.
 
 \begin{center}
 \begin{tabular}{rrrrr}
@@ -95,153 +94,121 @@ $\sigma$ & win\% vs centroid & mean number & losses in the race & losses to the 
 \end{tabular}
 \end{center}
 
-Win rate plateaus between 1.0 and 1.5 and drops sharply above that. Inside the
-plateau, the failure mode shifts: a smaller $\sigma$ gives bigger numbers, which
-wins more races but loses more games to the assassin. I kept $\sigma=1.5$, which
-has the same win rate as 1.0 with half the assassin losses.
-
-The interesting part is that I also fit $\sigma$ directly to how Sonnet actually
-ranks words, and got about $2.06$. That is in the bad region. So the $\sigma$ that
-\emph{describes} the guesser best is not the one that \emph{plays} best. The
-per-turn objective undervalues tempo, and a spymaster that believes the guesser
-is a bit sharper than it is gives bigger clues and wins more races. This came up
-again later: fitting the guesser better and winning more are related but not the
-same thing.
+The win rate is flat between $\sigma = 1.0$ and $1.5$ and drops above that. Within
+the flat part, a smaller $\sigma$ gives bigger numbers, which wins more races but
+loses more games to the assassin, so we kept $\sigma = 1.5$, which has the same win
+rate as $1.0$ with less than half the assassin losses. We also fit $\sigma$
+directly to how Sonnet ranks words and got about $2.06$, which is in the region
+that plays worse. So the $\sigma$ that best describes the guesser is not the one
+that plays best. A spymaster that thinks the guesser is a bit sharper than it is
+gives bigger clues, and the extra tempo wins races that the per-turn reward does
+not account for. This comes up again later: fitting the guesser better and
+winning more games are related but not the same thing.
 
 \section{A learned listener (GBT)}
 
-The Gaussian model's guesser is a single noise parameter on one embedding. The
-next step was to learn the guesser instead. I bought gpt-oss's full rankings for
-about 25,000 positions (47,223 individual picks), many of them on deliberately
-bad clues, so the model also learns what a guesser does when a clue doesn't work.
-A LightGBM model scores each (clue, board word) pair, and the probability of the
-next pick is a softmax over the scores of the words still on the board. It is
-trained on that objective directly.
+The Gaussian model describes the guesser with one noise parameter on one
+embedding. The next step was to learn the guesser instead. We bought gpt-oss's
+full rankings for about 25,000 positions (47,223 individual picks), many of them on
+deliberately bad clues, so that the model also sees what a guesser does when a
+clue does not work. A LightGBM model scores each (clue, board word) pair, and the
+probability that a word is picked next is a softmax over the scores of the words
+still on the board, which is also the training objective. The final version has
+44 features per pair: similarities in several embedding spaces, human
+free-association norms in both directions (SWOW), language-model pointwise mutual
+information, concreteness norms and WordNet relations. Most of the gain over
+embeddings alone comes from the association and PMI features.
 
-The final version has 44 features for each (clue, board word) pair:
-\begin{itemize}
-  \item similarities in several embedding spaces;
-  \item human free-association norms in both directions (SWOW: does the clue
-        make people think of the word, and the reverse);
-  \item language-model pointwise mutual information;
-  \item concreteness norms and WordNet relations.
-\end{itemize}
-The association and PMI features carry most of the gain over embeddings alone.
+If we treat the scores as a Plackett--Luce model, the expected reward of a clue
+again has an exact closed form. The search takes the Gaussian model's top 200
+clues and rescores them with the listener.
 
-Treating the listener's scores as a Plackett--Luce model, the expected reward of
-a clue still has an exact closed form. The search keeps the Gaussian model's top
-200 clues and rescores them with the listener.
-
-\textbf{Results.}
-\begin{itemize}
-  \item As a model of the guesser: held-out $R^2$ 0.346 against the Gaussian
-        model's 0.226 (on gpt-oss's rankings of held-out boards).
-  \item In games, with Sonnet guessing: 72\% against the Gaussian model at
-        $\sigma=1.5$ over 100 games (95\% CI 63--80\%).
-  \item Against Claude Sonnet 5 \emph{as the spymaster}, with Sonnet also
-        guessing for both sides: 58\% over 200 games (28 boards won both ways
-        against 12, $p = 0.017$). Most of the margin came from the assassin:
-        Sonnet's clues led its own guesser to the assassin 31 times, against 13.
-\end{itemize}
-
-This model (\texttt{learned\_listener}) became the incumbent and the fixed
-opponent for everything that follows. On the current Sonnet 5.5 held-out set
-its $R^2$ is 0.3205, the baseline for the table in Section~\ref{sec:table}.
+As a model of the guesser, this listener has held-out $R^2$ 0.346 against the
+Gaussian model's 0.226 on gpt-oss's rankings of held-out boards. In games with
+Sonnet guessing, it beat the Gaussian model at $\sigma = 1.5$ in 72\% of 100 games
+(95\% CI 63--80\%). We also played it against Claude Sonnet 5 as the spymaster, with
+Sonnet guessing for both sides, and it won 58\% of 200 games (28 boards won both
+ways against 12, $p = 0.017$). Most of that margin came from the assassin, since
+Sonnet's clues led its own guesser to the assassin 31 times against 13. This model
+(\texttt{learned\_listener}) became the incumbent and the fixed opponent for
+everything below. Its $R^2$ on the Sonnet 5.5 held-out set is 0.3205, which is the
+baseline in the table of Section~\ref{sec:table}.
 
 \section{Association features from gpt-oss}
 
 Embeddings capture how words are used, but what a guesser picks depends on what
-the clue \emph{reminds} them of. So I asked gpt-oss directly, with no board: ``List
-the 25 words that the word \emph{clue} most strongly makes you think of''. I asked
-five times per word at temperature 1, for every clue in the pool and every board
-word. From those lists come two features per (clue, board word) pair:
-\begin{itemize}
-  \item the share of lists that name the board word;
-  \item a reciprocal-rank score, so a word named first counts far more than one
-        named 25th.
-\end{itemize}
-For example, every list for \clue{river}{} names \emph{water} first, and
-\emph{bank} and \emph{mouth} appear in their river senses. A second version (the
-\emph{association profile}) adds features describing the clue itself:
-\begin{itemize}
-  \item how vague its associations are (how much the five lists agree);
-  \item its rarity and number of senses;
-  \item reverse associations: whether each board word's own lists name the clue.
-\end{itemize}
+the clue reminds them of. So we asked gpt-oss for that directly, with no board:
+``List the 25 words that the word \emph{clue} most strongly makes you think of.''
+We asked five times per word at temperature 1, for every clue in the pool and every
+board word. From these lists we get two features per (clue, board word) pair: the
+share of lists that name the board word, and a reciprocal-rank score, so that a
+word named first counts much more than one named 25th. For example, every list for
+\clue{river}{} names \emph{water} first, and \emph{bank} and \emph{mouth} appear in
+their river senses. A second version, the association profile, adds features of
+the clue itself: how much its five lists agree (how vague it is), its rarity and
+number of senses, and whether each board word's own lists name the clue.
 
-These lists are free at play time, since every clue in the pool already has
-them. There is an obvious risk in features built from the same model that guesses
-in the arena. That is why $R^2$ is measured on Sonnet's guesses, which never saw
-these lists.
+These lists cost nothing at play time, since every clue in the pool already has
+them. Since they come from the same model that guesses in the arena, there is a
+risk that they only help predict gpt-oss, which is why $R^2$ is measured on
+Sonnet's guesses, and Sonnet never saw these lists. $R^2$ goes from 0.3240 to 0.3293
+with the associations and to 0.3309 with the profile, the largest single feature
+gain on Sonnet. In games, the association listener alone is not significant
+against the incumbent (53.1\%, $p = 0.43$). The profile version wins 56.7\% (22
+boards won both ways against 9, $p = 0.029$), and it became the new incumbent.
 
-\textbf{Results.}
-\begin{itemize}
-  \item $R^2$ rises from 0.3240 to 0.3293 with the associations, and to 0.3309
-        with the profile. That is the largest single feature gain on Sonnet.
-  \item In games, the association listener alone is not significant (53.1\%,
-        $p = 0.43$). The profile version wins 56.7\% against the incumbent
-        (22 boards won both ways against 9, $p = 0.029$), and it became the new
-        incumbent.
-\end{itemize}
+\section{Deciding by win probability}
 
-\section{The decision rule: winning, not words}
+So far the decision rule maximizes the expected net words of the turn. This does
+not account for tempo, since two words are worth more when they leave us one word
+from winning. So we estimated $V(a, b)$, the probability that the side to move
+wins with $a$ words left against $b$, from 10,266 finished gpt-oss games, smoothed
+and made monotone. The rule then gives the clue with the highest probability of
+winning after the turn. For each way the turn can end, it multiplies the
+listener's probability of that ending by $V$ of the position it leaves, and sums.
 
-Up to here the decision rule maximizes expected net words for the turn. That
-can't see tempo: two words matter more when they leave you one word from
-winning. So I estimated $V(a, b)$, the probability that the side to move wins
-with $a$ words left against $b$. It comes from 10,266 finished gpt-oss games,
-smoothed and forced to be monotone. The rule then picks the clue with the highest
-probability of winning after the turn. For each way the turn can end, it takes
-the listener's probability of that ending times the $V$ of the position it leaves.
-
-\begin{itemize}
-  \item With the incumbent's own listener, the new rule is level with the old
-        one (51.5\%).
-  \item With the association listener it is the best result on the suite:
-        59.1\% (28 boards against 10, $p = 0.005$).
-\end{itemize}
-The rule uses the listener's probabilities directly, so a better listener matters
-more under it. The price is roughly twice the incumbent's assassin losses. This
-model gives bigger numbers (mean 2.6 against 2.3), and its bets sometimes fail
-badly.
+With the incumbent's listener, this rule is level with the old one (51.5\%). With
+the association listener it gives the best result we have on this suite, 59.1\%
+(28 boards against 10, $p = 0.005$). The new rule uses the listener's probabilities
+directly, rather than mostly to rank clues, so a better listener matters more
+under it. The cost is about twice the incumbent's assassin losses. This model gives
+bigger numbers (2.6 on average against 2.3), and some of those bets fail badly.
 
 \section{Later picks: temperatures and pick order}
 
 The listener gives each word one score per clue, and every pick of the turn uses
-those same scores. But gpt-oss is far less predictable on its later picks. The
-incumbent's $R^2$ falls from 0.55 on the first pick to 0.06 on the fourth.
-Treating pick 3 with the same confidence as pick 1 makes the spymaster overrate
-clues for 3 or 4.
+the same scores. But gpt-oss is much less predictable on its later picks: the
+incumbent's $R^2$ is 0.55 on the first pick and 0.06 on the fourth. Using the same
+confidence for pick 3 as for pick 1 makes the spymaster overrate clues for 3 or 4.
 
-\paragraph{Per-pick temperatures.} Divide the scores at pick $j$ by a fitted
-temperature $\tau_j$, with $\tau_1 = 1$. The fitted values grow with the pick (1.09,
-1.26, 1.41) and are nearly the same for every listener, so the flattening is a
-property of the guesser, not of one model. $R^2$ improves (0.3205 to 0.3271 on the
-incumbent's listener, 0.3309 to 0.3372 on the profile listener), all of it in the
-later picks. In games, though, the temperature version of the incumbent
-\emph{lost}: 44.3\% (8 boards against 19, $p = 0.05$). A better fit made it more
-cautious, and caution lost races, which matches what the $\sigma$ sweep showed.
+The first fix is per-pick temperatures, where we divide the scores at pick $j$ by
+a fitted $\tau_j$, with $\tau_1 = 1$. The fitted values grow with the pick (1.09, 1.26,
+1.41) and are nearly the same for every listener, so the flattening is a property
+of the guesser and not of one model. $R^2$ goes from 0.3205 to 0.3271 on the
+incumbent's listener and from 0.3309 to 0.3372 on the profile listener, all of it in
+the later picks. In games, however, the temperature version of the incumbent lost
+44.3\% (8 boards against 19, $p = 0.05$). The better fit made it more cautious, and
+caution lost races, which is the same thing the $\sigma$ sweep showed.
 
-\paragraph{Pick order.} Instead of a fixed flattening, let the model learn what
-changes from pick to pick. Two features are added, the pick index $j$ and $j - k$
-(how far past the announced number this pick is). Each pick is still a softmax
-over the words left. This beats the temperatures slightly (0.3331 against 0.3295
-on the 44 features; 0.3374 on the association features) and leaves the first pick
-unchanged, as it should. Adding which words were already picked does better still
-($R^2$ 0.357). But it needs about 130 model evaluations per clue, too slow to play.
+The second fix is to let the model learn what changes from pick to pick. We add
+two features, the pick index $j$ and $j - k$ (how far past the announced number the
+pick is), and each pick is still a softmax over the words left. This fits slightly
+better than the temperatures (0.3331 against 0.3295 on the 44 features, and 0.3374
+on the association features) and leaves the first pick unchanged, as it should.
+Adding which words were already picked does better still ($R^2$ 0.357), but it
+needs about 130 model evaluations per clue, which is too slow to play. In games, the
+pick-order listener with the win-probability rule and a one-move lookahead at the
+opponent's reply wins 57.6\% against the incumbent (27 boards against 13, $p =
+0.038$). Against the same spymaster without the pick-order features, though, the
+difference is $+2.4$ points with a 95\% interval of $[-4.7, +9.4]$, so we cannot tell
+them apart.
 
-In games, the pick-order listener with the win-probability rule (and a one-move
-lookahead at the opponent's reply) wins 57.6\% against the incumbent (27 boards
-against 13, $p = 0.038$). Compared with the same spymaster without the pick-order
-features, though, the difference is $+2.4$ points with a 95\% interval of
-$[-4.7, +9.4]$: nothing detectable.
-
-\section{Summary table}
+\section{Summary}
 \label{sec:table}
 
-All rows: the same 100 held-out boards, gpt-oss guessing, against the September
-incumbent (\texttt{learned\_listener}). $R^2$ is on the Sonnet 5.5 held-out
-guesses.
+Every row is on the same 100 held-out boards, with gpt-oss guessing, against the
+September incumbent (\texttt{learned\_listener}). $R^2$ is on the Sonnet 5.5
+held-out guesses.
 
 \begin{center}
 \small
@@ -260,64 +227,57 @@ win probability, association listener & 0.3293 & 59.1 & 28 vs 10 & 0.005 \\
 \end{tabular}
 \end{center}
 
-\section{What I found by looking at the clues, and the next step: comfort}
+\section{Looking at the clues, and the next step}
 
-All of the above was optimizing win rate against gpt-oss, and it went up. Then I
-played with the best models myself and looked at their clues, and many of them
-made no sense to a human. One example: the pick-order model, near the start of a
-game, gave \clue{obscure}{4} for \emph{Alien}, \emph{Triangle}, \emph{Spot} and
-\emph{Sound}. There is no way a person gets \emph{Triangle} or \emph{Sound} from
-that.
+All of the above optimizes win rate against gpt-oss, and it went up. But when we
+played with the best models ourselves and looked at their clues, many of them made
+no sense to a person. For example, near the start of a game the pick-order model
+gave \clue{obscure}{4} for \emph{Alien}, \emph{Triangle}, \emph{Spot} and
+\emph{Sound}. No person gets \emph{Triangle} or \emph{Sound} from that.
 
-I think there are a few causes.
-\begin{itemize}
-  \item \textbf{Expected value against the modal outcome.} The models maximize
-        expected value. People playing Codenames give the clue that does best
-        in the outcome they think is most likely. Expected value is probably the
-        more correct objective, and it will sometimes give clues where the
-        guesser is unsure which word goes with it but that are good on average.
-        I don't necessarily want to stop that, even if the spymaster plays
-        unlike a human.
-  \item \textbf{The win-probability rule chases variance.} After the opponent
-        gets 3 words on the first clue, the model thinks it has to catch up with
-        a high-variance clue. That usually isn't true this early.
-  \item \textbf{The training data never says ``no''.} The listener was trained on
-        gpt-oss ranking all 25 words. A ranking always has a 3rd and 4th word,
-        so the model learns how gpt-oss orders words it has no real reason to
-        pick. A clue for 4 then looks like it buys extra guesses that are close
-        to free. Humans don't rank 25 words. They see a clue as pointing at a
-        word or not, and they stop when nothing is left. I think we were
-        optimizing $R^2$ on later picks that only reflect gpt-oss's habits.
-\end{itemize}
+We think there are a few reasons for this. First, the models maximize expected
+value, while people playing Codenames tend to give the clue that does best in the
+outcome they think is most likely. Expected value is probably the more correct
+thing to maximize, and it will sometimes give clues where the guesser is unsure
+which word goes with it but which are good on average. We do not necessarily want
+to prevent that, even if it makes the spymaster play unlike a human. Second, the
+win-probability rule chases variance when behind. After the opponent finds 3 words
+on the first clue, it thinks it has to catch up with a high-variance clue, which is
+usually not true that early. Third, the training data never says no. The listener
+was trained on gpt-oss ranking every word on the board, and a ranking always has a
+3rd and 4th word, so the model learns how gpt-oss orders words it has no real
+reason to pick, and a clue for 4 looks like it buys extra guesses nearly for free.
+People do not rank 25 words. They see a clue as pointing at a word or not, and they
+stop when nothing is left. So we were partly optimizing $R^2$ on later picks that
+only reflect gpt-oss's habits.
 
-So the next step is a measure closer to how the model would do with people. I'm
-calling it \emph{comfort}: how clear it is which words a clue is meant for. Win
-rate stays; comfort is the second axis.
+So the next step is a measure closer to how a model would do with people, which we
+call comfort: how clear it is which words a clue is meant for. Win rate stays, and
+comfort is a second axis next to it.
 
-\paragraph{A different way of asking.} The guesser prompt changes to two separate
-calls. The first shows the board and the clue \emph{without} the number. It asks
-which words the clue clearly points at (``guess''), which it would still take as
-a second or third word if asked for more (``stretch''), and which it wouldn't
-guess at all. The answer is a set, in board order, with no ranking. The second
-call ranks only the words in that set, now with the number. The guesser guesses
-only words in its set and stops when they run out, so it can stop early or pass.
+First we changed how the guesser is asked, into two separate calls. The first call
+shows the board and the clue without the number, and asks which words the clue
+clearly points at (``guess''), which it would still take as a second or third word
+if asked for more (``stretch''), and which it would not guess. The answer is a set
+in board order with no ranking. The second call ranks only the words in that set,
+now with the number. The guesser guesses only words in its set and stops when they
+run out, so it can stop early or pass.
 
-\paragraph{A different way of training the listener.} The same set labels train
-a new listener with a STOP option. At each pick it chooses among the words left
-and STOP, so it predicts when a guesser would stop instead of assuming it always
-uses the full number. On top of it, an \emph{overpromise} penalty charges each
-promised word the guesser doesn't attempt (0.5 or 1 word each), and the number is
-chosen by the objective.
+The same set labels give a new way to train the listener. At each pick it chooses
+among the words left and STOP, so it predicts when a guesser would stop instead of
+assuming it always uses the full number. On top of this listener we added an
+overpromise penalty, a cost of 0.5 or 1 word for each promised word the guesser
+does not attempt, with the number chosen by the objective.
 
-\paragraph{Measuring comfort.} For every clue I take the set of words gpt-oss
-says it clearly points at, which the first call already provides, and compute
-$\min(\text{set size}, N)/N$. A score of 1 means the clear words always covered
-the number. As a check I asked gpt-oss separately which words it was \emph{sure}
-the clue was meant for, on 100 clues per model. 93\% of those words were the
-team's, and the two measures rank the models almost identically (Spearman 0.97).
+To measure comfort, we take for every clue the set of words gpt-oss says it clearly
+points at, which the first call already gives, and compute $\min(\text{set size},
+N)/N$. A score of 1 means the clear words always covered the number. As a check we
+asked gpt-oss separately which words it was sure the clue was meant for, on 100
+clues per model. 93\% of those words were the team's, and the two measures rank the
+models almost identically (Spearman 0.97).
 
-\paragraph{First results.} I reran the menu of current models with the two-step
-guesser, against the association-profile incumbent:
+We then reran the current models with the two-step guesser, against the
+association-profile incumbent.
 
 \begin{center}
 \small
@@ -326,31 +286,32 @@ guesser, against the association-profile incumbent:
 model & win\% & comfort & mean number \\
 \midrule
 win probability, association listener & 54.5 & 0.756 & 2.62 \\
+win probability + overpromise 1.0 & 53.5 & 0.873 & 2.14 \\
 overpromise 0.5, strict STOP listener & 52.0 & 0.929 & 1.84 \\
-association profile (incumbent) & 51.2$^*$ & 0.839 & 2.20 \\
+association profile (incumbent) & 50.5$^*$ & 0.837 & 2.20 \\
 overpromise 1.0, strict STOP listener & 45.5 & 0.944 & 1.73 \\
 STOP listener, loose & 49.0 & 0.781 & 2.50 \\
 \bottomrule
 \end{tabular}
 \end{center}
-{\small $^*$ The incumbent's average across all its pairings.}
+{\small $^*$ The incumbent's average over all its pairings.}
 
-No model beats the incumbent significantly on wins under the new guesser. The
-comfort differences, however, are large and clear. The overpromise model at 0.5
-is more comfortable than the incumbent ($t = -8.2$ on the per-board early-stop
-rate) and gives up nothing measurable in wins. The STOP listener trained on the
-looser set lost to the assassin 19 times against 4 ($p = 0.002$): it expected
-the guesser to keep going onto weak words, and this guesser doesn't.
+No model beats the incumbent on wins by a significant margin under the new
+guesser, but the differences in comfort are large and clear. The overpromise model
+at 0.5 is more comfortable than the incumbent ($t = -8.2$ on the per-board rate of
+stopping early) and gives up nothing measurable in wins. Combining the
+win-probability rule with the overpromise penalty at 1.0 lands between the two,
+which is about what a trade-off between them would give, but not better than it.
+The STOP listener trained on the looser set lost to the assassin 19 times against
+4 ($p = 0.002$), since it expected the guesser to keep going onto weak words, and
+this guesser does not.
 
-\paragraph{Next.}
-\begin{itemize}
-  \item Combine the two ends of the trade-off: the win-probability rule with the
-        overpromise penalty, converted into win probability at the current
-        score. This is running now.
-  \item A ``clarity knob'': among clues within $\varepsilon$ of the best win
-        probability, pick the clearest, and sweep $\varepsilon$.
-  \item Check the comfortable models against real people, which is the point of
-        all of this.
-\end{itemize}
+The next steps are as follows. The penalty in the combined model is converted into
+win probability using the value of one word at the current score, and that value is
+zero at the opening because $V$ is flat there, so the penalty does nothing on the
+first clue. We need to smooth it. After that we want a clarity setting, where among
+clues within $\varepsilon$ of the best win probability we give the clearest one, and
+sweep $\varepsilon$. Finally we need to check the comfortable models against real
+people, since that is the point of all of this.
 
 \end{document}
