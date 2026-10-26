@@ -37,6 +37,13 @@ hard the leftover words are to clue.
   against such a table could prefer hitting FEWER of its own words, which is
   never right. Both a finding and a limitation: count-only V cannot tell a
   bad board from a bad score.
+- The projection pools neighbouring cells, so it leaves exact ties: at the
+  opening V(8, 9) = V(8, 8), so team A's first word looks worth nothing.
+  `--margin m` removes them. It projects V - m * prior instead of V and adds
+  m * prior back, so every step of V is at least m times the logistic
+  prior's step, which is strictly monotone. Dense cells whose own steps are
+  larger are unchanged. Written to cache/win_value_margin.npz for
+  margin_value_overpromise_listener (docs/versions/).
 - V(0, b) = 1: the side to move has no words left, so it has already won.
   This cell is never reached in play, but it keeps the table total.
 - V(a, 0) = 0: the other side has already won.
@@ -71,17 +78,20 @@ MAX_WORDS = 9
 
 
 def tally(db: Path, label_prefixes: tuple[str, ...] = LABEL_PREFIXES, include_suite: bool = True,
-          mover: str | None = None) -> tuple[np.ndarray, np.ndarray, int]:
+          mover: str | None = None, max_game_id: int | None = None) -> tuple[np.ndarray, np.ndarray, int]:
     """(games, wins) per (mover's words left, other's words left), counted
     at the start of every turn of every finished game. With `mover`, only the
     turns of the seat whose spymaster name starts with it (read from the
-    label's "|A=...,B=..." tail)."""
+    label's "|A=...,B=..." tail). With `max_game_id`, only games recorded up to
+    that row id, so a rebuild can use the same games as an earlier table."""
     n = np.zeros((MAX_WORDS + 1, MAX_WORDS + 1))
     w = np.zeros_like(n)
     games = 0
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-    for label, suite, board, turns, winner in conn.execute(
-            "SELECT label, suite_id, board, turns, winner FROM game_records"):
+    for game_id, label, suite, board, turns, winner in conn.execute(
+            "SELECT id, label, suite_id, board, turns, winner FROM game_records"):
+        if max_game_id is not None and game_id > max_game_id:
+            continue
         if not ((label or "").startswith(label_prefixes) or (include_suite and suite == SUITE_GPTOSS)):
             continue
         if winner not in ("A", "B"):
@@ -166,6 +176,14 @@ def monotone(V: np.ndarray, weight: np.ndarray, iters: int = 500) -> np.ndarray:
     return x
 
 
+def monotone_with_margin(V: np.ndarray, weight: np.ndarray, prior: np.ndarray, margin: float) -> np.ndarray:
+    """`monotone` applied to V - margin * prior, with margin * prior added back:
+    every step of the result is at least `margin` times the prior's step, so
+    a strictly monotone prior leaves no ties."""
+    floor = margin * prior
+    return monotone(V - floor, weight) + floor
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", type=Path, default=PROJECT_ROOT / "cache" / "llm_store.db")
@@ -177,15 +195,19 @@ def main() -> None:
     ap.add_argument("--mover", default=None, help="count only the turns of this spymaster's seat")
     ap.add_argument("--prior-table", type=Path, default=None,
                     help="shrink toward this V table instead of a logistic fit")
+    ap.add_argument("--max-game-id", type=int, default=None,
+                    help="only games up to this game_records id (15907 = the games behind cache/win_value.npz)")
+    ap.add_argument("--margin", type=float, default=0.0,
+                    help="every step of V at least this times the prior's step (0: plain projection, with ties)")
     args = ap.parse_args()
 
     n, w, games = tally(args.db, tuple(args.label) if args.label else LABEL_PREFIXES,
-                        include_suite=not args.no_suite, mover=args.mover)
+                        include_suite=not args.no_suite, mover=args.mover, max_game_id=args.max_game_id)
     prior = np.load(args.prior_table)["V"] if args.prior_table else logistic_fit(n, w)
     prior = np.nan_to_num(prior)
     V = (w + args.prior * prior) / (n + args.prior)
     raw_inner = V[1:, 1:].copy()
-    V[1:, 1:] = monotone(raw_inner, n[1:, 1:] + args.prior)
+    V[1:, 1:] = monotone_with_margin(raw_inner, n[1:, 1:] + args.prior, prior[1:, 1:], args.margin)
     moved = np.abs(V[1:, 1:] - raw_inner)
     print(f"monotone projection: largest change {moved.max():.3f} at (a, b) = "
           f"{tuple(int(i) + 1 for i in np.unravel_index(moved.argmax(), moved.shape))}; "

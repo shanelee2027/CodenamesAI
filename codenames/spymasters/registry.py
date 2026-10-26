@@ -52,6 +52,7 @@ from codenames.spymasters.stop_listener import StopListenerSpymaster
 from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
 from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymaster
 from codenames.spymasters.win_prob_overpromise_listener import WinProbOverpromiseListenerSpymaster
+from codenames.spymasters.margin_value_overpromise_listener import MarginValueOverpromiseListenerSpymaster
 from codenames.spymasters.profile_temperature_listener import ProfileTemperatureListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
@@ -85,6 +86,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "stop_net_words_listener": StopNetWordsListenerSpymaster,
     "overpromise_listener": OverpromiseListenerSpymaster,
     "win_prob_overpromise_listener": WinProbOverpromiseListenerSpymaster,
+    "margin_value_overpromise_listener": MarginValueOverpromiseListenerSpymaster,
     "profile_temperature_listener": ProfileTemperatureListenerSpymaster,
     "within_turn_listener": WithinTurnListenerSpymaster,
     "imitation_policy": ImitationPolicySpymaster,

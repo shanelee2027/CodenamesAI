@@ -302,6 +302,21 @@
    ]
   },
   {
+   "_comment": "win_prob_overpromise_listener with V from cache/win_value_margin.npz: the same 10,266 games as cache/win_value.npz, projected so every step is at least half the logistic prior's (no ties, so the cost no longer vanishes on the opening clue). docs/versions/margin_value_overpromise_listener.md.",
+   "name": "margin_value_overpromise_listener",
+   "type": "margin_value_overpromise_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0,
+    "promise_cost": 0.5
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
+  },
+  {
    "_comment": "assoc_profile_listener with per-pick temperatures: at pick j the guesser picks by softmax(s / tau_j), pick 1 at 1 and tau_2..4+ = 1.09 / 1.26 / 1.41 fitted for the assoc profile booster on gpt-oss val (cache/sequential_listener_assoc_profile_temperature.json; scripts/pipeline/train_sequential_listener.py --arm temperature). pick_temperature_listener's exact reward (expected own words minus role costs); single-score speed. docs/versions/profile_temperature_listener.md.",
    "name": "profile_temperature_listener",
    "type": "profile_temperature_listener",

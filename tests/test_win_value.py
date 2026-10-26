@@ -111,3 +111,25 @@ def test_calibration_shifts_scores_by_role():
     a, b = sm._calibrated(s_own, s_bad, roles)
     np.testing.assert_allclose(a, [[1.5, 3.5]])
     np.testing.assert_allclose(b, [[1.0, 0.25, -1.0]])
+
+
+def test_margin_projection_leaves_no_ties_and_keeps_steep_data():
+    """A blend whose middle cells tie or cross gets steps of at least
+    margin * the prior's; a table already steeper than that is unchanged."""
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "data"))
+    from build_win_value import monotone_with_margin
+
+    a, b = np.meshgrid(np.arange(1, 5), np.arange(1, 5), indexing="ij")
+    prior = 1 / (1 + np.exp(a - b))                # falls in a, rises in b, strictly
+    w = np.ones_like(prior)
+    flat = prior.copy()
+    flat[2, 1] = flat[1, 1]                         # a tie down a column
+    flat[3, 1] = flat[1, 1] + 0.01                  # and a crossing
+    out = monotone_with_margin(flat, w, prior, 0.5)
+    assert (np.diff(out, axis=0) <= -0.5 * np.abs(np.diff(prior, axis=0)) + 1e-9).all()
+    assert (np.diff(out, axis=1) >= 0.5 * np.diff(prior, axis=1) - 1e-9).all()
+    steep = prior.copy()
+    assert np.allclose(monotone_with_margin(steep, w, prior, 0.5), steep)

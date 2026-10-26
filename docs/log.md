@@ -7585,3 +7585,59 @@ refused. Replay 3 (2 workers, nothing else running): the same 14 refused (e.g. '
 refusals are persistent for these boards' clues and not load-related. The 14 are left out; they are the boards with the
 Gaussian model's vaguest clues, so excluding them probably flatters it. The first replay sat idle for hours because its
 wait loop's `pgrep -f` pattern matched its own command line; started directly instead.
+
+## 2026-10-26 — V without ties: margin_value_overpromise_listener
+
+**Why (Shane chose to fix V itself over smoothing only `one_word`).** V's
+isotonic projection leaves exact ties (23 adjacent pairs). At the opening
+V(8, 9) = V(8, 8) = 0.637, so `one_word(9, 8)` = 0: the overpromise cost
+vanishes on the starting team's first clue, and plain P(win) sees no value
+in a first word there. Two options for the refit were described: the
+logistic fit on its own (smooth, but may misfit the dense endgame), or
+keeping the shrink-then-project table but forbidding ties. Went with the
+second, with the minimum step tied to the logistic prior rather than an
+arbitrary constant.
+
+**Two things found on the way.**
+- The opening tie is in the data too, not only the projection: V(8, 9)
+  (194 games) and V(8, 8) (762 games) both shrink to 0.637, while the
+  logistic prior's step there is about 0.04.
+- A plain rebuild no longer reproduces `cache/win_value.npz`: the builder
+  reads every finished game on the gpt-oss eval suite, and 4,034 games by
+  many challengers (including the Gaussian replays) have been added since
+  2026-09-30. V would silently stop being the incumbent's value. Added
+  `--max-game-id` to `build_win_value.py`; 15907 selects the original
+  10,266 games, and with `--margin 0` the rebuild matches the file exactly.
+
+**The change.** `--margin m` projects V − m × prior and adds m × prior back
+(`monotone_with_margin`), so every step is at least m times the prior's.
+- m = 0.5: no ties, V in [0, 1], game-weighted mean change from the shrunk
+  data 0.0014 (plain projection 0.0005). one_word(9, 8) 0 → 0.020,
+  one_word(8, 9) 0.078 → 0.064.
+- m = 1: rejected, corner cells leave [0, 1] (−0.011, 1.025).
+
+Written to `cache/win_value_margin.npz`. New model
+`margin_value_overpromise_listener` (one file, registry, config entry,
+docs/versions doc): win_prob_overpromise_listener with this V and nothing
+else changed. Tests: margin projection removes a planted tie and crossing
+and leaves an already-steep table alone; the registry entry reads the
+margin table and the strict STOP booster.
+
+**Opening-clue check** (no API; 30 holdout boards, seeds 0–29, first clue;
+team A 9 v 8, team B the same boards from the other side; counts of
+1/2/3/4):
+
+| model | λ | team A | mean | team B | mean |
+|---|---|---|---|---|---|
+| old V | 0 | 0/1/12/17 | 3.53 | 1/0/24/5 | 3.10 |
+| old V | 0.5 | 0/1/12/17 | 3.53 | 7/0/22/1 | 2.57 |
+| old V | 1 | 0/1/12/17 | 3.53 | 8/0/22/0 | 2.47 |
+| margin V | 0 | 0/1/12/17 | 3.53 | 0/1/23/6 | 3.17 |
+| margin V | 0.5 | 0/2/19/9 | 3.23 | 1/6/21/2 | 2.80 |
+| margin V | 1 | 0/3/21/6 | 3.10 | 2/7/21/0 | 2.63 |
+
+**Expected:** with the cost no longer zero, team A's opening number falls
+with λ. **Found:** it does (3.53 → 3.23 → 3.10); on the old V it never moved.
+The old V's rows reproduce the 2026-10-20 table exactly. From team B's side,
+2s now appear (the old V's after(8, 9) valued a second word at exactly 0, so
+no P(win) model said 2), and the 1s mostly become 2s.

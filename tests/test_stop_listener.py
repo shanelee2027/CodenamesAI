@@ -135,3 +135,15 @@ def test_win_prob_promise_builds_from_the_registry_with_the_strict_stop_model():
     assert kw["promise_cost"] == 0.5
     files = {p.name for p in cls.model_files(kw)}
     assert "listener_gbt_stop_guess.txt" in files and "listener_gbt_stop.txt" not in files
+
+
+def test_margin_value_promise_reads_the_margin_table():
+    from codenames.spymasters.margin_value_overpromise_listener import MarginValueOverpromiseListenerSpymaster
+    from codenames.spymasters.registry import spymaster_spec
+
+    cls, kw = spymaster_spec("margin_value_overpromise_listener")
+    assert cls is MarginValueOverpromiseListenerSpymaster
+    assert kw["promise_cost"] == 0.5
+    files = {p.name for p in cls.model_files(kw)}
+    assert "win_value_margin.npz" in files and "win_value.npz" not in files
+    assert "listener_gbt_stop_guess.txt" in files
