@@ -7641,3 +7641,34 @@ with λ. **Found:** it does (3.53 → 3.23 → 3.10); on the old V it never move
 The old V's rows reproduce the 2026-10-20 table exactly. From team B's side,
 2s now appear (the old V's after(8, 9) valued a second word at exactly 0, so
 no P(win) model said 2), and the 1s mostly become 2s.
+
+**Comfort arena** (as on 2026-10-20: two-step gpt-oss guesser with the strict
+"guess" set, assoc_profile_listener as the fixed opponent, 100 boards × 2
+games, no boards discarded). λ = 0.5 `margin_value_overpromise_listener:bd4c9454e474`
+(939 s), λ = 1.0 `:0288c5698292` (966 s). Win% and comfort with board-bootstrap
+intervals from `plot_comfort_frontier.py`; sign and Fisher p from run_eval_suite.
+
+| model | win% (95% CI) | boards both ways | sign p | assassin (it vs opp), Fisher p | mean k (it vs opp) | comfort (95% CI) |
+|---|---|---|---|---|---|---|
+| old V + overpromise 0.5 | 51.5 [46.0, 57.0] | 18 vs 15 | 0.73 | 16 vs 4, 0.010 | 2.24 vs 2.25 | 0.851 [0.828, 0.872] |
+| **margin V + overpromise 0.5** | 51.0 [45.5, 56.5] | 17 vs 15 | 0.86 | 15 vs 6, 0.071 | 2.24 vs 2.23 | 0.854 [0.832, 0.875] |
+| old V + overpromise 1.0 | 53.5 [48.5, 59.0] | 19 vs 12 | 0.28 | 11 vs 7, 0.47 | 2.14 vs 2.24 | 0.873 [0.852, 0.892] |
+| **margin V + overpromise 1.0** | 51.5 [46.0, 57.0] | 18 vs 15 | 0.73 | 10 vs 7, 0.62 | 2.12 vs 2.21 | 0.883 [0.866, 0.901] |
+
+**Expected:** a little more comfortable than the old-V versions, since the
+cost now acts on the opening clue (about 12% of a model's turns), with wins
+about the same.
+**Found:** no measurable change. Comfort moves +0.003 and +0.010, wins −0.5
+and −2.0 points, all far inside the intervals. Neither is on the frontier
+(win_prob → old V + overpromise 1.0 → overpromise 0.5 strict → overpromise
+1.0 strict). The assassin pattern at λ = 0.5 persists (15 vs 6). Reading:
+the opening clue is a small share of turns and the opening one-word value
+is small (0.020, against ~0.15 later), so the fix changes the first number
+(3.53 → 3.23 / 3.10 on 30 boards) without moving game-level results at this
+sample size. V's ties were a real defect, but not what keeps the combined
+model behind overpromise 0.5 strict on comfort; the P(win) objective itself
+asks for more words.
+
+DeepInfra: checklist $12.70, October usage $3.50 just after the runs ($9.20
+credit; usage had read $3.49 before, and it lags, so the ~$0.16 these runs
+should cost may not have posted yet). Auto top-up off.

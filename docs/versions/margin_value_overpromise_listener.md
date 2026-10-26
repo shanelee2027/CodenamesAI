@@ -54,5 +54,22 @@ while the logistic fit says the step is about 4 points.
 
 ## Results
 
-Pending: the opening-clue check (no API) and the comfort arena at
-promise_cost 0.5 and 1.0. See docs/log.md.
+**Opening clue** (no API; 30 holdout boards, first clue, mean number):
+team A 3.53 / 3.23 / 3.10 at λ = 0 / 0.5 / 1 (old V: 3.53 at every λ), team
+B 3.17 / 2.80 / 2.63 (old V: 3.10 / 2.57 / 2.47). The cost now acts on the
+opening.
+
+**Comfort arena** (vs assoc_profile_listener, two-step guess-only guesser,
+100 boards both ways):
+
+| model | win% | sign p | assassin (it vs opp) | comfort |
+|---|---|---|---|---|
+| margin V, λ = 0.5 | 51.0 | 0.86 | 15 vs 6 | 0.854 |
+| old V, λ = 0.5 | 51.5 | 0.73 | 16 vs 4 | 0.851 |
+| margin V, λ = 1.0 | 51.5 | 0.73 | 10 vs 7 | 0.883 |
+| old V, λ = 1.0 | 53.5 | 0.28 | 11 vs 7 | 0.873 |
+
+No measurable difference from the old-V model at either λ, and neither is
+on the win%/comfort frontier. Removing the ties fixes the opening clue but
+the opening is about 12% of turns and its one-word value is small, so the
+games barely change. Kept as an exploration entry.

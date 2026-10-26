@@ -54,6 +54,8 @@ NAMES = {
     "overpromise_listener:5634934c5eae": "overpromise 1.0, strict",
     "win_prob_overpromise_listener:d629472b76bf": "win_prob + overpromise 0.5, strict",
     "win_prob_overpromise_listener:4a004e7828b3": "win_prob + overpromise 1.0, strict",
+    "margin_value_overpromise_listener:bd4c9454e474": "margin V + overpromise 0.5, strict",
+    "margin_value_overpromise_listener:0288c5698292": "margin V + overpromise 1.0, strict",
 }
 
 
