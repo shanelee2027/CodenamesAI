@@ -147,3 +147,24 @@ def test_margin_value_promise_reads_the_margin_table():
     files = {p.name for p in cls.model_files(kw)}
     assert "win_value_margin.npz" in files and "win_value.npz" not in files
     assert "listener_gbt_stop_guess.txt" in files
+
+
+def test_floored_charge_never_falls_below_the_floor():
+    """The charge is promise_cost * max(one_word, floor): unchanged where one
+    word is worth more than the floor, the floor where it is worth less."""
+    from types import SimpleNamespace
+
+    from codenames.spymasters.floored_overpromise_listener import FlooredOverpromiseListenerSpymaster
+    from codenames.spymasters.registry import spymaster_spec
+
+    cls, kw = spymaster_spec("floored_overpromise_listener")
+    assert cls is FlooredOverpromiseListenerSpymaster
+    assert "win_value_margin.npz" in {p.name for p in cls.model_files(kw)}
+
+    sm = object.__new__(FlooredOverpromiseListenerSpymaster)
+    worth = {(5, 2): 0.006, (5, 4): 0.116}
+    sm.value = SimpleNamespace(one_word=lambda a, b: worth[(a, b)])
+    sm.promise_cost, sm.charge_floor = 1.0, 0.05
+    roles = lambda b: [Role.OPPONENT] * b + [Role.NEUTRAL]
+    assert sm._charge(5, roles(2)) == pytest.approx(0.05)
+    assert sm._charge(5, roles(4)) == pytest.approx(0.116)

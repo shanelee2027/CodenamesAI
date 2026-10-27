@@ -91,6 +91,7 @@ from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpy
 from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymaster
 from codenames.spymasters.win_prob_overpromise_listener import WinProbOverpromiseListenerSpymaster
 from codenames.spymasters.margin_value_overpromise_listener import MarginValueOverpromiseListenerSpymaster
+from codenames.spymasters.floored_overpromise_listener import FlooredOverpromiseListenerSpymaster
 from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
@@ -269,6 +270,21 @@ SPYMASTERS: dict[str, dict] = {
        for key, label, lam in (
            ("margin_value_overpromise", "Win probability + overpromise 0.5, strict, V without ties", 0.5),
            ("margin_value_overpromise_1", "Win probability + overpromise 1, strict, V without ties", 1.0))},
+    # The same with a floor under the cost, so it does not vanish where one
+    # word cannot change the game (codenames/spymasters/floored_overpromise_listener.py).
+    **{key: {"label": label, "model": "listener_gbt_assoc_profile.txt", "outside_n": 0,
+             "cls": FlooredOverpromiseListenerSpymaster, "no_k1": True,
+             "kwargs": {"outside_n": 0, "stop_model_path": DEFAULT_CACHE_DIR / "listener_gbt_stop_guess.txt",
+                        "promise_cost": lam},
+             "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz",
+                       "win_value_margin.npz", "listener_gbt_stop_guess.txt"],
+             "about": "Win probability + overpromise penalty, strict, V without ties, with a floor under "
+                      f"the penalty: each promised word the guesser stops short of costs {lam} times the "
+                      "larger of one own word's worth in win probability and the floor, so the penalty "
+                      "stays on when behind. The value shown is P(win) minus that cost."}
+       for key, label, lam in (
+           ("floored_overpromise", "Win probability + overpromise 0.5, strict, V without ties, floored", 0.5),
+           ("floored_overpromise_1", "Win probability + overpromise 1, strict, V without ties, floored", 1.0))},
 }
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a

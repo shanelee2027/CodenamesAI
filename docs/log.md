@@ -7674,3 +7674,11 @@ credit; usage had read $3.49 before, and it lags, so the ~$0.16 these runs
 should cost may not have posted yet). Auto top-up off.
 
 **Play server (2026-10-26).** Added margin_value_overpromise_listener at λ = 0.5 and 1 to the localhost menu (`margin_value_overpromise`, `margin_value_overpromise_1`, scripts/tools/play_server.py). Expected: both load from cache/win_value_margin.npz and answer. Found: both listed by /api/spymasters; on seed 12345, team A's opening, they give FOOD 3 (value 0.514 and 0.512) and the old-V λ = 0.5 model gives FOOD 3 at 0.517. The values differ by the opening cost, which the old V did not charge, and by the small change in V itself.
+
+## 2026-10-27 — floored_overpromise_listener; margin V reachable by pull
+
+The user found margin_value_overpromise_listener at penalty 1 too cautious early and too aggressive when behind, with clues that made little sense, and asked for a cost that does not scale with V. Discussed: a constant cost would have to be ~0.15 to matter mid-game, seven times the opening's one_word (0.020), so it would make the opening worse; a floor, `promise_cost` × max(one_word, c), keeps every position above c as it was. Built as floored_overpromise_listener (docs/versions/).
+
+Expected: the floor removes promises the guesser will not attempt where one_word collapses (behind, opponent close to winning) and leaves the opening alone for c near 0.02. Found (free check, λ = 1, 12 boards per score, table in the version doc): with the opponent on its last word and 4 of ours left, floor 0 promised 4 on 10 of 12 boards with clues that do not connect four words (BLANK, GOVERNMENT, FICTIONAL); 0.02 left 3, 0.05 none. Two words behind, the odd 3s (TONE, DARLING, GENUS) are untouched even at 0.05, since one_word is 0.031 there: that comes from the P(win) objective, not the vanishing cost. Level or ahead the model is 0.3–0.6 below the incumbent's number at every floor, so its caution is not only early. Chose 0.05 (opening 3.08 -> 3.00).
+
+On the play server as "…, floored" at penalty 0.5 and 1. `cache/win_value_margin.npz` (5 KB) is now tracked through a .gitignore exception, so the laptop clone, whose cache came from the 10-07 bundle, gets it on `git pull`; it is also on the bundle's file list. Every other file the new entries need is older than that bundle.

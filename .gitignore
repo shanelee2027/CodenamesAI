@@ -2,6 +2,10 @@ data/*
 !data/.gitkeep
 cache/*
 !cache/.gitkeep
+# 5 KB, built from our own game records (scripts/data/build_win_value.py
+# --max-game-id 15907 --margin 0.5). Tracked so a clone that already has the
+# demo bundle's cache can play the margin-V menu entries after a pull.
+!cache/win_value_margin.npz
 __pycache__/
 .venv/
 .venv-vllm/
