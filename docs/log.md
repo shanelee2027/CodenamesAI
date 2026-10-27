@@ -7704,3 +7704,21 @@ Blue needs Fall, Row, Bark, Pan; red needs only Penguin. V(1, 4) = 0.994, so eve
 ## 2026-10-27 — Clue history: click a clue to see the board as it was
 
 Each clue in the game page's history now opens the board as it stood when the clue was given, in spymaster view: every card in its true colour, the cards revealed by then faded, the clue's targets ringed in gold and its near misses dashed; "Back to the final board" returns. The page keeps the revealed state at each clue (`before`), so this is client-side only and view-only (play does not resume from there). Checked by driving the page's script in node against the live server (seed 4010, clue 3 LOW 3: 2 cards faded, targets and near misses marked, back restores the final board's 5).
+
+## 2026-10-27 — Probe: does gpt-oss go back to earlier clues when shown the game so far?
+
+scripts/data/probe_history_guesser.py; answers in table `turn_probe` of cache/llm_store.db (backup cache/backups/llm_store_2026-10-27_pre_history_probe.db). A new turn-level prompt (turn-v1): the clue and number, the board, the rules (up to number + 1 guesses, a wrong guess ends the turn, stop at any point), and the words it would guess in order. It deliberately does not say guesses may go to earlier clues' words, since that is what is measured. Arms differ only in an optional history block (every clue of both teams, with what each guess turned out to be) and an optional score line. Positions from the comfort arena at the incumbent's clues: *main*, 300 later clues with pending own words none of which the current clue targets (one per game); *desperate*, 100 where the opponent has one word left and we have 3+.
+
+Expected: with the history, some spare guesses go to pending words; with the score, more guesses when desperate. Found (899 calls, the rest identical prompts already answered; ~$0.04 by tokens; no failures):
+
+| set | arm | words listed | fewer than the number | used the +1 | listed a pending word | own found | wrong guess |
+|---|---|---|---|---|---|---|---|
+| main (number 2.00) | none | 1.95 | 3% | 1% | 3.3% | 1.56 | 29.0% |
+| | history | 1.92 | 3% | 0% | 3.3% | 1.55 | 27.7% |
+| | history + score | 1.96 | 2% | 1% | 2.7% | 1.53 | 29.0% |
+| desperate (number 2.22, 3.82 own left) | history | 2.15 | 3% | 0% | — | 1.58 | 39.0% |
+| | history + score | 2.20 | 2% | 3% | — | 1.64 | 41.0% |
+
+(In the desperate set the clue may target pending words, so "listed a pending word" is not meaningful there.)
+
+So gpt-oss treats the number as a quota: it lists exactly `number` words 96–97% of the time, almost never takes the +1, and the history changes nothing (pending words listed 3.3% with and without it). Told that it needs 3+ words while the other team needs one, it still lists about the number. gpt-oss at low effort is therefore not a proxy for a guesser that remembers or reads the score, and a history-aware arena built on it would not reward a history-aware spymaster. Evidence for the human behaviour has to come from humans (logging games on the play server), or from a prompt that states the rule, which would measure what the model can do when told rather than what a player does unprompted.
