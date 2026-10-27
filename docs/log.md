@@ -7672,3 +7672,5 @@ asks for more words.
 DeepInfra: checklist $12.70, October usage $3.50 just after the runs ($9.20
 credit; usage had read $3.49 before, and it lags, so the ~$0.16 these runs
 should cost may not have posted yet). Auto top-up off.
+
+**Play server (2026-10-26).** Added margin_value_overpromise_listener at λ = 0.5 and 1 to the localhost menu (`margin_value_overpromise`, `margin_value_overpromise_1`, scripts/tools/play_server.py). Expected: both load from cache/win_value_margin.npz and answer. Found: both listed by /api/spymasters; on seed 12345, team A's opening, they give FOOD 3 (value 0.514 and 0.512) and the old-V λ = 0.5 model gives FOOD 3 at 0.517. The lower value is the opening cost the old V did not charge.

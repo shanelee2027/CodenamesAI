@@ -90,6 +90,7 @@ from codenames.spymasters.stop_listener import StopListenerSpymaster
 from codenames.spymasters.stop_net_words_listener import StopNetWordsListenerSpymaster
 from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymaster
 from codenames.spymasters.win_prob_overpromise_listener import WinProbOverpromiseListenerSpymaster
+from codenames.spymasters.margin_value_overpromise_listener import MarginValueOverpromiseListenerSpymaster
 from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
@@ -252,6 +253,22 @@ SPYMASTERS: dict[str, dict] = {
        for key, label, lam in (
            ("win_prob_overpromise", "Win probability + overpromise penalty 0.5, strict (guess only)", 0.5),
            ("win_prob_overpromise_1", "Win probability + overpromise penalty 1, strict (guess only)", 1.0))},
+    # The same on a V table without ties: every step at least half the
+    # logistic prior's, so the cost also acts on the opening clue
+    # (codenames/spymasters/margin_value_overpromise_listener.py).
+    **{key: {"label": label, "model": "listener_gbt_assoc_profile.txt", "outside_n": 0,
+             "cls": MarginValueOverpromiseListenerSpymaster, "no_k1": True,
+             "kwargs": {"outside_n": 0, "stop_model_path": DEFAULT_CACHE_DIR / "listener_gbt_stop_guess.txt",
+                        "promise_cost": lam},
+             "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz",
+                       "win_value_margin.npz", "listener_gbt_stop_guess.txt"],
+             "about": "Win probability + overpromise penalty, strict, on a V table without ties (same "
+                      "10,266 games; every step at least half the smooth fit's), so the cost also acts "
+                      f"on the opening clue. Each promised word the guesser stops short of costs {lam} of "
+                      "an own word's worth in win probability. The value shown is P(win) minus that cost."}
+       for key, label, lam in (
+           ("margin_value_overpromise", "Win probability + overpromise 0.5, strict, V without ties", 0.5),
+           ("margin_value_overpromise_1", "Win probability + overpromise 1, strict, V without ties", 1.0))},
 }
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
