@@ -13,6 +13,7 @@
   --ink:#241F19; --muted:#6E6558;
   --blue:#3A6EA5; --red:#B4504D; --tan:#C9B693; --black:#26282D;
   --gold:#B4842A; --spent:0.30;
+  --ink-a:#2F5F92; --ink-b:#A3423F; --ink-n:#8A7448; --ink-x:#26282D;
   --shadow:0 1px 2px rgba(36,31,25,.18);
 }
 @media (prefers-color-scheme: dark){
@@ -21,6 +22,7 @@
     --ink:#ECE7DE; --muted:#9A948A;
     --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
     --gold:#D4A33C; --spent:0.22; --shadow:0 1px 2px rgba(0,0,0,.5);
+    --ink-a:#7FA8D6; --ink-b:#E08A86; --ink-n:#C9B693; --ink-x:#ECE7DE;
   }
 }
 :root[data-theme="dark"]{
@@ -28,6 +30,7 @@
   --ink:#ECE7DE; --muted:#9A948A;
   --blue:#3F76AE; --red:#BC5653; --tan:#B3A184; --black:#0D0E11;
   --gold:#D4A33C; --spent:0.22; --shadow:0 1px 2px rgba(0,0,0,.5);
+  --ink-a:#7FA8D6; --ink-b:#E08A86; --ink-n:#C9B693; --ink-x:#ECE7DE;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
@@ -78,6 +81,17 @@ button.act:disabled{opacity:.5;cursor:default}
 button.act:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .log{margin-top:12px;font-size:12.5px;color:var(--muted);line-height:1.55;max-height:104px;overflow-y:auto}
 .log b{color:var(--ink)}
+.history{margin-top:14px}
+.history h2{font-family:Oswald,sans-serif;font-weight:600;font-size:13px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.hturn{background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  padding:8px 11px;margin-bottom:6px;font-size:12.5px;line-height:1.5}
+.hturn .hclue{font-family:Oswald,sans-serif;font-weight:600;font-size:16px;letter-spacing:.04em;
+  text-transform:uppercase} .hturn .hclue .num{color:var(--gold)}
+.hturn .who{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.hturn .lbl{color:var(--muted)} .hturn .sep{color:var(--muted);margin:0 6px}
+.hturn b{font-weight:600} .w-a{color:var(--ink-a)} .w-b{color:var(--ink-b)} .w-n{color:var(--ink-n)}
+.w-x{color:var(--ink-x);text-decoration:underline wavy;text-underline-offset:3px}
 .foot{margin-top:14px;font-size:11px;color:var(--muted);line-height:1.5}
 .foot code{font-size:10.5px;background:var(--surface);border:1px solid var(--line);
   border-radius:4px;padding:1px 4px}
@@ -117,6 +131,7 @@ __NAV__
   <button class="act" id="newgame">New board</button>
 </div>
 <div class="log" id="log"></div>
+<div class="history" id="history"></div>
 <div class="foot">
   Clues come from the distilled listener running in Python on this machine —
   <code>LearnedListenerSpymaster</code>, the same object the arena plays. Boards are
@@ -130,6 +145,11 @@ __NAV__
 <script>
 let B=null, revealed=[], turn='a', clue=null, left=0, over=null, busy=false;
 let SM={}, smKey=null;
+// Every clue of this game, with what the spymaster meant by it: the words
+// it was meant for and the near misses (the words not its own that its
+// listener rated highest), as on /compare. Each is fetched from /api/explain
+// while the clue is being guessed and shown once the game is over.
+let history=[];
 
 const $ = id => document.getElementById(id);
 const teamName = t => t==='a' ? 'Blue' : 'Red';
@@ -184,6 +204,12 @@ function newClue(){
       if(r.error) return fail(r.error);
       if(!r.clue) return endGame(turn, `${teamName(turn)} has no words left.`);
       clue=r;
+      const h={turn, key:r.spymaster, clue:r.clue, number:r.number, guesses:[], expl:null};
+      history.push(h);
+      post('/api/explain', {seed:B.seed, revealed:words, turn, spymaster:r.spymaster,
+                            clue:r.clue, number:r.number})
+        .then(e=>{ h.expl = e.error ? {error:e.error} : e; if(over) showHistory(); })
+        .catch(()=>{ h.expl={error:'no answer'}; if(over) showHistory(); });
       left=r.number+1;                   // Codenames allows one guess beyond the number
       say(`<b>${teamName(turn)}</b> spymaster: <b>${r.clue.toUpperCase()} ${r.number}</b>`
           + ` <span style="opacity:.6">— ${SM[r.spymaster]?SM[r.spymaster].label:r.spymaster},`
@@ -193,7 +219,28 @@ function newClue(){
     .catch(e=>fail('Lost the server — is play_server.py still running?'));
 }
 
-function endGame(team,msg){ over={team,msg}; busy=false; render(); }
+function endGame(team,msg){ over={team,msg}; busy=false; render(); showHistory(); }
+
+const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Coloured by the word's true role on the board (blue, red, bystander, assassin).
+const wordHtml = w => { const i=B.words.findIndex(x=>x.toLowerCase()===String(w).toLowerCase());
+  return `<b class="w-${i<0?'n':B.roles[i]}">${esc(w)}</b>`; };
+
+function showHistory(){
+  if(!history.length){ $('history').innerHTML=''; return; }
+  $('history').innerHTML = '<h2>Clue history</h2>' + history.map((h,n)=>{
+    const e=h.expl;
+    const meant = !e ? '<span class="lbl">working out…</span>'
+      : e.error ? `<span class="lbl">${esc(e.error)}</span>`
+      : `<span class="lbl">Meant for:</span> ${(e.targets||[]).map(wordHtml).join(', ')||'—'}`
+        + ((e.risks||[]).length ? `<span class="sep">·</span><span class="lbl">Near misses:</span> `
+          + e.risks.map(r=>wordHtml(r.word)).join(', ') : '');
+    const guessed = h.guesses.length ? h.guesses.map(wordHtml).join(', ') : 'none';
+    return `<div class="hturn"><div class="who">${n+1}. ${teamName(h.turn)} · ${esc(SM[h.key]?SM[h.key].label:h.key)}</div>
+      <div class="hclue">${esc(h.clue)} <span class="num">${h.number}</span></div>
+      <div>${meant}</div><div><span class="lbl">Guessed:</span> ${guessed}</div></div>`;
+  }).join('');
+}
 
 function checkWin(){
   const ra=B.roles.filter((r,i)=>r==='a'&&!revealed[i]).length;
@@ -207,6 +254,7 @@ const nextTurn = () => { turn = turn==='a'?'b':'a'; newClue(); };
 function guess(i){
   if(over||busy||revealed[i]||!clue) return;
   revealed[i]=true;
+  history.length && history[history.length-1].guesses.push(B.words[i]);
   const r=B.roles[i];
   if(r==='x'){
     say(`${B.words[i]} — <b>assassin</b>`);
@@ -226,6 +274,7 @@ function start(seed){
       if(b.error) return fail(b.error);
       B=b; revealed=new Array(b.words.length).fill(false);
       turn='a'; over=null; clue=null; $('log').innerHTML='';
+      history=[]; $('history').innerHTML='';
       newClue();
     })
     .catch(e=>fail('Could not reach the server.'));

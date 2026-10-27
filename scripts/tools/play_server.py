@@ -11,7 +11,9 @@ generated and the clue is the same one the arena would see.
 Three pages:
 
     /       a full game. Pick the spymaster from a menu (SPYMASTERS below);
-            the choice applies from the next clue.
+            the choice applies from the next clue. When the game ends, a clue
+            history lists every clue with the words it was meant for, its near
+            misses (as on /compare) and what was guessed (/api/explain).
     /eval   the blind study. One position, one clue, you guess, next. Each
             clue comes from one of `--eval-arms`, assigned here and never sent
             to the browser. Every turn is appended to `cache/human_eval.jsonl`;
@@ -408,16 +410,26 @@ class Engine:
                 "value": round(value, 3), "value_kind": kind,
                 **({"points_at": round(points, 2)} if points is not None else {})}
 
-    def clue(self, seed: int, revealed: list[str], turn: str, key: str) -> dict:
+    @staticmethod
+    def position(seed: int, revealed: list[str], turn: str):
+        """The board `seed` with `revealed` turned over, as `turn`'s spymaster
+        sees it. Roles are stored from team A's perspective; team B plays the
+        same board through the view that swaps OWN and OPPONENT, exactly as
+        the two-team game loop does."""
         board = Board.generate(seed=seed)
         on_board = {w.lower(): w for w in board.words}
         board.revealed = {on_board[w.lower()] for w in revealed if w.lower() in on_board}
-        # Roles are stored from team A's perspective; team B plays the same
-        # board through the view that swaps OWN and OPPONENT, exactly as the
-        # two-team game loop does.
-        view = board if turn == "a" else OpponentBoardView(board)
+        return board if turn == "a" else OpponentBoardView(board)
+
+    def explain_clue(self, seed: int, revealed: list[str], turn: str, key: str, clue: str, number: int) -> dict:
+        """`explain` for a clue given earlier in a game, at the position it was
+        given in: the game page's history after the game ends."""
+        return self.explain(self.position(seed, revealed, turn), key, clue, number)
+
+    def clue(self, seed: int, revealed: list[str], turn: str, key: str) -> dict:
+        view = self.position(seed, revealed, turn)
         t0 = time.time()
-        got = self.best_clue(view, key, turn_index=len(board.revealed))
+        got = self.best_clue(view, key, turn_index=len(view.revealed))
         if got is None:
             return {"clue": None}
         return {"clue": got[0], "number": got[1], "score": got[2], "spymaster": key,
@@ -822,6 +834,11 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
                                                   list(req.get("revealed") or []),
                                                   req.get("turn", "a"),
                                                   req.get("spymaster") or default_key))
+                if self.path == "/api/explain":
+                    return self._json(engine.explain_clue(int(req["seed"]), list(req.get("revealed") or []),
+                                                          req.get("turn", "a"),
+                                                          req.get("spymaster") or default_key,
+                                                          str(req["clue"]), int(req["number"])))
                 if self.path == "/api/compare/next" and compare is not None:
                     return self._json(compare.next(str(req["left"]), str(req["right"]),
                                                    bool(req.get("blind", True))))
