@@ -85,7 +85,12 @@ button.act:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
 .history h2{font-family:Oswald,sans-serif;font-weight:600;font-size:13px;letter-spacing:.14em;
   text-transform:uppercase;color:var(--muted);margin:0 0 6px}
 .hturn{background:var(--surface);border:1px solid var(--line);border-radius:10px;
-  padding:8px 11px;margin-bottom:6px;font-size:12.5px;line-height:1.5}
+  padding:8px 11px;margin-bottom:6px;font-size:12.5px;line-height:1.5;cursor:pointer}
+.hturn:hover{border-color:var(--muted)} .hturn.sel{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+.card.tgt{box-shadow:inset 0 0 0 3px var(--gold)}
+.card.near{outline:2px dashed var(--ink);outline-offset:-6px}
+button.back{margin-top:8px;align-self:flex-start;font:600 12px Inter,sans-serif;padding:6px 10px;
+  border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
 .hturn .hclue{font-family:Oswald,sans-serif;font-weight:600;font-size:16px;letter-spacing:.04em;
   text-transform:uppercase} .hturn .hclue .num{color:var(--gold)}
 .hturn .who{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -150,6 +155,8 @@ let SM={}, smKey=null;
 // listener rated highest), as on /compare. Each is fetched from /api/explain
 // while the clue is being guessed and shown once the game is over.
 let history=[];
+// After the game: the history entry whose position the board shows (null: the final board).
+let snap=null;
 
 const $ = id => document.getElementById(id);
 const teamName = t => t==='a' ? 'Blue' : 'Red';
@@ -159,21 +166,36 @@ const post = (path, body) => fetch(path, {method:'POST',
 
 function render(){
   const bd=$('board'); bd.innerHTML='';
+  const S = snap!=null ? history[snap] : null;
+  const rv = S ? S.before : revealed;
+  const lc = ws => new Set((ws||[]).map(x=>String(x).toLowerCase()));
+  const tgt = lc(S&&S.expl&&S.expl.targets), near = lc(S&&S.expl&&(S.expl.risks||[]).map(r=>r.word));
   B && B.words.forEach((w,i)=>{
     const el=document.createElement('button');
-    const shown=revealed[i]||over;
-    el.className='card'+(shown?' r-'+B.roles[i]:'')+(revealed[i]?' spent':'');
+    const shown=rv[i]||over;
+    el.className='card'+(shown?' r-'+B.roles[i]:'')+(rv[i]?' spent':'')
+      +(tgt.has(w.toLowerCase())?' tgt':'')+(near.has(w.toLowerCase())?' near':'');
     el.textContent=w;
     el.disabled=!!(revealed[i]||over||busy);
     el.setAttribute('aria-label', w+(revealed[i]?' — revealed':''));
     el.onclick=()=>guess(i);
     bd.appendChild(el);
   });
-  const cnt = r => B ? B.roles.filter((x,i)=>x===r&&!revealed[i]).length : 0;
+  const cnt = r => B ? B.roles.filter((x,i)=>x===r&&!rv[i]).length : 0;
   $('ta').textContent=cnt('a');
   $('tb').textContent=cnt('b');
   $('bno').textContent=B?`· seed ${B.seed}`:'';
   $('banner').innerHTML = over ? `<div class="banner ${over.team}">${over.msg}</div>` : '';
+  if(S){
+    $('turnline').innerHTML = `Clue ${snap+1} of ${history.length} · <b>${teamName(S.turn)}</b>`
+      + ` · the board as its spymaster saw it`;
+    $('clueword').innerHTML = `${esc(S.clue)} <span class="num">${S.number}</span>`;
+    $('cluesub').innerHTML = 'Gold ring: meant for. Dashed: near misses. Faded: already revealed.'
+      + '<br><button class="back" id="back">Back to the final board</button>';
+    $('back').onclick = () => showSnap(null);
+    $('endturn').disabled=true; $('sm').disabled=busy; $('newgame').disabled=busy;
+    return;
+  }
   $('turnline').innerHTML = over ? 'Game over'
     : busy ? `<b>${teamName(turn)}</b> spymaster is thinking…`
     : `<b>${teamName(turn)}</b> to guess · ${left} guess${left===1?'':'es'} left`;
@@ -204,7 +226,8 @@ function newClue(){
       if(r.error) return fail(r.error);
       if(!r.clue) return endGame(turn, `${teamName(turn)} has no words left.`);
       clue=r;
-      const h={turn, key:r.spymaster, clue:r.clue, number:r.number, guesses:[], expl:null};
+      const h={turn, key:r.spymaster, clue:r.clue, number:r.number, guesses:[], expl:null,
+               before:revealed.slice()};
       history.push(h);
       post('/api/explain', {seed:B.seed, revealed:words, turn, spymaster:r.spymaster,
                             clue:r.clue, number:r.number})
@@ -236,10 +259,17 @@ function showHistory(){
         + ((e.risks||[]).length ? `<span class="sep">·</span><span class="lbl">Near misses:</span> `
           + e.risks.map(r=>wordHtml(r.word)).join(', ') : '');
     const guessed = h.guesses.length ? h.guesses.map(wordHtml).join(', ') : 'none';
-    return `<div class="hturn"><div class="who">${n+1}. ${teamName(h.turn)} · ${esc(SM[h.key]?SM[h.key].label:h.key)}</div>
+    return `<div class="hturn${snap===n?' sel':''}" data-n="${n}" title="Show the board when this clue was given"><div class="who">${n+1}. ${teamName(h.turn)} · ${esc(SM[h.key]?SM[h.key].label:h.key)}</div>
       <div class="hclue">${esc(h.clue)} <span class="num">${h.number}</span></div>
       <div>${meant}</div><div><span class="lbl">Guessed:</span> ${guessed}</div></div>`;
   }).join('');
+  $('history').querySelectorAll('.hturn').forEach(el =>
+    el.onclick = () => showSnap(+el.dataset.n === snap ? null : +el.dataset.n));
+}
+
+function showSnap(n){
+  snap=n; render(); showHistory();
+  if(n!=null) window.scrollTo({top:0, behavior:'smooth'});
 }
 
 function checkWin(){
@@ -274,7 +304,7 @@ function start(seed){
       if(b.error) return fail(b.error);
       B=b; revealed=new Array(b.words.length).fill(false);
       turn='a'; over=null; clue=null; $('log').innerHTML='';
-      history=[]; $('history').innerHTML='';
+      history=[]; snap=null; $('history').innerHTML='';
       newClue();
     })
     .catch(e=>fail('Could not reach the server.'));
