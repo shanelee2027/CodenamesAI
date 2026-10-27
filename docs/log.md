@@ -7686,3 +7686,17 @@ On the play server as "…, floored" at penalty 0.5 and 1. `cache/win_value_marg
 ## 2026-10-27 — Clue history on the game page
 
 At the user's request, the game page (/) now shows a clue history when the game ends: every clue, which spymaster gave it, the words it was meant for, its near misses (the words not its own its listener rated highest, the "Risks" of /compare) and the words guessed on it, each coloured by its true role. New endpoint `/api/explain` (Engine.explain_clue) rebuilds the position a clue was given in from the seed, the words revealed before it and the team, and returns `explain` for it, so the page stays stateless on the server. The page asks for each explanation as soon as the clue is given, while the human guesses, so the history is ready when the game ends; nothing is shown before then. Checked by driving the page's script in node against the live server (seed 4010, five clues to an assassin): every entry filled, red's targets red, blue near misses of red's clues blue, the assassin marked. The demo bundle is republished with it.
+
+## 2026-10-27 — How often spymasters re-clue their own pending words
+
+Asked as the first, free step towards a history-aware spymaster: how often does a clue go back to own words an earlier clue of the same team was meant for and the guesser has not found ("pending")? scripts/tools/reclue_rate.py replays recorded games and recomputes each clue's targets as the play server's "Meant for" does (the `number` own words the model's listener rates highest at that position), and compares the re-clued count with chance (`number` × pending / own left, the targets drawn at random from the own words left).
+
+Expected: some re-clueing, since late in a game few words are left. Found, on the comfort arena (holdout_v1_gptoss_subset_guess):
+- the incumbent over all 2,798 games: 10,261 clues after its first, 7,522 with pending words; 73.8% of those re-clue at least one; 7,906 re-clued targets against 6,795 by chance (+16%); 480 clues (4.7%) repeat a clue word it already gave;
+- margin_value_overpromise_listener at λ = 1 (its 200 games): 67% re-clue at least one, 460 against 413 by chance (+11%), 28 repeats.
+
+So re-clueing is the norm and above chance. Under the arena's memoryless guesser it is rational: a pending word is never found unless clued again. It would not be with a human, who goes back to old clues with spare guesses. The first run over every game was killed for memory (each worker loaded every challenger); `--seat-has` computes only one seat's targets, so one model per worker.
+
+## 2026-10-27 — Why floored_overpromise at λ = 1 gave FRY 1 needing 4 (seed 1815732427)
+
+Blue needs Fall, Row, Bark, Pan; red needs only Penguin. V(1, 4) = 0.994, so every clue is worth ~0.008 P(win). Under the strict STOP listener no clue has a real chance of clearing all four: best OAR 4 at 0.0003, KITCHEN/WOOD 4 at 0.0002; TREE and AUTUMN put the assassin (Apple) first. The remaining hope is red missing (~0.6%), where one safe word helps, so FRY 1 (Pan 0.99). The floor makes the 1 decisive but is not the cause: without it a safe 1 still wins (0.0078 vs OAR 4 at 0.0047); only with no penalty does OAR 4 lead, by 0.0002. The model is right given its beliefs; the beliefs are what is wrong for a human: the STOP listener does not know the guesser must clear four and would keep going, and V from gpt-oss games writes off a side whose opponent is on its last word more firmly than human play would.
