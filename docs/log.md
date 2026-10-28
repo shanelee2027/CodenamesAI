@@ -7734,3 +7734,16 @@ Expected: locations (or animals) systematically mispredicted. Found:
 - **The category-clue ambiguity is real but not systematic.** For location clues, a picked location costs 0.7–0.9 nats of surprise and a picked non-location 1.7–2.3; animal clues the same (0.8 vs 2.0). So the booster bets on category members and is badly surprised when the guesser goes for an associate, but on average it has the split right (same-category O/E 0.85–1.02 for locations, 0.92–1.17 for animals). That is uncertainty the features cannot resolve, not a bias a flag would fix, and the booster already knows category membership directly through `isa` / `isa_n` (is the word a kind of the clue, and how many board words are).
 
 So a location flag is unlikely to help this booster. What the errors point to instead is word-specific knowledge on unseen words, and the guessers here are gpt-oss and Sonnet, not a human.
+
+## 2026-10-28 — floored_overpromise_listener in the comfort arena
+
+At the user's request. Comfort arena as before (suite configs/eval_suite_gptoss_subset_guess.json, two-step gpt-oss guesser with the strict "guess" set, assoc_profile_listener as the fixed opponent, 100 boards × 2 games, none discarded). `floored_overpromise_listener:646834c252ac` (λ = 1, floor 0.05), 776 s. Store backed up first (cache/backups/llm_store_2026-10-28_pre_floored_arena.db). DeepInfra credit $9.15 before; $9.14 straight after, but usage lags, and the margin runs cost ~$0.08 each. Auto top-up off.
+
+Expected: wins about the same as margin V at λ = 1 (the floor only changes positions where one_word < 0.05, mostly two or more words behind late), and somewhat more comfort, since those are where the unconnected all-in clues came from.
+
+| model | win% (95% CI) | boards both ways | sign p | assassin (it vs opp) | mean k (it vs opp) | comfort (95% CI) |
+|---|---|---|---|---|---|---|
+| margin V + overpromise 1.0 (floor 0) | 51.5 [46.0, 57.0] | 18 vs 15 | 0.73 | 10 vs 7 | 2.12 vs 2.21 | 0.883 [0.866, 0.901] |
+| **floored, 0.05** | 51.5 [46.0, 57.5] | 18 vs 15 | 0.73 | 9 vs 8 | 1.97 vs 2.20 | 0.912 [0.898, 0.924] |
+
+Found: as expected. Wins identical, comfort +0.029 (unpaired intervals barely touch), mean number 2.12 → 1.97. It is not on the frontier: overpromise 0.5 strict (52.0%, 0.929) beats it on both axes, at sample sizes where none of these win rates differ significantly. The arena guesser takes the number as a quota and ignores the score (history probe, 2026-10-27), so the floor's purpose, fewer clues a human would not chase when behind, is only partly visible here.

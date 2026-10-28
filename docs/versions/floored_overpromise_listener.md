@@ -67,4 +67,17 @@ Floor 0 is margin_value_overpromise_listener at λ = 1.
 - **The opening** goes from 3.08 to 3.00 at 0.05 (one board of twelve); 0.1
   would give 2.58.
 
-Not yet run in the comfort arena.
+**Comfort arena** (2026-10-28; two-step gpt-oss guesser with the strict
+"guess" set, assoc_profile_listener as the fixed opponent, 100 boards × 2
+games, none discarded; `floored_overpromise_listener:646834c252ac`, 776 s,
+about $0.08). Win% and comfort with board-bootstrap intervals from
+`plot_comfort_frontier.py`.
+
+| model | win% (95% CI) | boards both ways | sign p | assassin (it vs opp) | mean k (it vs opp) | comfort (95% CI) |
+|---|---|---|---|---|---|---|
+| margin V + overpromise 1.0 (floor 0) | 51.5 [46.0, 57.0] | 18 vs 15 | 0.73 | 10 vs 7 | 2.12 vs 2.21 | 0.883 [0.866, 0.901] |
+| **floored, 0.05** | 51.5 [46.0, 57.5] | 18 vs 15 | 0.73 | 9 vs 8 | 1.97 vs 2.20 | 0.912 [0.898, 0.924] |
+
+Same wins, more comfort (+0.029; the two intervals barely touch), and a
+lower mean number (1.97), which is the long-shot numbers the floor removes.
+Still not on the frontier: overpromise 0.5 strict has 52.0% at 0.929.
