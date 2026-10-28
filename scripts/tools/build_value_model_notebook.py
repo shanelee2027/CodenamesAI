@@ -92,10 +92,10 @@ $$\tilde V_{ab} = \frac{w_{ab} + m\, \pi_{ab}}{n_{ab} + m}
 code(r"""
 shrunk = (w + 20 * prior) / (n + 20)
 rows = [{"(a, b)": f"({a}, {b})", "n": int(n[a, b]), "raw": w[a, b] / n[a, b] if n[a, b] else np.nan,
-         "fit π": prior[a, b], "α": 20 / (n[a, b] + 20), "shrunk": shrunk[a, b], "V": V[a, b]}
-        for a, b in [(9, 8), (4, 4), (8, 8), (8, 9), (8, 2), (9, 2), (3, 9)]]
+         "fit π": prior[a, b], "α": 20 / (n[a, b] + 20), "shrunk Ṽ": shrunk[a, b]}
+        for a, b in [(9, 8), (4, 4), (8, 8), (8, 9), (7, 2), (8, 2), (9, 2), (3, 9)]]
 pd.DataFrame(rows).set_index("(a, b)").style.format(
-    {"raw": "{:.3f}", "fit π": "{:.3f}", "α": "{:.1%}", "shrunk": "{:.3f}", "V": "{:.3f}"})
+    {"raw": "{:.3f}", "fit π": "{:.3f}", "α": "{:.1%}", "shrunk Ṽ": "{:.3f}"})
 """)
 
 md(r"""
@@ -117,12 +117,15 @@ V_{ab} - V_{a+1,b} &\ge c\,\big(\pi_{ab} - \pi_{a+1,b}\big)
 \end{aligned}\;}$$
 
 $c = 0$: ties allowed (old V, `win_value.npz`). $c = 1$: leaves $[0, 1]$. Computed by Dykstra (alternating row / column isotonic regression).
+
+Same cells, step 3 → step 4. $(7,2), (8,2), (9,2)$ pooled: $\tfrac{191 \cdot 0.018 + 51 \cdot 0.006 + 33 \cdot 0.158}{275} = 0.033$, then spread by the margin.
 """)
 
 code(r"""
-pd.DataFrame([{"(a, b)": f"({a}, {b})", "ω": n[a, b] + 20, "Ṽ": shrunk[a, b], "π": prior[a, b], "V": V[a, b]}
-              for a, b in [(8, 8), (8, 9)]]).set_index("(a, b)").style.format(
-    {"ω": "{:.0f}", "Ṽ": "{:.4f}", "π": "{:.4f}", "V": "{:.4f}"})
+pd.DataFrame([{"(a, b)": f"({a}, {b})", "ω": n[a, b] + 20, "π": prior[a, b], "shrunk Ṽ": shrunk[a, b], "V": V[a, b],
+               "V − Ṽ": V[a, b] - shrunk[a, b]}
+              for a, b in [(9, 8), (4, 4), (8, 8), (8, 9), (7, 2), (8, 2), (9, 2), (3, 9)]]).set_index("(a, b)").style.format(
+    {"ω": "{:.0f}", "π": "{:.4f}", "shrunk Ṽ": "{:.4f}", "V": "{:.4f}", "V − Ṽ": "{:+.4f}"})
 """)
 
 code(r"""
