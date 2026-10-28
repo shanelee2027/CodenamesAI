@@ -7775,3 +7775,12 @@ Expected, from the old ranking guesser on the same boards (suite holdout_v1_gpto
 Found: the ordering survives. The baseline loses by about 30 points and learned_listener by 3.5, within noise of its 6.7 under the old guesser. So the guesser still rewards better clueing; the recent models near 50% are close to the incumbent, and a 200-game arena (interval about ±6.5 points) cannot resolve gaps of a few points.
 
 Also: notebooks/value_model_comfort_1028.ipynb cut to a formula sheet at the user's request (definitions, formulas, the counts / shrinkage / V / one_word / charge tables, the comfort table and scatter; the explanations, the sqrt(n) check and the caveats removed).
+
+**Direct test under the old guesser (same day).** incumbent vs expected_words (sigma 1.5) on holdout_v1_gptoss, the old ranking guesser; store backed up first (cache/backups/llm_store_2026-10-28_pre_old_guesser_check.db). 347 s; 10 boards discarded (gpt-oss gave no usable ranking). Expected: if the new guesser flattens gaps, a larger margin here than its 79.0%. Found: 73.9% [67, 80] on 90 boards, boards won both ways 47 vs 4, assassin losses 19 vs 12. Paired on the boards both guessers played (bootstrap over boards), new minus old:
+
+| incumbent vs | boards | old guesser | new guesser | new − old (95% CI) |
+|---|---|---|---|---|
+| expected_words | 90 | 73.9 | 78.9 | +5.0 [−1.7, +11.7] |
+| learned_listener | 97 | 56.7 | 53.6 | −3.1 [−11.3, +5.2] |
+
+Neither difference is significant and they go opposite ways, so there is no sign that the two-step guesser compresses win rates. The recent models' ~50% means they are close to the incumbent.
