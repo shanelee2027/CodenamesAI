@@ -10,13 +10,15 @@ code = lambda s: C.append(nbf.v4.new_code_cell(s.strip()))
 md(r"""
 # Formulas: the value function, the current model, comfort
 
-- Position $(a, b)$: the side to move has $a$ own words left, the other side $b$.
-- Incumbent: `assoc_profile_listener`, the fixed opponent in every win rate.
-- Comfort arena: 100 held-out boards × 2 seatings; gpt-oss-120b guesses in two calls
-  (the "guess" set $G$ without the number, then a ranking of $G$ with the number; stops at
-  a wrong word, after $k$ picks, or when $G$ runs out; never takes $k+1$).
-- Data: `cache/win_value_margin.npz`, `cache/report/comfort_frontier_holdout_v1_gptoss_subset_guess.json`.
-  No API calls.
+| symbol | |
+|---|---|
+| $(a, b)$ | own words left, other side's words left (side to move) |
+| $k$ | the clue's number |
+| $F$, $j = \lvert F\rvert$ | own words found so far this turn, picks made |
+| $\pi_{ab}$ | the logistic fit (a table), not 3.14 |
+| $\Pi$ | projection onto monotone tables |
+| incumbent | `assoc_profile_listener` |
+| arena | 100 held-out boards × 2 seatings, gpt-oss-120b guessing: $G$ = "guess" set (no number) → rank $G$ (with $k$) → stop at a wrong word, $k$ picks, or $G$ exhausted |
 """)
 
 code(r"""
@@ -48,11 +50,11 @@ md(r"""
 
 $$V(a, b) = P(\text{side to move wins} \mid a, b)$$
 
-From 10,266 incumbent-vs-incumbent games with gpt-oss guessing. One data point per game per
-turn-start position: $n_{ab}$ data points, $w_{ab}$ won.
-""")
+$$n_{ab} = \#\{(\text{game}, \text{turn start at } (a, b))\}, \qquad
+w_{ab} = \#\{\ldots \text{won by the side to move}\}, \qquad 10{,}266 \text{ incumbent games}$$
 
-md("Data points per cell, $n_{ab}$:")
+$n_{ab}$:
+""")
 
 code(r"""
 print(f"{int(n.sum()):,} data points")
@@ -85,8 +87,6 @@ md(r"""
 $$\tilde V_{ab} = \frac{w_{ab} + m\, \pi_{ab}}{n_{ab} + m}
 = (1 - \alpha_{ab})\, \hat p_{ab} + \alpha_{ab}\, \pi_{ab},
 \qquad \alpha_{ab} = \frac{m}{n_{ab} + m}$$
-
-Example cells, each step:
 """)
 
 code(r"""
@@ -99,11 +99,39 @@ pd.DataFrame(rows).set_index("(a, b)").style.format(
 """)
 
 md(r"""
-**4. Monotone projection with a margin** ($c = 0.5$; weights $n_{ab} + m$; Dykstra)
-$$V = \Pi_{\text{monotone}}\big(\tilde V - c\,\pi\big) + c\,\pi, \qquad
-V(a+1, b) \le V(a, b),\quad V(a, b+1) \ge V(a, b)$$
+**4. Monotone projection with a margin** ($c = 0.5$, $\omega_{ab} = n_{ab} + m$)
 
-Final $V$:
+Plain projection (2-D isotonic regression):
+$$\Pi(X) = \arg\min_{V} \sum_{a,b} \omega_{ab}\,\big(V_{ab} - X_{ab}\big)^2
+\quad \text{s.t.} \quad V_{a+1,\,b} \le V_{ab}, \quad V_{a,\,b+1} \ge V_{ab}$$
+
+With the margin:
+$$V = \Pi\big(\tilde V - c\,\pi\big) + c\,\pi$$
+
+$$\Longleftrightarrow\quad
+\boxed{\;V = \arg\min_{V} \sum_{a,b} \omega_{ab}\big(V_{ab} - \tilde V_{ab}\big)^2
+\quad \text{s.t.}\quad
+\begin{aligned}
+V_{a,b+1} - V_{ab} &\ge c\,\big(\pi_{a,b+1} - \pi_{ab}\big)\\
+V_{ab} - V_{a+1,b} &\ge c\,\big(\pi_{ab} - \pi_{a+1,b}\big)
+\end{aligned}\;}$$
+
+$c = 0$: ties allowed (old V, `win_value.npz`). $c = 1$: leaves $[0, 1]$. Computed by Dykstra (alternating row / column isotonic regression).
+""")
+
+code(r"""
+pd.DataFrame([{"(a, b)": f"({a}, {b})", "ω": n[a, b] + 20, "Ṽ": shrunk[a, b], "π": prior[a, b], "V": V[a, b]}
+              for a, b in [(8, 8), (8, 9)]]).set_index("(a, b)").style.format(
+    {"ω": "{:.0f}", "Ṽ": "{:.4f}", "π": "{:.4f}", "V": "{:.4f}"})
+""")
+
+code(r"""
+print(f"fit step {prior[8, 9] - prior[8, 8]:.4f}   required ≥ {0.5 * (prior[8, 9] - prior[8, 8]):.4f}   "
+      f"V step {V[8, 9] - V[8, 8]:.4f}   Ṽ step {shrunk[8, 9] - shrunk[8, 8]:.4f}")
+""")
+
+md(r"""
+$V$:
 """)
 
 code(r"""
@@ -122,7 +150,7 @@ pd.DataFrame({"one_word": [val.one_word(a, b) for a, b in pts]},
 """)
 
 md(r"""
-**Check: fit weighted by $\sqrt{n_{ab}}$ instead of $n_{ab}$.** Fit error is $|\pi_{ab} - \hat p_{ab}|$.
+**Check:** fit weights $\sqrt{n_{ab}}$ vs $n_{ab}$; error $= |\pi_{ab} - \hat p_{ab}|$.
 """)
 
 code(r"""
@@ -156,24 +184,25 @@ pd.DataFrame(out).T.style.format("{:.4f}")
 md(r"""
 ## 2. The current model: `floored_overpromise_listener` (λ = 1, φ = 0.05)
 
-1. Shortlist: Gaussian embedding model, best 200 of ~11,000 clues.
-2. STOP listener predicts each pick.
-3. $\arg\max$ over clue and $k \le \min(a, 4)$ of $W_k(\varnothing)$.
+$$(\text{clue}^*, k^*) = \arg\max_{\text{clue} \in \text{top-200},\ k \le \min(a, 4)} W_k(\varnothing)$$
+
+(top-200: Gaussian embedding score over ~11,000 clues)
 
 ### STOP listener
 
-$$P(x \mid j) = \frac{e^{s_j(x)}}{\sum_{y \notin F} e^{s_j(y)} + e^{s_j(\text{STOP})}}$$
+$$P(x \mid j) = \frac{e^{s_j(x)}}{\sum_{y \notin F} e^{s_j(y)} + e^{s_j(\text{STOP})}},
+\qquad s_j(x) = \text{GBT}\big(\phi_{\text{assoc}}(\text{clue}, x) \setminus k,\ j,\ \mathbb{1}[x = \text{STOP}]\big) \quad (68 \text{ features})$$
 
-- $s_j$: LightGBM score; 68 features (the incumbent listener's 67 without $k$, plus $j$ and is-STOP).
-- Data: 18,687 generated positions, 250 training words; clues aimed 40% own, 20% opponent,
-  10% assassin, 10% neutral, 20% random.
-- Labels: gpt-oss "guess" set $S$ (asked without the number), ordered by gpt-oss's ranking.
-  Events: pick $j$ → $j$-th word of $S$, $j = 1..|S|$; pick $|S|+1$ → STOP.
-- Loss: $L = -\sum_e \log P(t_e \mid j_e)$, early-stopped on validation McFadden $R^2$.
-- Validation: $R^2 = 1 - \dfrac{\sum_e -\log P(t_e)}{\sum_e \log |C_e|} = 0.481$
-  (picks 1–4: 0.603, 0.430, 0.334, 0.493).
+Data: 18,687 positions, 250 training words,
+$$\text{clue aimed at} \sim \{\text{own } 0.4,\ \text{opp } 0.2,\ \text{assassin } 0.1,\ \text{neutral } 0.1,\ \text{random } 0.2\}$$
 
-The ranking listener (features and shortlist only), McFadden $R^2$:
+Labels: $S = (s_1, \dots, s_{|S|})$, gpt-oss "guess" set (no number), ordered by gpt-oss's ranking:
+$$t_j = s_j \ \ (j = 1, \dots, |S|), \qquad t_{|S|+1} = \text{STOP}$$
+
+$$L = -\sum_e \log P(t_e \mid j_e), \qquad
+R^2 = 1 - \frac{\sum_e -\log P(t_e)}{\sum_e \log |C_e|} = 0.481 \quad (\text{picks } 1\text{–}4:\ 0.603,\ 0.430,\ 0.334,\ 0.493)$$
+
+Ranking listener $R^2$ (features and shortlist only):
 """)
 
 code(r"""
@@ -190,8 +219,7 @@ r.set_index(["set", "model"])[["events", "r2", "pick_1", "pick_2", "pick_3", "pi
 md(r"""
 ### Value of a turn
 
-$\ell = a - |F|$, $j = |F|$:
-$$u(\ell, b) = 1 - V(b, \ell), \qquad u(0, b) = 1$$
+$$\ell = a - |F|, \qquad u(\ell, b) = 1 - V(b, \ell), \qquad u(0, b) = 1$$
 $$W_k(F) = \begin{cases}
 1 & \ell = 0\\[2pt]
 u(\ell, b) & j = k\\[2pt]
@@ -201,7 +229,7 @@ u(\ell, b) & j = k\\[2pt]
 \end{cases}$$
 $$u_x(\ell) = \begin{cases} u(\ell, b) & \text{neutral} \\ u(\ell, b - 1)\ \ (0 \text{ if } b = 1) & \text{opponent} \\ 0 & \text{assassin} \end{cases}$$
 
-### Overpromise charge (where λ enters)
+### Overpromise charge
 
 $$c = \lambda \cdot \max\big(\text{one\_word}(a, b),\ \varphi\big), \qquad \lambda = 1,\ \varphi = 0.05$$
 """)
@@ -217,11 +245,10 @@ pd.DataFrame([{"(a, b)": f"({a}, {b})", "c, no floor": val.one_word(a, b),
 md(r"""
 ## 3. Comfort
 
-$G_t$: the arena guesser's "guess" set for turn $t$ (any colour), number $k_t$; each position counted once.
 $$\text{comfort}_t = \frac{\min(|G_t|, k_t)}{k_t}, \qquad
 \text{comfort} = \frac{1}{T} \sum_{t=1}^{T} \text{comfort}_t$$
 
-Win rate: share of 200 games against the incumbent. Intervals: 95% bootstrap over boards.
+$G_t$: "guess" set (any colour); distinct positions only. Win rate over 200 games vs the incumbent; 95% CIs bootstrap over boards.
 """)
 
 code(r"""
@@ -234,7 +261,7 @@ tab["frontier"] = ["*" if i in front or nm in front else "" for i, nm in zip(tab
 tab.sort_values("comfort", ascending=False)[["name", "games", "turns", "win% (95% CI)", "comfort (95% CI)", "frontier"]].set_index("name")
 """)
 
-md("Win rate against comfort (red: floored, green: unfloored, orange: incumbent):")
+md("Red: floored. Green: unfloored. Orange: incumbent.")
 
 code(r"""
 fig, ax = plt.subplots(figsize=(8.5, 5.5))
