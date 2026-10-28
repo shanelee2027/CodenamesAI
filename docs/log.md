@@ -7760,3 +7760,18 @@ One thing made explicit while writing it: in this model the ranking booster (ass
 ## 2026-10-28 — Demo bundle republished, starting on the current best model
 
 At the user's request, for running the model on the laptop. The play server's game page now starts on `floored_overpromise_1` (λ = 1, floor 0.05) instead of the incumbent; `--spymaster assoc_profile` gives the old start. DEMO.md's menu paragraph described the September menu and now names the current entries. Expected: no new data files needed, since every file the floored model reads is on the bundle list. Found: the rebuilt bundle (583 MB, zip 435 MB, 29 cache files, none missing) run with its own code and cache lists 18 entries and gives BRANCH 3 on seed 12345 for both the floored model and the incumbent, the same clue as the repo. It also carries the clue-history snapshots (3c60936), which the 10-27 zip predates. Republished to the private release `shanelee2027/codenames-demo`, tag `demo`. A laptop clone needs only `git pull`: its cache already has every file.
+
+## 2026-10-28 — Does the comfort arena still separate good from bad models?
+
+At the user's request: under the two-step guesser recent models all land near 50% against the incumbent, which could mean they are close or that the guesser flattens differences. Test: the incumbent against two older, weaker models on the comfort arena (suite configs/eval_suite_gptoss_subset_guess.json, 100 boards × 2). Store backed up first (cache/backups/llm_store_2026-10-28_pre_sanity_arena.db). ~520 s per run.
+
+Expected, from the old ranking guesser on the same boards (suite holdout_v1_gptoss): the incumbent beat learned_listener 56.7% (194 games); learned_listener beat expected_words (sigma 1.5, same identity ef81daa9636a) 68.6%, so the incumbent should beat expected_words by more than that.
+
+| incumbent vs | win % (95% CI) | boards won both ways | sign p | assassin losses (them vs incumbent) | old guesser |
+|---|---|---|---|---|---|
+| learned_listener | 53.5 [47, 60] | 24 vs 17 | 0.35 | 4 vs 7 | 56.7 |
+| expected_words | 79.0 [73, 84] | 59 vs 1 | < 0.0001 | 21 vs 7 | (learned 68.6) |
+
+Found: the ordering survives. The baseline loses by about 30 points and learned_listener by 3.5, within noise of its 6.7 under the old guesser. So the guesser still rewards better clueing; the recent models near 50% are close to the incumbent, and a 200-game arena (interval about ±6.5 points) cannot resolve gaps of a few points.
+
+Also: notebooks/value_model_comfort_1028.ipynb cut to a formula sheet at the user's request (definitions, formulas, the counts / shrinkage / V / one_word / charge tables, the comfort table and scatter; the explanations, the sqrt(n) check and the caveats removed).
