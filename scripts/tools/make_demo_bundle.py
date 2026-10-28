@@ -146,11 +146,13 @@ to disable the k=1 similarity tiebreak.
 
 ## Choosing the spymaster
 
-The game page has a menu of every model whose files are in `cache/`: the
-incumbent, the decoy-trained variants, and the four stop listeners ("Stop
-listener" and "Stop listener, strict", each by chance of winning or by net
-words). The stop listeners take 3-4 s a clue. The choice applies from the
-next clue, so you can switch mid-game and compare.
+The game page has a menu of every model whose files are in `cache/`. It
+starts on the current best model, "Win probability + overpromise 1, strict,
+V without ties, floored"; the incumbent is "Incumbent (association-profile listener)".
+The others are the stop listeners and the overpromise variants (penalty 0.5
+or 1, loose or strict). The stop and overpromise models take 3-4 s a clue.
+The choice applies from the next clue, so you can switch mid-game and
+compare. Start on another with `./start.sh --spymaster assoc_profile`.
 
 ## The blind study
 

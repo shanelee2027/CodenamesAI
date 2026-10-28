@@ -873,7 +873,9 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--no-k1", dest="k1", action="store_false",
                     help="disable the k=1 similarity tiebreak")
-    ap.add_argument("--spymaster", default="assoc_profile", choices=sorted(SPYMASTERS),
+    # The current best model (docs/versions/floored_overpromise_listener.md);
+    # the incumbent is still on the menu as "assoc_profile".
+    ap.add_argument("--spymaster", default="floored_overpromise_1", choices=sorted(SPYMASTERS),
                     help="the game page's starting choice")
     ap.add_argument("--eval-arms", default="assoc_profile,profile_temperature",
                     help="comma-separated spymasters the blind study compares. The default "
