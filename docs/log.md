@@ -7756,3 +7756,7 @@ For the professor, at the user's request: `notebooks/value_model_comfort_1028.ip
 3. Comfort: definition, why stored answers, the comfort/win table for every comfort-arena model and the scatter.
 
 One thing made explicit while writing it: in this model the ranking booster (assoc profile) supplies the feature columns and the shortlist step, but its own predictions do not enter the choice; every shortlisted clue is valued under the STOP booster.
+
+## 2026-10-28 — Demo bundle republished, starting on the current best model
+
+At the user's request, for running the model on the laptop. The play server's game page now starts on `floored_overpromise_1` (λ = 1, floor 0.05) instead of the incumbent; `--spymaster assoc_profile` gives the old start. DEMO.md's menu paragraph described the September menu and now names the current entries. Expected: no new data files needed, since every file the floored model reads is on the bundle list. Found: the rebuilt bundle (583 MB, zip 435 MB, 29 cache files, none missing) run with its own code and cache lists 18 entries and gives BRANCH 3 on seed 12345 for both the floored model and the incumbent, the same clue as the repo. It also carries the clue-history snapshots (3c60936), which the 10-27 zip predates. Republished to the private release `shanelee2027/codenames-demo`, tag `demo`. A laptop clone needs only `git pull`: its cache already has every file.
