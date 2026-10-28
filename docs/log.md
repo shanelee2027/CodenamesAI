@@ -7747,3 +7747,12 @@ Expected: wins about the same as margin V at λ = 1 (the floor only changes posi
 | **floored, 0.05** | 51.5 [46.0, 57.5] | 18 vs 15 | 0.73 | 9 vs 8 | 1.97 vs 2.20 | 0.912 [0.898, 0.924] |
 
 Found: as expected. Wins identical, comfort +0.029 (unpaired intervals barely touch), mean number 2.12 → 1.97. It is not on the frontier: overpromise 0.5 strict (52.0%, 0.929) beats it on both axes, at sample sizes where none of these win rates differ significantly. The arena guesser takes the number as a quota and ignores the score (history probe, 2026-10-27), so the floor's purpose, fewer clues a human would not chase when behind, is only partly visible here.
+
+## 2026-10-28 — Notebook: the value function, the current model, comfort
+
+For the professor, at the user's request: `notebooks/value_model_comfort_1028.ipynb`, built by `scripts/tools/build_value_model_notebook.py` (then nbconvert `--execute --inplace`); no API calls. Three sections, formulas in LaTeX with the data read from cache:
+1. V(a, b): the counts grid, raw rates, the logistic fit (features and binomial loss), shrinkage toward it (20 pseudo-games, why it is needed: (9, 2) at 0.385 on 13 games), the monotone projection with margin 0.5, one_word, and the √n weighting check (V changes 0.0003 game-weighted; the fit is worse; opening one_word 0.020 → 0.010).
+2. floored_overpromise_listener: shortlist, the strict STOP listener (data, loss, fit), the turn recursion W_k(F), and where λ and the floor enter.
+3. Comfort: definition, why stored answers, the comfort/win table for every comfort-arena model and the scatter.
+
+One thing made explicit while writing it: in this model the ranking booster (assoc profile) supplies the feature columns and the shortlist step, but its own predictions do not enter the choice; every shortlisted clue is valued under the STOP booster.
