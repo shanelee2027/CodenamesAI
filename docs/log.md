@@ -7784,3 +7784,9 @@ Also: notebooks/value_model_comfort_1028.ipynb cut to a formula sheet at the use
 | learned_listener | 97 | 56.7 | 53.6 | −3.1 [−11.3, +5.2] |
 
 Neither difference is significant and they go opposite ways, so there is no sign that the two-step guesser compresses win rates. The recent models' ~50% means they are close to the incumbent.
+
+## 2026-10-29 — Public play page for the presentation
+
+At the user's request, a version of the game that strangers can try through a Cloudflare quick tunnel. `play_server.py --public` serves `webplay/public.html` at `/`: the game page with the model picker, the tab bar, the explanatory footer and the per-clue model label and timing removed, keeping the board, the move log, and the after-game clue history with its board snapshots (meant-for / near-miss rings). Every clue comes from `--spymaster` (default `floored_overpromise_1`), whatever the request names; only `/api/board`, `/api/clue` and `/api/explain` answer, and the blind study and compare pages are off, so a visitor cannot write to `cache/human_eval.jsonl` or the compare log. The play server makes no API calls, so a visitor cannot spend credits.
+
+Expected: the same clues as the normal page. Found, through the tunnel: VOLUNTEER 3 on seed 16 with `"spymaster": "assoc_profile"` in the request (overridden), `/eval`, `/compare` and `/api/spymasters` 404. About 2-3.5 s per clue for this model on this machine, one clue at a time behind the engine lock; not load-tested. `cloudflared` 2026.10.6 was run from the session scratchpad (checksum checked against the release notes), not installed.

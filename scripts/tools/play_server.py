@@ -50,9 +50,16 @@ optimal under the full board-aware reward, it plays the one most obviously tied
 to the word it means -- BASEBALL for Bat, rather than whichever safe clue wins
 by the third decimal. Pass --no-k1 to turn it off.
 
+`--public` is for putting the game in front of strangers (e.g. behind a
+tunnel): only the game page (webplay/public.html, no model picker, no
+explanations), only the board/clue/explain endpoints, and every clue from
+`--spymaster` whatever the request asks for. The blind study and the compare
+page are off, so nothing is written to their logs.
+
 Usage:
     python scripts/tools/play_server.py                    # http://127.0.0.1:8000
     python scripts/tools/play_server.py --eval-arms assoc_profile,profile_temperature
+    python scripts/tools/play_server.py --public --no-open --port 8001
 """
 
 from __future__ import annotations
@@ -787,7 +794,9 @@ class CompareStudy:
 
 
 def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
-                 compare: CompareStudy | None = None):
+                 compare: CompareStudy | None = None, public: bool = False):
+    pages = {"/": "public.html", "/index.html": "public.html"} if public else PAGES
+
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
@@ -808,11 +817,11 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
 
         def do_GET(self):
             path = self.path.split("?")[0]
-            if path in PAGES:
-                html = (WEB / PAGES[path]).read_text(encoding="utf-8").replace(
+            if path in pages:
+                html = (WEB / pages[path]).read_text(encoding="utf-8").replace(
                     "__K1__", "on" if engine.k1 else "off").replace("__NAV__", nav(path))
                 return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
-            if path == "/api/spymasters":
+            if path == "/api/spymasters" and not public:
                 return self._json({"default": default_key, "spymasters": [
                     {"id": k, **{f: SPYMASTERS[k][f] for f in ("label", "about")}}
                     for k in engine.available()]})
@@ -824,6 +833,10 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
                 req = json.loads(self.rfile.read(n) or b"{}")
             except json.JSONDecodeError:
                 return self._json({"error": "bad json"}, 400)
+            if public:
+                if self.path not in ("/api/board", "/api/clue", "/api/explain"):
+                    return self._json({"error": "no such endpoint"}, 404)
+                req["spymaster"] = default_key
             try:
                 if self.path == "/api/board":
                     seed = req.get("seed")
@@ -883,6 +896,8 @@ def main() -> None:
     ap.add_argument("--eval-log", type=Path, default=DEFAULT_EVAL_LOG)
     ap.add_argument("--compare-log", type=Path, default=DEFAULT_COMPARE_LOG)
     ap.add_argument("--no-open", dest="open_browser", action="store_false")
+    ap.add_argument("--public", action="store_true",
+                    help="game page only, every clue from --spymaster, no study or compare pages")
     ap.set_defaults(k1=True)
     args = ap.parse_args()
 
@@ -892,23 +907,27 @@ def main() -> None:
     default_key = args.spymaster if args.spymaster in have else have[0]
     arms = [a.strip() for a in args.eval_arms.split(",") if a.strip()]
     missing = [a for a in arms if a not in have]
-    study = None if missing or len(arms) < 2 else EvalStudy(engine, arms, args.eval_log)
+    study = None if args.public or missing or len(arms) < 2 else EvalStudy(engine, arms, args.eval_log)
 
     url = f"http://{args.host}:{args.port}/"
-    print(f"game:  {url}   spymasters available: {', '.join(have)}")
+    if args.public:
+        print(f"game:  {url}   public page, every clue from {default_key}")
+    else:
+        print(f"game:  {url}   spymasters available: {', '.join(have)}")
     if study:
         print(f"study: {url}eval   arms {' vs '.join(arms)} (blind)   -> {args.eval_log}")
-    else:
+    elif not args.public:
         print(f"study: disabled -- arms {arms} need {missing or 'at least two entries'}")
     if study:
         study.warm()                     # the first position is ready when the page opens
-    compare = CompareStudy(engine, args.compare_log)
-    print(f"compare: {url}compare   -> {args.compare_log}")
+    compare = None if args.public else CompareStudy(engine, args.compare_log)
+    if compare:
+        print(f"compare: {url}compare   -> {args.compare_log}")
     print("Ctrl-C to stop.")
     if args.open_browser:
         threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     server = ThreadingHTTPServer((args.host, args.port),
-                                 make_handler(engine, study, default_key, compare))
+                                 make_handler(engine, study, default_key, compare, args.public))
     try:
         server.serve_forever()
     except KeyboardInterrupt:
