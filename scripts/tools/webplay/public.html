@@ -260,7 +260,7 @@ function guess(i){
     endGame(turn==='a'?'b':'a', `${teamName(turn)} hit the assassin. ${teamName(turn==='a'?'b':'a')} wins.`);
     return;
   }
-  say(`${B.words[i]} — ${r===turn?'<b>theirs</b>':(r==='n'?'bystander':'the other team')}`);
+  say(`${B.words[i]} ${r===turn?'<b>✓</b>':'<b>✗</b>'}`);
   if(checkWin()) return;
   if(r===turn){ left--; if(left<=0){ say('Out of guesses.'); nextTurn(); } else render(); }
   else nextTurn();
