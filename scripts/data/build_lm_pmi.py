@@ -39,6 +39,7 @@ extractor treats it the same way.
 
 Usage:
     python scripts/data/build_lm_pmi.py --model gpt2-large
+    python scripts/data/build_lm_pmi.py --model data/models/gpt2-large --append   # new board words only
 """
 
 from __future__ import annotations
@@ -81,6 +82,9 @@ def main() -> None:
     ap.add_argument("--model", default="gpt2-large")
     ap.add_argument("--max-rarity", type=float, default=10.0)
     ap.add_argument("--limit-clues", type=int, default=0)
+    ap.add_argument("--append", action="store_true",
+                    help="score only the board words --out does not have yet (appended by "
+                         "scripts/data/extend_board_vocab.py) and keep its stored values")
     args = ap.parse_args()
 
     import torch
@@ -94,22 +98,28 @@ def main() -> None:
     if args.limit_clues:
         pool_rows = pool_rows[: args.limit_clues]
     pool_words = [stats.clue_words[i].lower() for i in pool_rows]
+    # In fp16 the scores depend on the batch, which is every word scored, so a
+    # rebuild over more words would move the stored values; --append scores
+    # only the new ones.
+    old = np.load(args.out, allow_pickle=False) if args.append else None
+    have = {str(w) for w in old["board_words"]} if old is not None else set()
+    scored = [w for w in board_words if w not in have]
 
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     tok = AutoTokenizer.from_pretrained(args.model)
     mdl = AutoModelForCausalLM.from_pretrained(
         args.model, dtype=torch.float16 if dev == "cuda" else torch.float32).to(dev).eval()
-    print(f"{args.model} on {dev}: {len(pool_words):,} clues x {len(board_words)} words", flush=True)
+    print(f"{args.model} on {dev}: {len(pool_words):,} clues x {len(scored)} words", flush=True)
 
     # Board words tokenised once, right-padded to a common length. Every
     # sequence shares the same prompt, so the word tokens always start at the
     # same index and the gather below is a fixed slice.
-    wtok = [tok(" " + w, add_special_tokens=False).input_ids for w in board_words]
+    wtok = [tok(" " + w, add_special_tokens=False).input_ids for w in scored]
     wlen = torch.tensor([len(t) for t in wtok], device=dev)
     lmax = int(wlen.max())
     pad = tok.eos_token_id or 0
     wpad = torch.tensor([t + [pad] * (lmax - len(t)) for t in wtok], device=dev)
-    nb = len(board_words)
+    nb = len(scored)
 
     @torch.no_grad()
     def score(prompt: str) -> np.ndarray:
@@ -138,6 +148,12 @@ def main() -> None:
 
     print(f"done in {(time.time()-t0)/60:.1f} min   PMI range "
           f"[{out.min():.2f}, {out.max():.2f}]  mean {out.mean():.2f}")
+    if old is not None:
+        assert np.array_equal(old["clue_rows"], pool_rows), "the clue pool changed; rebuild in full"
+        full = np.full((len(pool_words), len(board_words)), np.nan, dtype=np.float32)
+        full[:, [board_words.index(w) for w in scored]] = out
+        full[:, [board_words.index(str(w)) for w in old["board_words"]]] = old["sims"]
+        out = full
     args.out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, sims=out, clue_rows=pool_rows.astype(np.int32),
                         board_words=np.array(board_words))
