@@ -40,6 +40,15 @@ Three pages:
 - *Positions span a game.* 0-8 non-assassin cards are pre-revealed at random,
   as the listener's training positions were, rather than always turn one.
 
+**Which words a game's board is drawn from.** The full game draws from every
+board word the model has features for: the similarity tensor's board axis,
+the base game's 400 plus Codenames Duet's 399 once
+scripts/data/extend_board_vocab.py has run, since the official online game
+mixes the two. `--words base` keeps it to the 400. The eval and compare pages
+always use the base 400, so the seeds already in their logs keep naming the
+same boards. A seed names a board only together with the word list, so a game
+seed from before the extension shows a different board now.
+
 Boards in the full game are addressed by seed, and the client sends the seed
 plus the revealed words back with every request, so that page keeps no
 server-side state. The eval page does keep state -- it has to, to hold the key.
@@ -87,7 +96,7 @@ PROJECT_ROOT = next((c for c in (_HERE.parents[1], _HERE) if (c / "codenames").i
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from codenames.board import Board, OpponentBoardView, Role, clue_number_cap
+from codenames.board import Board, OpponentBoardView, Role, clue_number_cap, load_wordlist
 from codenames.clue_stats import ClueStats
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 from codenames.spymasters.base import TurnContext
@@ -302,10 +311,13 @@ _LOCK = threading.Lock()
 
 
 class Engine:
-    def __init__(self, k1: bool, cache_dir: Path = DEFAULT_CACHE_DIR):
+    def __init__(self, k1: bool, cache_dir: Path = DEFAULT_CACHE_DIR, base_words: bool = False):
         self.cache_dir = cache_dir
         self.k1 = k1
         self.sims = SimilarityTensor.load(cache_dir)
+        # The full game's word list (see the module docstring); None is the
+        # base game's 400, as Board.generate takes it.
+        self.words = None if base_words else self.sims.board_words
         self.clue_stats = ClueStats.load(cache_dir=cache_dir)
         self._bundles: dict[str, ListenerBundle] = {}
         self._spymasters: dict[str, LearnedListenerSpymaster] = {}
@@ -345,7 +357,7 @@ class Engine:
                 "roles": [ROLE_CODE[c.role] for c in board.cards]}
 
     def new_board(self) -> dict:
-        return self.describe(Board.generate(seed=random.randrange(1, 2**31)))
+        return self.describe(Board.generate(seed=random.randrange(1, 2**31), vocabulary=self.words))
 
     def best_clue(self, board, key: str, turn_index: int) -> tuple[str, int, float] | None:
         ctx = TurnContext(board=board, turn_index=turn_index)
@@ -417,13 +429,12 @@ class Engine:
                 "value": round(value, 3), "value_kind": kind,
                 **({"points_at": round(points, 2)} if points is not None else {})}
 
-    @staticmethod
-    def position(seed: int, revealed: list[str], turn: str):
+    def position(self, seed: int, revealed: list[str], turn: str):
         """The board `seed` with `revealed` turned over, as `turn`'s spymaster
         sees it. Roles are stored from team A's perspective; team B plays the
         same board through the view that swaps OWN and OPPONENT, exactly as
         the two-team game loop does."""
-        board = Board.generate(seed=seed)
+        board = Board.generate(seed=seed, vocabulary=self.words)
         on_board = {w.lower(): w for w in board.words}
         board.revealed = {on_board[w.lower()] for w in revealed if w.lower() in on_board}
         return board if turn == "a" else OpponentBoardView(board)
@@ -840,7 +851,7 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
             try:
                 if self.path == "/api/board":
                     seed = req.get("seed")
-                    return self._json(engine.describe(Board.generate(seed=int(seed)))
+                    return self._json(engine.describe(Board.generate(seed=int(seed), vocabulary=engine.words))
                                       if seed is not None else engine.new_board())
                 if self.path == "/api/clue":
                     return self._json(engine.clue(int(req["seed"]),
@@ -896,13 +907,16 @@ def main() -> None:
     ap.add_argument("--eval-log", type=Path, default=DEFAULT_EVAL_LOG)
     ap.add_argument("--compare-log", type=Path, default=DEFAULT_COMPARE_LOG)
     ap.add_argument("--no-open", dest="open_browser", action="store_false")
+    ap.add_argument("--words", choices=["all", "base"], default="all",
+                    help="the full game's boards: every word the model has features for, or the base 400")
     ap.add_argument("--public", action="store_true",
                     help="game page only, every clue from --spymaster, no study or compare pages")
     ap.set_defaults(k1=True)
     args = ap.parse_args()
 
     print("loading the model...", flush=True)
-    engine = Engine(k1=args.k1)
+    engine = Engine(k1=args.k1, base_words=args.words == "base")
+    print(f"game boards from {len(engine.words or load_wordlist())} words", flush=True)
     have = engine.available()
     default_key = args.spymaster if args.spymaster in have else have[0]
     arms = [a.strip() for a in args.eval_arms.split(",") if a.strip()]

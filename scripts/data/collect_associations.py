@@ -108,9 +108,11 @@ def main() -> None:
     if args.pool:
         clues = sorted(set(clues) | set(pool_clues()))
     if args.board:
-        from codenames.board import load_wordlist
+        # The tensor's board axis: the base game plus any words appended by
+        # scripts/data/extend_board_vocab.py.
+        from codenames.similarity import SimilarityTensor
 
-        clues = sorted({w.lower() for w in load_wordlist()})
+        clues = sorted(SimilarityTensor.load().board_index)
     if args.limit:
         clues = clues[:: max(1, len(clues) // args.limit)][: args.limit]
     args.out.parent.mkdir(parents=True, exist_ok=True)
