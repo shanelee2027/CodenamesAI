@@ -56,6 +56,9 @@ from typing import Iterable
 
 ASSET_WORDLIST_PATH = Path(__file__).parent / "assets" / "board_words.txt"
 ASSET_HOLDOUT_WORDLIST_PATH = Path(__file__).parent / "assets" / "board_words_holdout.txt"
+# The online game's 800 words (codenames.game's two packs). Gitignored like
+# the rest of data/: Czech Games Edition's content, and the repo is public.
+ONLINE_WORDLIST_PATH = Path(__file__).resolve().parents[1] / "data" / "word_packs" / "codenames_online.txt"
 
 
 class Role(Enum):
@@ -237,6 +240,16 @@ def load_holdout_wordlist(path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]
     a stable diff, rather than resampled at runtime, so the split is
     transparent and inspectable."""
     return [line.strip() for line in path.read_text().splitlines() if line.strip()]
+
+
+def load_online_test_wordlist(path: Path = ONLINE_WORDLIST_PATH) -> list[str]:
+    """The online game's words outside the base 400 (424 of its 800): words
+    no model has been fitted on, like the held-out 150, but drawn from the
+    online packs rather than from the base game. A test vocabulary only, for
+    whether the listener's accuracy carries over to the words the online game
+    actually deals (docs/log.md, 2026-10-30)."""
+    base = {w.lower() for w in load_wordlist()}
+    return [w for w in load_wordlist(path) if w.lower() not in base]
 
 
 def load_training_wordlist(all_path: Path = ASSET_WORDLIST_PATH, holdout_path: Path = ASSET_HOLDOUT_WORDLIST_PATH) -> list[str]:

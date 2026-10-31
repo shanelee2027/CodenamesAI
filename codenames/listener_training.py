@@ -93,10 +93,12 @@ HOLDOUT_BOARD_BASE = 3_000_000
 # Generated positions on held-out-vocabulary boards (scripts/data/collect_listener_data.py
 # --vocab holdout), a test set only. Seeds are the boards' real seeds.
 HOLDOUT_COLLECTED_BASE = 5_000_000
+# The same on the online game's words outside the base 400 (--vocab online).
+ONLINE_COLLECTED_BASE = 7_000_000
 
 
 def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
-                 holdout_collected: int = 0) -> BoardIndex:
+                 holdout_collected: int = 0, online_collected: int = 0) -> BoardIndex:
     """(seed, word set) for every board a cached response could have come from.
 
     Three sources, built with different vocabularies and disjoint seed ranges:
@@ -110,9 +112,11 @@ def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
     HOLDOUT_BOARD_BASE + s. Every word on them is a held-out word, so they are
     for scoring only; off by default so no training set picks them up.
     `holdout_collected` adds the generated held-out-vocabulary boards, seeds
-    HOLDOUT_COLLECTED_BASE + i, also for scoring only.
+    HOLDOUT_COLLECTED_BASE + i, also for scoring only. `online_collected` adds
+    the generated online-vocabulary boards, seeds ONLINE_COLLECTED_BASE + i,
+    likewise.
     """
-    from codenames.board import load_holdout_wordlist, load_training_wordlist
+    from codenames.board import load_holdout_wordlist, load_online_test_wordlist, load_training_wordlist
 
     out = [(s, frozenset(w.lower() for w in Board.generate(seed=s).words)) for s in range(max_seed)]
     if collected:
@@ -129,6 +133,11 @@ def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
         out += [(HOLDOUT_COLLECTED_BASE + i,
                  frozenset(w.lower() for w in Board.generate(seed=HOLDOUT_COLLECTED_BASE + i, vocabulary=vocab).words))
                 for i in range(holdout_collected)]
+    if online_collected:
+        vocab = load_online_test_wordlist()
+        out += [(ONLINE_COLLECTED_BASE + i,
+                 frozenset(w.lower() for w in Board.generate(seed=ONLINE_COLLECTED_BASE + i, vocabulary=vocab).words))
+                for i in range(online_collected)]
     return BoardIndex(out)
 
 
@@ -220,7 +229,7 @@ def scored_path(steps: list[dict]) -> list[str]:
 def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                    refresh_features: bool = False, decoys: Path | None = None,
                    soft_labels: dict | None = None, seed_filter=None, holdout_boards: int = 0,
-                   holdout_collected: int = 0):
+                   holdout_collected: int = 0, online_collected: int = 0):
     """Positions for training.
 
     `refresh_features` decides what a step-2+ row means. Off (the default and
@@ -238,7 +247,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     itself (board, clue, candidates), which our own sampler chose. Positions
     with no distribution are dropped. `seed_filter`, if given, keeps only positions
     whose board seed it accepts. `holdout_boards` also resolves positions on
-    the eval suites' held-out-vocabulary boards (see board_lookup).
+    the eval suites' held-out-vocabulary boards and `online_collected` the
+    generated online-vocabulary ones (see board_lookup).
 
     Frozen is what Plackett-Luce assumes and what codenames/pl_reward.py needs
     to be exact. Measured, the assumption does not hold for this model:
@@ -281,7 +291,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
           f"   senses: {'loaded' if senses else 'ABSENT'}"
           f"   assoc: {'loaded' if assoc else 'ABSENT'}"
           f"   profile: {'loaded' if profile else 'ABSENT'}")
-    boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected)
+    boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected, online_collected)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = conn.execute(

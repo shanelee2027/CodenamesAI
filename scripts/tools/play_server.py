@@ -40,11 +40,13 @@ Three pages:
 - *Positions span a game.* 0-8 non-assassin cards are pre-revealed at random,
   as the listener's training positions were, rather than always turn one.
 
-**Which words a game's board is drawn from.** The full game draws from every
-board word the model has features for: the similarity tensor's board axis,
-the base game's 400 plus Codenames Duet's 399 once
-scripts/data/extend_board_vocab.py has run, since the official online game
-mixes the two. `--words base` keeps it to the 400. The eval and compare pages
+**Which words a game's board is drawn from.** By default the full game
+draws from the official online game's own 800 words (codenames.game's
+"Codenames" and "Codenames: Duet" packs, data/word_packs/codenames_online.txt),
+which are edited versions of the printed boxes. `--words all` draws from
+every board word the model has features for (the similarity tensor's board
+axis: the printed base game's 400, printed Duet's 399 and the online packs'
+58 not in either), and `--words base` keeps it to the 400. The eval and compare pages
 always use the base 400, so the seeds already in their logs keep naming the
 same boards. A seed names a board only together with the word list, so a game
 seed from before the extension shows a different board now.
@@ -136,6 +138,7 @@ def nav(path: str) -> str:
 
 
 WEB = Path(__file__).parent / "webplay"
+ONLINE_WORDS = PROJECT_ROOT / "data" / "word_packs" / "codenames_online.txt"
 ROLE_CODE = {Role.OWN: "a", Role.OPPONENT: "b", Role.NEUTRAL: "n", Role.ASSASSIN: "x"}
 DEFAULT_EVAL_LOG = DEFAULT_CACHE_DIR / "human_eval.jsonl"
 DEFAULT_COMPARE_LOG = DEFAULT_CACHE_DIR / "compare_votes.jsonl"
@@ -311,13 +314,23 @@ _LOCK = threading.Lock()
 
 
 class Engine:
-    def __init__(self, k1: bool, cache_dir: Path = DEFAULT_CACHE_DIR, base_words: bool = False):
+    def __init__(self, k1: bool, cache_dir: Path = DEFAULT_CACHE_DIR, words: str = "online"):
         self.cache_dir = cache_dir
         self.k1 = k1
         self.sims = SimilarityTensor.load(cache_dir)
         # The full game's word list (see the module docstring); None is the
         # base game's 400, as Board.generate takes it.
-        self.words = None if base_words else self.sims.board_words
+        self.words = None if words == "base" else self.sims.board_words
+        if words == "online":
+            # Spelled as on the tensor's board axis; a word without features
+            # stops the server rather than dealing a board the model can't read.
+            spelled = {w.lower(): w for w in self.sims.board_words}
+            online = [w.strip().lower() for w in ONLINE_WORDS.read_text().splitlines() if w.strip()]
+            missing = [w for w in online if w not in spelled]
+            if missing:
+                raise SystemExit(f"{len(missing)} online words have no features (run "
+                                 f"scripts/data/extend_board_vocab.py first): {missing[:5]}")
+            self.words = [spelled[w] for w in online]
         self.clue_stats = ClueStats.load(cache_dir=cache_dir)
         self._bundles: dict[str, ListenerBundle] = {}
         self._spymasters: dict[str, LearnedListenerSpymaster] = {}
@@ -907,15 +920,16 @@ def main() -> None:
     ap.add_argument("--eval-log", type=Path, default=DEFAULT_EVAL_LOG)
     ap.add_argument("--compare-log", type=Path, default=DEFAULT_COMPARE_LOG)
     ap.add_argument("--no-open", dest="open_browser", action="store_false")
-    ap.add_argument("--words", choices=["all", "base"], default="all",
-                    help="the full game's boards: every word the model has features for, or the base 400")
+    ap.add_argument("--words", choices=["online", "all", "base"], default="online",
+                    help="the full game's boards: the online game's 800, every word the model has "
+                         "features for, or the base 400")
     ap.add_argument("--public", action="store_true",
                     help="game page only, every clue from --spymaster, no study or compare pages")
     ap.set_defaults(k1=True)
     args = ap.parse_args()
 
     print("loading the model...", flush=True)
-    engine = Engine(k1=args.k1, base_words=args.words == "base")
+    engine = Engine(k1=args.k1, words=args.words)
     print(f"game boards from {len(engine.words or load_wordlist())} words", flush=True)
     have = engine.available()
     default_key = args.spymaster if args.spymaster in have else have[0]

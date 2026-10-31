@@ -40,6 +40,9 @@ Usage:
     # a test set on the held-out words, generated exactly like the rest
     python scripts/data/collect_listener_data.py --vocab holdout --n 2100
 
+    # the same on the online game's words outside the base 400
+    python scripts/data/collect_listener_data.py --vocab online --n 2100
+
     # the same held-out test set ranked by Sonnet, stopping before $4 is spent
     python scripts/data/collect_listener_data.py --vocab holdout --n 2100 \
         --guesser anthropic:claude-sonnet-5:medium --budget 4.0
@@ -63,7 +66,7 @@ import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-from codenames.board import Board, Role, is_legal_clue, load_holdout_wordlist, load_training_wordlist
+from codenames.board import Board, Role, is_legal_clue, load_holdout_wordlist, load_online_test_wordlist, load_training_wordlist
 from codenames.clue_stats import ClueStats
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
@@ -82,6 +85,9 @@ SEED_BASE = 1_000_000
 # in vocabulary, so the gap between the two measures overfitting to the
 # training words. Own seed range, far from every other source.
 from codenames.listener_training import HOLDOUT_COLLECTED_BASE as HOLDOUT_SEED_BASE  # noqa: E402
+# `--vocab online`: the same again on the online game's 424 words outside the
+# base 400, a test set only, for whether accuracy carries over to them.
+from codenames.listener_training import ONLINE_COLLECTED_BASE as ONLINE_SEED_BASE  # noqa: E402
 
 # How clues are chosen. The point of the non-"own" rows is that a spymaster's
 # search has to reject these, which it cannot learn to do from a training set
@@ -189,9 +195,10 @@ def main() -> None:
                          "while you are using the machine")
     ap.add_argument("--max-rarity", type=float, default=10.0, help="same clue pool the spymaster searches")
     ap.add_argument("--space", default="numberbatch")
-    ap.add_argument("--vocab", choices=("training", "holdout"), default="training",
-                    help="board words: the training list, or the held-out list for a test set only "
-                         "(seeds from HOLDOUT_SEED_BASE)")
+    ap.add_argument("--vocab", choices=("training", "holdout", "online"), default="training",
+                    help="board words: the training list, or for a test set only the held-out list "
+                         "(seeds from HOLDOUT_SEED_BASE) or the online game's words outside the base "
+                         "400 (seeds from ONLINE_SEED_BASE)")
     ap.add_argument("--dry-run", action="store_true", help="plan and report coverage; buy nothing")
     ap.add_argument("--nice", type=int, default=10, help="process niceness, so this yields to your work")
     args = ap.parse_args()
@@ -207,6 +214,8 @@ def main() -> None:
     space_i = sims.spaces.index(args.space)
     if args.vocab == "holdout":
         vocab, seed_base = load_holdout_wordlist(), HOLDOUT_SEED_BASE
+    elif args.vocab == "online":
+        vocab, seed_base = load_online_test_wordlist(), ONLINE_SEED_BASE
     else:
         vocab, seed_base = load_training_wordlist(), SEED_BASE
     print(f"clue pool: {len(pool)} of {len(stats.clue_words)} at rarity<={args.max_rarity}")

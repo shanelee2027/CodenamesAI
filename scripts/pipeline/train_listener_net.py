@@ -75,6 +75,9 @@ GENERATED = "held-out words, generated"
 GENERATED_BOARDS = 5000          # seeds searched when resolving them (2,200 collected)
 GENERATED_SONNET = "held-out words, generated, Sonnet"
 GENERATED_SONNET55 = "held-out words, generated, Sonnet 5.5"
+# The same generator on the online game's words outside the base 400
+# (collect_listener_data.py --vocab online), ranked by gpt-oss.
+GENERATED_ONLINE = "online words, generated"
 SONNET55 = "claude-sonnet-5-5+effort=medium"
 
 
@@ -90,6 +93,13 @@ def load_sets(reload: bool = False) -> dict[str, list[dict]]:
     for name, model in ((GENERATED, T.DEFAULT_MODEL), (GENERATED_SONNET, SONNET), (GENERATED_SONNET55, SONNET55)):
         if name not in sets:
             sets[name] = _load_generated_holdout(model)
+            SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
+    if GENERATED_ONLINE not in sets:
+        pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 0, 0, online_collected=GENERATED_BOARDS,
+                                        seed_filter=lambda s: s >= T.ONLINE_COLLECTED_BASE)
+        print(f"{GENERATED_ONLINE}: {len(pos)} positions, dropped {dropped}")
+        if pos:
+            sets[GENERATED_ONLINE] = pos
             SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
     for k, v in sets.items():
         print(f"  {k:24s} {len(v):6d} positions {sum(min(p['k'], p['n'] - 1) for p in v):6d} events")
