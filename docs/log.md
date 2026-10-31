@@ -7820,3 +7820,22 @@ How: the same pipeline as Duet, after a backup of the 21 tables in `cache/backup
 Expected: the old 799 words' values unchanged. Found: `check_board_extension.py --backup cache/backups/pre_online_2026-10-30` reports every array the same except `lcs_depth` in `wordnet_sims` again, on 4,294 of 8.9M old entries (0.05%, at most 3 levels), with `wup` identical. So it is not deterministic between WordNet rebuilds, the most likely cause being the tie between equally deep common ancestors noted above. No booster reads it.
 
 Play: the game page now deals from the site's exact 800 by default (`--words online`); `--words all` is every board word with features (857) and `--words base` the 400. The engine stops at start-up if an online word has no features rather than dealing a board the model cannot read. One clue on an online board: CLOTH 3 in 4.7 s, cold.
+
+## 2026-10-31 — Does the listener's accuracy carry over to the online words?
+
+Why: the boosters were trained on boards from the base game's 250 training words, and the online game deals from 800 words of which 424 are outside the base 400 and skew differently (more characters and proper nouns, more concrete objects). Every feature describes a (clue, word) pair rather than the word's identity, so accuracy could carry over, but the feature distributions on these words could also differ from anything the boosters were fitted on. If it drops, resample training positions over the 800 and retrain; if it holds, that buys little.
+
+How: a test set generated exactly like `held-out words, generated` (`collect_listener_data.py --vocab online --n 2100`: same clue mix, k and gpt-oss low-effort guesser), on boards from the 424 online words outside the base 400, seeds from 7,000,000 (`listener_training.ONLINE_COLLECTED_BASE`). 1,877 positions planned, 44 min plus a 3-min top-up, about $0.19; 25 never got a usable answer. 1,790 resolve. `eval_listener_accuracy.py --sets "held-out words, generated" "online words, generated"` scores the four default boosters on both. The two sets share no boards or clues, so the comparison between them is not paired; the comparisons between boosters within a set are.
+
+Expected: some drop on the online words. Found: none. McFadden R², pooled [95% CI over boards] and by pick:
+
+| set | booster | R² | pick 1 | pick 2 | pick 3 | pick 4+ | vs incumbent |
+|---|---|---|---|---|---|---|---|
+| held-out words | incumbent | 0.3186 [0.3017, 0.3354] | 0.556 | 0.228 | 0.091 | 0.015 | |
+| | assoc_profile | 0.3404 [0.3240, 0.3568] | 0.583 | 0.245 | 0.116 | 0.023 | +0.0218 [+0.0170, +0.0265] |
+| online words | incumbent | 0.3343 [0.3168, 0.3523] | 0.563 | 0.243 | 0.111 | 0.040 | |
+| | assoc_profile | 0.3493 [0.3315, 0.3675] | 0.583 | 0.260 | 0.119 | 0.040 | +0.0150 [+0.0105, +0.0195] |
+
+(conceptnet and assoc in between, as on the held-out set; the conceptnet gain over the incumbent is +0.0008 [-0.0027, +0.0039] on the online words against +0.0048 on held-out.) The current booster's R² is the same or slightly higher on the online words at every pick, so the training vocabulary is not holding the listener back on them, and on this evidence resampling over the 800 would not raise accuracy by much. The gains of the newer boosters over the incumbent are about two thirds as large on the online words, the association-list features' in particular, so they are partly tied to the base vocabulary. Only the gpt-oss guesser was used; no Sonnet copy.
+
+Found on the way: 62 positions were dropped because their board has "St. patrick", the one online word with no Numberbatch or Wikipedia2Vec vector; feature extraction refuses a board with a missing similarity. The spymaster hits the same wall: on such a board (seed 71 of the online pool) it gives THE 1 with score 0, i.e. no clue was scorable. About 3% of online boards contain the word. Not fixed yet.
