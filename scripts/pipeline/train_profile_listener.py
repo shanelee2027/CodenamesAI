@@ -31,11 +31,11 @@ SETS = ("val", "new boards", "held-out words, generated", "held-out words", "hel
 
 def with_profile(positions: list[dict], profile) -> list[dict]:
     from codenames.assoc_profile import PROFILE_FEATURES
-    from codenames.listener_features import N_FEATURES
+    from codenames.listener_features import FEATURE_NAMES
 
     out = []
     for p in positions:
-        assert p["x"].shape[1] == N_FEATURES - len(PROFILE_FEATURES), "positions already carry the new columns"
+        assert p["x"].shape[1] == FEATURE_NAMES.index(PROFILE_FEATURES[0]), "positions already carry the new columns"
         out.append({**p, "x": np.hstack([p["x"], profile.columns(p["clue"], p["words"])])})
     return out
 

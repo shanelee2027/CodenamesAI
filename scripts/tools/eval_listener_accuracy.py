@@ -48,24 +48,12 @@ PICKS = (("pick 1", lambda s: s == 0), ("pick 2", lambda s: s == 1),
 
 
 def with_all_columns(positions: list[dict]) -> list[dict]:
-    """Positions cached before the profile columns existed carry 58 columns;
-    append the 11 the way extract() computes them in play (AssocProfile.columns),
-    so every booster reads the columns it was fitted on."""
-    import codenames.listener_training as T
-    from codenames.assoc_profile import PROFILE_FEATURES, AssocProfile
-    from codenames.listener_features import N_FEATURES
+    """Cached positions with every feature block appended since they were
+    cached (listener_training.complete_columns), so every booster reads the
+    columns it was fitted on."""
+    from codenames.listener_training import complete_columns
 
-    short = N_FEATURES - len(PROFILE_FEATURES)
-    if all(p["x"].shape[1] == N_FEATURES for p in positions):
-        return positions
-    profile = AssocProfile.load(T.ASSOC_PROFILE)
-    out = []
-    for p in positions:
-        if p["x"].shape[1] == short:
-            p = {**p, "x": np.hstack([p["x"], profile.columns(p["clue"], p["words"])])}
-        assert p["x"].shape[1] == N_FEATURES
-        out.append(p)
-    return out
+    return complete_columns(positions)
 
 
 def main() -> None:

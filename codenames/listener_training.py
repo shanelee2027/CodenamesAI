@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 from codenames.board import Board
 from codenames.clue_stats import ClueStats
 from codenames.assoc_profile import B_FEATURES, C_FEATURES, AssocProfile
+from codenames.word_kind import KIND_FEATURES, WordKind
 from codenames.listener_features import (
     FEATURE_NAMES, EntitySims, ExtraSims, SwowTables, WordNorms, WordStats,
     extract,
@@ -43,6 +44,7 @@ CONCEPTNET_SIMS = CACHE / "conceptnet_sims.npz"
 WORDNET_SENSES = CACHE / "wordnet_senses.npz"
 ASSOC_SIMS = CACHE / "assoc_sims.npz"
 ASSOC_PROFILE = CACHE / "assoc_profile.npz"
+WORD_KIND = CACHE / "word_kind.npz"
 DEFAULT_MODEL = "deepinfra/openai/gpt-oss-120b+effort=low"  # the teacher
 
 # Named feature blocks, so an ablation is a flag rather than an edit. The point
@@ -71,6 +73,7 @@ FEATURE_BLOCKS: dict[str, list[str]] = {
     "assoc": ["assoc_share", "assoc_rank"],
     "clue_profile": list(B_FEATURES),
     "reverse_assoc": list(C_FEATURES),
+    "word_kind": list(KIND_FEATURES),
 }
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
 
@@ -186,7 +189,8 @@ def _feature_cache_path() -> Path:
     for f in (here / "listener_features.py", here / "listener_training.py"):
         h.update(f.read_bytes())
     for f in (WORD_STATS, SWOW_TABLES, ENTITY_SIMS, LM_PMI, EXTRA_SIMS, WORD_NORMS, WORDNET_SIMS,
-              LEXICAL_SIMS, ISA_SIMS, CONCEPTNET_SIMS, WORDNET_SENSES, ASSOC_SIMS, ASSOC_PROFILE, CACHE / "similarity_tensor.npy", CACHE / "clue_stats.npz"):
+              LEXICAL_SIMS, ISA_SIMS, CONCEPTNET_SIMS, WORDNET_SENSES, ASSOC_SIMS, ASSOC_PROFILE, WORD_KIND,
+              CACHE / "similarity_tensor.npy", CACHE / "clue_stats.npz"):
         if f.exists():
             st = f.stat()
             h.update(f"{f.name}:{st.st_size}:{st.st_mtime_ns}".encode())
@@ -295,6 +299,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     senses = ExtraSims.load(WORDNET_SENSES) if WORDNET_SENSES.exists() else None
     assoc = ExtraSims.load(ASSOC_SIMS) if ASSOC_SIMS.exists() else None
     profile = AssocProfile.load(ASSOC_PROFILE) if ASSOC_PROFILE.exists() else None
+    kind = WordKind.load(WORD_KIND) if WORD_KIND.exists() else None
     print(f"SWOW: {'loaded' if swow else 'ABSENT'}   entity sims: "
           f"{'loaded' if entity else 'ABSENT'}   LM PMI: {'loaded' if pmi else 'ABSENT'}"
           f"   extra spaces: {'loaded' if extra else 'ABSENT'}"
@@ -305,7 +310,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
           f"   conceptnet: {'loaded' if conceptnet else 'ABSENT'}"
           f"   senses: {'loaded' if senses else 'ABSENT'}"
           f"   assoc: {'loaded' if assoc else 'ABSENT'}"
-          f"   profile: {'loaded' if profile else 'ABSENT'}")
+          f"   profile: {'loaded' if profile else 'ABSENT'}"
+          f"   kind: {'loaded' if kind else 'ABSENT'}")
     boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected, online_collected,
                           online_train, online_holdout)
 
@@ -355,7 +361,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
             feats = fcache[fkey]
         else:
             feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi, extra,
-                            norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile)
+                            norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile, kind)
             fcache[fkey] = feats
         if feats is None:
             dropped["features"] += 1
@@ -382,7 +388,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                 keep = [r for r in range(len(rank)) if r not in taken]
                 sub = [shuffled[r] for r in keep]
                 f = extract(clue, sub, number, sims, stats, wstats, clue_index, swow, entity,
-                            pmi, extra, norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile)
+                            pmi, extra, norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile, kind)
                 if f is None:
                     ok = False
                     break
@@ -860,3 +866,27 @@ def accuracy_on(preds, groups, y, mask=None) -> float:
         target = int(np.argmax(y[a:b]))
         hits[i] = (1.0 / tied) if s_[target] >= top - 1e-12 else 0.0
     return float(hits.mean() if mask is None else hits[mask].mean())
+
+
+def complete_columns(positions: list[dict]) -> list[dict]:
+    """Append to cached positions the feature blocks added since they were
+    cached, computed exactly as extract() computes them in play: the
+    association profile (positions cached before it carry the first 58
+    columns) and the word-kind block (cached before it: 69). So every
+    booster reads the columns it was fitted on, whatever the cache's age."""
+    from codenames.assoc_profile import PROFILE_FEATURES
+    from codenames.listener_features import FEATURE_NAMES, N_FEATURES
+    from codenames.word_kind import KIND_FEATURES
+
+    blocks = [(FEATURE_NAMES.index(PROFILE_FEATURES[0]), lambda: AssocProfile.load(ASSOC_PROFILE)),
+              (FEATURE_NAMES.index(KIND_FEATURES[0]), lambda: WordKind.load(WORD_KIND))]
+    tables: dict[int, object] = {}
+    out = []
+    for p in positions:
+        for start, load in blocks:
+            if p["x"].shape[1] == start:
+                t = tables.setdefault(start, load())
+                p = {**p, "x": np.hstack([p["x"], t.columns(p["clue"], p["words"])])}
+        assert p["x"].shape[1] == N_FEATURES, (p["x"].shape, N_FEATURES)
+        out.append(p)
+    return out

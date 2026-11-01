@@ -51,6 +51,7 @@ import numpy as np
 from scipy.special import log_ndtr
 
 from codenames.assoc_profile import PROFILE_FEATURES, AssocProfile
+from codenames.word_kind import KIND_FEATURES, WordKind
 
 # Noise level for the Gaussian argmax feature: 2.0 brackets the measured
 # listener sigma (2.06 for Sonnet, 2.20 for gpt-oss). Three levels were carried
@@ -184,6 +185,10 @@ FEATURE_NAMES: list[str] = [
     # norms and sense count -- board constants that act through interactions.
     # C: from each board word's own lists, whether they name the clue.
     *PROFILE_FEATURES,
+    # tier 2: what kind of word the board word is, whatever the clue
+    # (codenames/word_kind.py): its share of proper-name senses, and how many
+    # clues reach it in gpt-oss's association lists and in the embeddings.
+    *KIND_FEATURES,
 ]
 
 CONCEPTNET_FEATURES = ("cn_isa", "cn_isa_rev", "cn_part", "cn_typed", "cn_any", "cmp_cw", "cmp_wc")
@@ -198,9 +203,10 @@ APPENDED_TABLES: dict[str, tuple[str, tuple[str, ...]]] = {
     "senses": ("wordnet_senses.npz", ("sense_agree", "sense_spread")),
     "assoc": ("assoc_sims.npz", ("assoc_share", "assoc_rank")),
     "profile": ("assoc_profile.npz", PROFILE_FEATURES),
+    "kind": ("word_kind.npz", KIND_FEATURES),
 }
 # Tables that are not clue x word similarity rows load through their own class.
-TABLE_LOADERS: dict[str, type] = {"profile": AssocProfile}
+TABLE_LOADERS: dict[str, type] = {"profile": AssocProfile, "kind": WordKind}
 
 N_FEATURES = len(FEATURE_NAMES)
 
@@ -512,6 +518,7 @@ def extract(
     senses: "ExtraSims | None" = None,
     assoc: "ExtraSims | None" = None,
     profile: "AssocProfile | None" = None,
+    kind: "WordKind | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -696,6 +703,11 @@ def extract(
         cols.extend(np.full(n, np.nan) for _ in PROFILE_FEATURES)
     else:
         cols.extend(profile.columns(clue, candidates).T)
+
+    if kind is None:
+        cols.extend(np.full(n, np.nan) for _ in KIND_FEATURES)
+    else:
+        cols.extend(kind.columns(clue, candidates).T)
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

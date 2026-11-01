@@ -39,7 +39,8 @@ def test_vagueness():
     assert all(np.isnan(v) for v in vagueness([]))
 
 
-def test_appended_last():
+def test_appended_after_the_first_58():
     """Older boosters read their columns by name, so the new features must
-    come after every existing one."""
-    assert tuple(FEATURE_NAMES[-len(PROFILE_FEATURES):]) == PROFILE_FEATURES
+    come after every one that existed before them (58), and stay put when a
+    later block is appended (cached positions are completed by position)."""
+    assert tuple(FEATURE_NAMES[58:58 + len(PROFILE_FEATURES)]) == PROFILE_FEATURES
