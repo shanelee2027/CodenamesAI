@@ -7953,3 +7953,37 @@ How: `scripts/data/probe_history_rule.py`, the 10-27 probe's 300 *main* position
 Expected: the stated rule to move the rate. Found: it takes the rule and medium effort together. Neither alone does it (7.1% and 4.7%, against 32.0% together). The behaviour comes from the history: of the 144 guesses beyond the number in the medium arm, 76 were pending words; without the history, none were. At low effort, asking first which word each earlier clue meant mostly gets "null" (it names a pending word in 21.7% of positions), so low effort does not link an earlier clue to its leftover word. The chat form is worse than the summary. The cost of the behaviour: the medium arm uses the +1 half the time, and its turns end on a wrong guess 47.6% of the time against 27.3%; it finds 0.14 more own words a turn. 14 medium positions failed because 58 calls hit the 4,096-token cap (raise it for medium).
 
 So a history-aware gpt-oss guesser exists: the rule prompt at medium effort. Whether humans go back to earlier clues as often (32%) is not measured: the game page does not log games, and `human_eval.jsonl` holds single turns.
+
+## 2026-11-01 — Plan after probe 3 (made overnight; the user is away)
+
+The user asked for plans for after the probe, and for work to continue overnight on decisions of my own, within about $2 of DeepInfra credit. The probe found a history-aware gpt-oss guesser: the rule prompt at medium effort. What follows from it, in order:
+
+1. **Data (tonight, ~$0.60).** `scripts/data/collect_history_turns.py`: 2,000 turns from that guesser, one per comfort-arena game outside the probe's 300 games, a game's non-re-clue position where it has one. The probe's 300 stay the test set.
+2. **A pickup model (tonight, free).** For each pending word: the probability that the history guesser lists it. Two ways a spymaster could use it:
+   - *A. A term in the reward.* A clue's value gains the expected pending words found with the spare guess. It is local to the reward, and the listener is untouched. What breaks: it has to be told that a clue which targets a pending word picks it up anyway (or it counts the word twice), and it fixes the order (the clue's own words first, then the leftovers), which the data say is mostly but not always true (76 of 93 pending words came on the +1).
+   - *B. A history-aware turn model.* The turn model's score for a word gets an additive history term, s(w | history) = s(w) + h(w), with s the existing booster, fixed, and h fitted on the 2,000 turns. This is the additive-correction form of the deferred sequential-listener plan. h = 0 recovers today's model, so the reward code and the search are unchanged, and the same model scores re-clueing and not re-clueing. What breaks: it needs the history in play (the game page has it), and s was fitted to "rank for this clue" rankings while h is fitted to turn lists, a different question.
+   - Recommended: B. Tonight: fit h, measure it on the 300 held-out probe positions, and report.
+3. **For the user to decide.**
+   - A history-aware spymaster on s + h (a new model: spymaster file, config entry, version doc).
+   - A history-aware arena: the rule-medium guesser as the arena's guesser, which is the only test that can reward the new spymaster (the current arena guesser cannot see the history). About $0.006 a game at measured rates, so ~$1.20 for 200 games.
+   - Human evidence: the public game page does not log games. Logging them (clues, guesses, timing, no names) would measure whether people go back to earlier clues at the rate gpt-oss does when told. The players are strangers, so this is the user's decision.
+
+The online-split model is trained tonight independently of this (`train_online_vocab_listener.py`).
+
+## 2026-11-01 — History-aware guesser turns, and the history term h
+
+**Data.** `scripts/data/collect_history_turns.py --n 2000`: the rule-medium guesser (probe 3) on 2,000 comfort-arena positions, one per game outside the probe's 300 games, a game's non-re-clue position where it has one (1,102 main, 898 re-clue). 1,271 calls, ~$0.68 by tokens (about 3,000 output tokens a call, twice the probe's), cap raised to 8,192 (30 calls still hit it; 7 positions failed). Only 1,271 calls for 1,993 answered positions: paired arena games often reach the same board with the same history and the same incumbent clue, so about 700 prompts were word for word repeats. They are counted once in the fit (1,216 distinct turns). Backup before the run: `cache/backups/llm_store_2026-11-01_pre_history_turns.db`. Rates as in the probe: an untargeted pending word listed in 33.1% of main positions (probe 32.0%), 6.4% of re-clue positions.
+
+**The term** (`scripts/tools/fit_history_pickup.py`). It reads only what the guesser sees. An earlier clue of its spymaster is unfinished while its number exceeds the own words its turn found. For each word on the board, `link` = the strongest log P_c(w) over unfinished clues c (the incumbent's listener softmax for c over the words now on the board), measured from the uniform level, and `top` = whether w is such a clue's top word now. One conditional-logit event per listed word, logit = a·s(w) + b1·link(w) + b2·top(w), s the incumbent's listener score for the current clue. Fit on the 1,216 turns, tested on the probe's 297 answered turns (different games):
+
+| model | all picks R² | picks beyond the number R² | pending-word picks, mean −log p |
+|---|---|---|---|
+| s only (a = 0.675) | 0.402 | −0.189 | 3.37 |
+| s + one history term (a 0.644, b1 0.342, b2 0.086) | 0.431 | −0.026 | 2.52 |
+| separate weights beyond the number | **0.495** | **0.293** | **1.28** |
+
+With separate weights, within the number a = 0.757, b1 = −0.245, b2 = 0.466: the guesser follows the clue and slightly avoids earlier clues' words. Beyond it a = 0.070, b1 = 1.690, b2 = −0.984: it nearly ignores the current clue and goes by the earlier ones (b2 is negative because `link` already carries most of it; the two are correlated).
+
+Whether the +1 is taken at all is a near coin flip: 46.2% of fit turns, 50.8% of test turns. A logistic on the strongest leftover link and the number barely predicts it (log-loss R² 0.038 fit, 0.051 test; weight 0.508 on the link). So *which* word the spare guess goes to is predictable from the history; *whether* it is spent mostly is not, beyond its base rate.
+
+Expected: a history term that helps. Found: it helps most where it should, on the spare guess, and the shape is simple: two regimes (within and beyond the number) with three weights each, on top of the existing listener. This is the h of option B in the plan. Building a spymaster on it is the user's decision (plan, step 3); h and the take rate are what such a spymaster would read.
