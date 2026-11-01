@@ -97,7 +97,26 @@ another clue for the same number (TRANSPORT for DRIVING, WHITE for WEDDING).
 No arena run: a listener gain of this size is far inside the noise of a
 200-game arena.
 
+## On the play server (2026-11-01)
+
+At the user's request this model replaced floored_overpromise_1 as the play
+server's default (`online_vocab_1`; the public page serves only the default).
+The other entries built on the old listener got online-words twins
+(`<key>_online`, `scripts/tools/play_server.py::ONLINE_TWINS`): the same class
+and parameters with the listener and STOP listener swapped for the retrained
+ones. The originals stay, so their results still reproduce, and the frozen
+arena keeps assoc_profile_listener as its opponent. Not twinned:
+profile_temperature (its per-pick temperatures were fitted to the old
+booster), win_prob_assoc and pick_index_lookahead (another booster).
+
+The twins of the guess + stretch entries (stop, stop_net, overpromise) needed
+that STOP listener retrained too: `cache/listener_gbt_stop_stretch_online_vocab.txt`,
+same recipe (`train_stop_listener.py --set guess+stretch --base-booster
+listener_gbt_online_vocab.txt --normalization online --with-online`), val R²
+0.3039 against the old one's 0.2959 (different validation sets), predicted
+stop rate 0.190 against an actual 0.199.
+
 ## Open
 
-- Whether to make it the play server's default (`online_vocab_1`); the
-  servers still run floored_overpromise_1.
+- An arena test against the frozen opponent, if a decision-rule change is
+  built on it.

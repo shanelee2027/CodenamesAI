@@ -320,6 +320,40 @@ SPYMASTERS: dict[str, dict] = {
                  "the online game's 800 words, with every z-scored feature measured over those 800."},
 }
 
+# Online-words twins: each entry above whose only learned parts are the assoc
+# profile listener and a STOP listener, with both swapped for the boosters
+# retrained on the online split (docs/versions/online_vocab_listener.md). The
+# original entries stay, so their results still reproduce. Not twinned:
+# profile_temperature (its per-pick temperatures were fitted to the old
+# booster), win_prob_assoc and pick_index_lookahead (another booster).
+ONLINE_LISTENER = "listener_gbt_online_vocab.txt"
+ONLINE_STOP = {"listener_gbt_stop_guess.txt": "listener_gbt_stop_online_vocab.txt",
+               "listener_gbt_stop.txt": "listener_gbt_stop_stretch_online_vocab.txt"}
+ONLINE_TWINS = ("assoc_profile", "stop", "stop_guess", "stop_net", "stop_net_guess", "overpromise", "overpromise_1",
+                "overpromise_guess", "overpromise_guess_1", "win_prob_overpromise", "win_prob_overpromise_1",
+                "margin_value_overpromise", "margin_value_overpromise_1", "floored_overpromise")
+
+
+def _online_twin(spec: dict) -> dict:
+    """`spec` on the online-split boosters. A STOP listener the entry names by
+    path is swapped for its retrained twin; one it takes by default (the
+    class's own STOP_MODEL, listener_gbt_stop.txt) is named explicitly."""
+    assert spec["model"] == "listener_gbt_assoc_profile.txt"
+    kwargs = dict(spec.get("kwargs") or {"outside_n": spec["outside_n"]})
+    needs = [ONLINE_STOP.get(f, f) for f in spec.get("needs", [])]
+    stop = kwargs.get("stop_model_path")
+    if stop is not None:
+        kwargs["stop_model_path"] = DEFAULT_CACHE_DIR / ONLINE_STOP[Path(stop).name]
+    elif any(f in ONLINE_STOP.values() for f in needs):
+        kwargs["stop_model_path"] = DEFAULT_CACHE_DIR / ONLINE_STOP["listener_gbt_stop.txt"]
+    needs += ["listener_gbt_online_vocab.meta.json", "clue_stats_online.npz", "extra_sims_online.npz"]
+    return {**spec, "model": ONLINE_LISTENER, "kwargs": kwargs, "needs": needs,
+            "label": spec["label"] + ", retrained on the online words",
+            "about": spec["about"] + " Listener and STOP listener retrained on the online game's 800 words."}
+
+
+SPYMASTERS.update({f"{k}_online": _online_twin(SPYMASTERS[k]) for k in ONLINE_TWINS})
+
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
 # single user never needs two clues at once. ~0.7-1.1 s per clue.
 _LOCK = threading.Lock()
@@ -924,7 +958,7 @@ def main() -> None:
                     help="disable the k=1 similarity tiebreak")
     # The current best model (docs/versions/floored_overpromise_listener.md);
     # the incumbent is still on the menu as "assoc_profile".
-    ap.add_argument("--spymaster", default="floored_overpromise_1", choices=sorted(SPYMASTERS),
+    ap.add_argument("--spymaster", default="online_vocab_1", choices=sorted(SPYMASTERS),
                     help="the game page's starting choice")
     ap.add_argument("--eval-arms", default="assoc_profile,profile_temperature",
                     help="comma-separated spymasters the blind study compares. The default "
