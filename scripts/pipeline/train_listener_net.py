@@ -83,6 +83,8 @@ GENERATED_ONLINE = "online words, generated"
 # words, both ranked by gpt-oss. Seeds searched when resolving them.
 ONLINE_TRAIN = "online train"
 ONLINE_HELDOUT = "online held-out words, generated"
+# The same positions ranked by Sonnet 5.5 at medium effort (bought 2026-11-01).
+ONLINE_HELDOUT_SONNET55 = "online held-out words, generated, Sonnet 5.5"
 ONLINE_TRAIN_BOARDS = 12_000
 ONLINE_HELDOUT_BOARDS = 2_500
 SONNET55 = "claude-sonnet-5-5+effort=medium"
@@ -105,11 +107,12 @@ def load_sets(reload: bool = False, normalization: str = "base") -> dict[str, li
         if name not in sets:
             sets[name] = _load_generated_holdout(model, normalization)
             cache.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
-    for name, kw, base in ((ONLINE_TRAIN, "online_train", T.ONLINE_TRAIN_BASE),
-                           (ONLINE_HELDOUT, "online_holdout", T.ONLINE_HOLDOUT_BASE)):
+    for name, kw, base, model in ((ONLINE_TRAIN, "online_train", T.ONLINE_TRAIN_BASE, T.DEFAULT_MODEL),
+                                  (ONLINE_HELDOUT, "online_holdout", T.ONLINE_HOLDOUT_BASE, T.DEFAULT_MODEL),
+                                  (ONLINE_HELDOUT_SONNET55, "online_holdout", T.ONLINE_HOLDOUT_BASE, SONNET55)):
         if name not in sets:
             n = ONLINE_TRAIN_BOARDS if kw == "online_train" else ONLINE_HELDOUT_BOARDS
-            pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 0, 0, **{kw: n},
+            pos, dropped = T.load_positions(T.DB, model, 0, 0, **{kw: n},
                                             seed_filter=lambda s, b=base: b <= s < b + 1_000_000, **nz)
             print(f"{name}: {len(pos)} positions, dropped {dropped}")
             if pos:

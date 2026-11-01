@@ -52,7 +52,7 @@ OUT = {"incumbent": ROOT / "cache" / "listener_gbt_online_vocab.txt",
        "all": ROOT / "cache" / "listener_gbt_online_vocab_kind_text.txt",
        "kind": ROOT / "cache" / "listener_gbt_online_vocab_kind.txt",
        "text": ROOT / "cache" / "listener_gbt_online_vocab_text.txt"}
-TEST = ("online held-out words, generated", "held-out words, generated, Sonnet 5.5", "held-out words, generated",
+TEST = ("online held-out words, generated", "online held-out words, generated, Sonnet 5.5", "held-out words, generated, Sonnet 5.5", "held-out words, generated",
         "online words, generated", "new boards")
 
 

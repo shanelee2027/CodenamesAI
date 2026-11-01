@@ -50,12 +50,20 @@ the 67-column booster, 95% paired bootstrap over boards:
 | online held-out words, gpt-oss | +0.0049 [+0.0025, +0.0073] | +0.0045 [+0.0018, +0.0072] | +0.0081 [+0.0046, +0.0116] |
 | held-out words, generated, Sonnet 5.5 | −0.0042 [−0.0064, −0.0020] | −0.0023 [−0.0048, +0.0002] | −0.0035 [−0.0066, −0.0005] |
 
-Both blocks fit gpt-oss better and Sonnet 5.5 worse. Thus they learn gpt-oss's
-own taste rather than how a guesser reads a clue. This matters for `hub_assoc`
-in particular, which is computed from gpt-oss's own association lists. Listeners
-are judged on the Sonnet 5.5 set, so the blocks are out. Their boosters are
-kept in `cache/` (`listener_gbt_online_vocab_kind.txt`, `_text.txt`,
-`_kind_text.txt`) for the comparison.
+On the clean Sonnet 5.5 set (online held-out words, bought afterwards) the
+picture is different: kind −0.0012 [−0.0035, +0.0010], text +0.0011
+[−0.0015, +0.0037], both +0.0005 [−0.0030, +0.0040]. Neither block helps or
+hurts Sonnet there. The harm on the old set was contamination: the kind
+columns are per-word constants, and half of that set's words are training
+words, on which the booster can learn gpt-oss's taste for the word itself.
+
+Thus the blocks fit gpt-oss better and leave Sonnet unchanged: what they add
+is gpt-oss's own taste, not how a guesser reads a clue. This is plausible for
+`hub_assoc` in particular, which is computed from gpt-oss's own association
+lists. Listeners are judged on Sonnet 5.5, which cannot tell the four apart,
+so the simplest is shipped. The text block has the best point estimate and is
+the one to revisit. Their boosters are kept in `cache/`
+(`listener_gbt_online_vocab_kind.txt`, `_text.txt`, `_kind_text.txt`).
 
 ## Results
 
@@ -66,17 +74,17 @@ footing, with the gain and a 95% bootstrap over boards:
 | Set | Incumbent | This model | Gain |
 |---|---|---|---|
 | online held-out words, generated (gpt-oss; clean for both) | 0.3315 | 0.3368 | +0.0053 [+0.0028, +0.0077] |
+| online held-out words, generated, Sonnet 5.5 (clean for both) | 0.3472 | 0.3499 | +0.0027 [+0.0002, +0.0050] |
 | held-out words, generated, Sonnet 5.5 | 0.3308 | 0.3364 | +0.0057 [+0.0028, +0.0087] |
 | held-out words, generated (gpt-oss) | 0.3408 | 0.3522 | +0.0115 [+0.0088, +0.0143] |
 | online words, generated | 0.3489 | 0.3598 | +0.0109 [+0.0081, +0.0137] |
 | new boards (training words) | 0.3559 | 0.3574 | +0.0016 [−0.0005, +0.0037] |
 
-The first row is the clean test: 250 words neither booster was trained on.
+The first two rows are the clean tests: 250 words neither booster was trained on.
 The other held-out sets are partly contaminated for this model. 74 of the 150
 old held-out words are online training words, and so are many of the 424
-online-only words. The Sonnet 5.5 set has the same contamination, but its
-guesser is not the one the model was fitted to. There is no Sonnet copy of the
-online held-out set; the user decided against buying one (~$5.70).
+online-only words. The old Sonnet 5.5 set has the same contamination, and it
+inflates the gain there (+0.0057 against +0.0027 on the clean Sonnet set).
 
 **STOP listener.** On the 1,520 online validation positions, which neither
 model was trained on: R² 0.4768 against the incumbent's 0.4689 (by pick
@@ -91,7 +99,5 @@ No arena run: a listener gain of this size is far inside the noise of a
 
 ## Open
 
-- A Sonnet (or human) test on the online held-out words, the only clean
-  non-gpt-oss test of this model.
 - Whether to make it the play server's default (`online_vocab_1`); the
   servers still run floored_overpromise_1.

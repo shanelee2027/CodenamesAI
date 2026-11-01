@@ -8001,3 +8001,17 @@ STOP listener retrained the same way (`train_stop_listener.py` now takes `--base
 Why: before a history-aware spymaster is built (plan step 3, the user's decision), how much is there to gain from not re-clueing? `fit_history_pickup.py` now asks, for each pending word an incumbent re-clue targeted (484 words in 653 re-clue turns of the collected set): had the clue left it alone, what is the chance the history guesser spends the +1 on it? The counterfactual clue targets only its other words, taken as found; the +1 is taken with the fitted logistic; the word is chosen by the beyond-the-number weights without the current clue's term (0.070 there, and the counterfactual clue is unknown).
 
 Expected: if leftovers were picked up most of the time, re-clueing would mostly waste capacity. Found: mean 0.197, median 0.163; 26.9% of the words above 0.3. It is an upper bound (in play the +1 also needs the clue's own words found first). Thus, even against a guesser that remembers, re-clueing a pending word usually still pays: the spare guess finds it about one time in five. A history-aware spymaster would change its clue where the leftover link is strong, which is about a quarter of re-clued words. The gain to expect is modest, and it would need the history-aware arena (~$1.20 for 200 games) to measure.
+
+## 2026-11-01 — The clean Sonnet test: online held-out words, Sonnet 5.5
+
+At the user's request (after declining it the night before): the 1,826 positions of `online held-out words, generated` ranked by `claude-sonnet-5-5` at medium effort (`collect_listener_data.py --vocab online_holdout --n 2100 --guesser anthropic:claude-sonnet-5-5:medium`). The `.env` key was invalid at first (401, nothing billed); the user replaced it. Pilot 89 calls $0.223 ($0.0025 a call, below the October pilot's $0.0031), then 1,738 calls $4.475, 1 retry, 0 errors, 11.4 min: **$4.70** in all. Backup before: `cache/backups/llm_store_2026-11-01_pre_sonnet_online.db`. 1,824 positions load (4,583 events), as set `online held-out words, generated, Sonnet 5.5`. These 250 words are clean for every booster.
+
+| Booster | R² | gain over the incumbent | gain over the shipped booster |
+|---|---|---|---|
+| incumbent | 0.3472 | | |
+| online_vocab_listener (67 columns) | 0.3499 | +0.0027 [+0.0002, +0.0050] | |
+| + kind | 0.3487 | +0.0015 [−0.0016, +0.0046] | −0.0012 [−0.0035, +0.0010] |
+| + text | 0.3510 | +0.0038 [+0.0005, +0.0071] | +0.0011 [−0.0015, +0.0037] |
+| + both | 0.3504 | +0.0032 [−0.0007, +0.0071] | +0.0005 [−0.0030, +0.0040] |
+
+Expected: the blocks to hurt on Sonnet, as on the old Sonnet set. Found: on clean words they neither help nor hurt (every paired difference inside ±0.004 and spanning 0). The harm on the old set (kind −0.0042 [−0.0064, −0.0020]) was contamination: half of that set's words are online training words, and the kind columns are per-word constants, so on those words the booster can learn gpt-oss's preferences for the word itself, which Sonnet does not share. On new words there is nothing to memorise, and the blocks are neutral for Sonnet while still helping on gpt-oss (+0.0081). The shipped booster's own gain on clean Sonnet is half its gain on the contaminated set (+0.0027 against +0.0057), for the same reason. The shipped choice stands (simplest of four that Sonnet cannot tell apart); the text block has the best point estimate and is the one to revisit.
