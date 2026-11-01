@@ -59,6 +59,49 @@ def probe_turns(db: Path) -> list[dict]:
     return out
 
 
+def history_columns(p: dict, sm, sims) -> tuple[np.ndarray, np.ndarray]:
+    """(link measured from the uniform level, top) over p["words"]."""
+    words, us = p["words"], p["team"]
+    n = len(words)
+    link = np.full(n, np.log(1 / n))
+    top = np.zeros(n)
+    for t in p["past"]:
+        if t["team"] != us or not t["clue"]:
+            continue
+        if sum(r == "own" for _, r in t["guesses"]) >= int(t["number"]):
+            continue
+        sc = sm._listener_scores(t["clue"], words, int(t["number"]), sims)
+        if sc is None:
+            continue
+        link = np.maximum(link, sc - (sc.max() + np.log(np.exp(sc - sc.max()).sum())))
+        top[int(np.argmax(sc))] = 1.0
+    return link - np.log(1 / n), top
+
+
+def left_alone(turns: list[dict], sm, sims, beyond: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """For each pending word a re-clue targeted: the chance the guesser would
+    have spent the +1 on it had the clue left it alone. The clue is taken to
+    target only its other words (all found), the +1 to be taken with the
+    fitted logistic, and the word chosen by the beyond-the-number weights
+    (the current clue's term dropped: it is near 0 there, and the
+    counterfactual clue is not known). An upper bound on the turn's pickup:
+    in play the +1 also needs the clue's words to be found first."""
+    out = []
+    for p in turns:
+        clued = set(p["targets"]) & set(p["pending"])
+        rest = [t for t in p["targets"] if t not in clued]
+        if not clued or not rest:
+            continue
+        link, top = history_columns(p, sm, sims)
+        keep = np.array([x not in rest for x in p["words"]])
+        z = beyond[1] * link[keep] + beyond[2] * top[keep]
+        prob = np.exp(z - z.max()) / np.exp(z - z.max()).sum()
+        take = 1 / (1 + np.exp(-(w[0] + w[1] * link[keep].max() + w[2] * len(rest))))
+        kept = [x for x, k in zip(p["words"], keep) if k]
+        out += [take * prob[kept.index(x)] for x in clued]
+    return np.asarray(out)
+
+
 def events(turns: list[dict], sm, sims, per_turn: list | None = None) -> list[dict]:
     """Per listed word: the current clue's scores over the words not yet
     listed, the history columns, the chosen row and whether it is a +1 pick.
@@ -68,25 +111,13 @@ def events(turns: list[dict], sm, sims, per_turn: list | None = None) -> list[di
         start = len(out)
         if per_turn is not None:
             per_turn.append([])
-        words, us = p["words"], p["team"]
+        words = p["words"]
         s = sm._listener_scores(p["clue"], words, p["number"], sims)
         if s is None or not p["guesses"]:
             continue
         n = len(words)
-        link = np.full(n, np.log(1 / n))
-        top = np.zeros(n)
-        for t in p["past"]:
-            if t["team"] != us or not t["clue"]:
-                continue
-            found = sum(r == "own" for _, r in t["guesses"])
-            if found >= int(t["number"]):
-                continue
-            sc = sm._listener_scores(t["clue"], words, int(t["number"]), sims)
-            if sc is None:
-                continue
-            lp = sc - (sc.max() + np.log(np.exp(sc - sc.max()).sum()))
-            link = np.maximum(link, lp)
-            top[int(np.argmax(sc))] = 1.0
+        link, top = history_columns(p, sm, sims)
+        link = link + np.log(1 / n)
         index = {w: i for i, w in enumerate(words)}
         left = np.ones(n, dtype=bool)
         for j, g in enumerate(p["guesses"]):
@@ -193,6 +224,13 @@ def main() -> None:
         a, b = lnll(np.r_[w0, 0, 0], X, y), lnll(w, X, y)
         print(f"  +1 taken, {name}: {y.mean():.1%} of {len(y)} turns; log-loss {a.mean():.4f} (rate only) -> "
               f"{b.mean():.4f} (R2 {1 - b.sum() / a.sum():.3f}); w = " + ", ".join(f"{v:.3f}" for v in w))
+
+    # What re-clueing buys under this guesser: the incumbent's re-clued
+    # pending words, had the clue left them alone.
+    reclue = [p for p in fit_turns if p.get("kind") == "reclue"]
+    pick = left_alone(reclue, sm, sims, split.x[3:], w)
+    print(f"  re-clued pending words ({len(pick)} in {len(reclue)} re-clue turns): chance of a +1 pickup had the clue "
+          f"left them alone, mean {pick.mean():.3f}, median {np.median(pick):.3f}, above 0.3 {(pick > 0.3).mean():.1%}")
 
 
 if __name__ == "__main__":
