@@ -56,7 +56,7 @@ def gloss_words(word: str) -> set[str]:
     from nltk.corpus import wordnet as wn
 
     out: set[str] = set()
-    for s in wn.synsets(word):
+    for s in wn.synsets(word.replace(" ", "_").replace("-", "_")):  # WordNet joins a multi-word name with underscores (robin_hood)
         for tok in s.definition().lower().replace(",", " ").replace(";", " ").split():
             t = tok.strip("().'\"-")
             if len(t) > 2 and t not in STOP:

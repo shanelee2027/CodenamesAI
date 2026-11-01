@@ -25,6 +25,14 @@ Spaces:
                successor to GloVe, and the only space here that can build a
                vector for a word it never saw.
 
+**Multi-word board words** ("ice cream", "robin hood") have no token of their
+own in either file, so they get the mean of their parts' vectors, as the
+tensor's spaces do (`_embedding_lib.resolve_board_vector`, abbreviations
+spelled out only if the written parts are missing). Until 2026-11-01 they had
+no vector here at all. The z-score's mean and sd stay over the base-game
+words with a vector of their own, the same set as before, so no stored value
+moves when these are filled in.
+
 Output `cache/extra_sims.npz`, one (n_clue_pool x n_board_words) float32 matrix
 per space, NaN where either side is out of vocabulary.
 
@@ -41,6 +49,11 @@ from pathlib import Path
 import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _embedding_lib import lookup_tokens, resolve_board_vector  # noqa: E402
 
 from codenames.board import load_wordlist
 from codenames.clue_stats import ClueStats
@@ -78,8 +91,9 @@ def read_vectors(zip_path: Path, member: str, wanted: set[str]) -> dict[str, np.
 
 
 def build(vecs: dict[str, np.ndarray], clue_words: list[str], board_words: list[str], base: np.ndarray) -> np.ndarray:
+    board_vecs = {w: v for w in board_words if (v := resolve_board_vector(w, vecs, None)) is not None}
     have_c = [w for w in clue_words if w in vecs]
-    have_b = [w for w in board_words if w in vecs]
+    have_b = [w for w in board_words if w in board_vecs]
     print(f"    clues {len(have_c):,}/{len(clue_words):,} ({len(have_c)/len(clue_words):.1%})"
           f"   board {len(have_b)}/{len(board_words)} ({len(have_b)/len(board_words):.1%})")
     if not have_c or not have_b:
@@ -87,7 +101,7 @@ def build(vecs: dict[str, np.ndarray], clue_words: list[str], board_words: list[
 
     C = np.stack([vecs[w] for w in have_c])
     C /= np.maximum(np.linalg.norm(C, axis=1, keepdims=True), 1e-9)
-    B = np.stack([vecs[w] for w in have_b])
+    B = np.stack([board_vecs[w] for w in have_b])
     B /= np.maximum(np.linalg.norm(B, axis=1, keepdims=True), 1e-9)
 
     out = np.full((len(clue_words), len(board_words)), np.nan, dtype=np.float32)
@@ -95,9 +109,11 @@ def build(vecs: dict[str, np.ndarray], clue_words: list[str], board_words: list[
     bi = np.array([board_words.index(w) for w in have_b])
     out[np.ix_(ci, bi)] = C @ B.T
 
-    # z-score each clue row over the base game's board words it does cover.
-    # Only those: words added later (scripts/data/extend_board_vocab.py) are
-    # scored on the same footing without moving any existing value.
+    # z-score each clue row over the base game's board words it does cover,
+    # with a vector of their own. Only those: words added later
+    # (scripts/data/extend_board_vocab.py) and parts means are scored on the
+    # same footing without moving any existing value.
+    base = base & np.array([w in vecs for w in board_words])
     with np.errstate(invalid="ignore"):
         mu = np.nanmean(out[:, base], axis=1, keepdims=True)
         sd = np.nanstd(out[:, base], axis=1, keepdims=True)
@@ -114,7 +130,8 @@ def main() -> None:
     ap.add_argument("--max-rarity", type=float, default=10.0)
     ap.add_argument("--append", action="store_true",
                     help="keep the values already in --out for the board words it has, and add only "
-                         "the board words appended since (scripts/data/extend_board_vocab.py)")
+                         "the board words appended since (scripts/data/extend_board_vocab.py) and those "
+                         "whose column was entirely NaN (no vector before)")
     args = ap.parse_args()
 
     sims = SimilarityTensor.load(DEFAULT_CACHE_DIR)
@@ -124,7 +141,7 @@ def main() -> None:
     base = np.array([w in base_words for w in board_words])
     pool_rows = np.flatnonzero(stats.rarity_percentile <= args.max_rarity)
     pool_words = [stats.clue_words[i].lower() for i in pool_rows]
-    wanted = set(pool_words) | set(board_words)
+    wanted = set(pool_words) | {t for w in board_words for t in lookup_tokens(w, None)}
 
     payload: dict[str, np.ndarray] = {
         "clue_rows": pool_rows.astype(np.int32),
@@ -144,8 +161,12 @@ def main() -> None:
             # 2026-10-30, even on the original 400 words alone), and the stored
             # ones are what the boosters were fitted on, so those are kept.
             assert np.array_equal(old["clue_rows"], pool_rows), "the clue pool changed; rebuild in full"
-            cols = [board_words.index(str(w)) for w in old["board_words"]]
-            payload[name][:, cols] = old[name]
+            had = np.isfinite(old[name]).any(axis=0)
+            cols = [board_words.index(str(w)) for w, h in zip(old["board_words"], had) if h]
+            payload[name][:, cols] = old[name][:, had]
+            filled = [str(w) for w, h in zip(old["board_words"], had)
+                      if not h and np.isfinite(payload[name][:, board_words.index(str(w))]).any()]
+            print(f"  filled (no vector before): {filled or 'none'}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **payload)

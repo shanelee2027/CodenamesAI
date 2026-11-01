@@ -69,7 +69,7 @@ def main() -> None:
 
     out = np.full((len(board_words), 5), np.nan, dtype=np.float32)
     for i, w in enumerate(board_words):
-        n_senses = float(len(wn.synsets(w)))
+        n_senses = float(len(wn.synsets(w.replace(" ", "_").replace("-", "_"))))  # WordNet joins a multi-word name with underscores (robin_hood)
         v = norms.get(w)
         if v is not None:
             # log1p on frequency: SUBTLEX counts span five orders of magnitude,

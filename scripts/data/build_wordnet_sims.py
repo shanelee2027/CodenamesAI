@@ -54,7 +54,7 @@ def ancestor_map(word: str) -> dict[int, tuple[int, int]]:
     from nltk.corpus import wordnet as wn
 
     out: dict[int, tuple[int, int]] = {}
-    for s in wn.synsets(word):
+    for s in wn.synsets(word.replace(" ", "_").replace("-", "_")):  # WordNet joins a multi-word name with underscores (robin_hood)
         for anc, dist in s.hypernym_distances():
             k = anc.offset() * 10 + "nvasr".index(anc.pos()) if anc.pos() in "nvasr" else anc.offset() * 10
             prev = out.get(k)
