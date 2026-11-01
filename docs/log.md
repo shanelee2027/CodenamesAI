@@ -7922,3 +7922,34 @@ How: both footings exist side by side, and a model says which one it reads.
 - Training: `load_positions(..., normalization="online")` and `train_listener_net.load_sets(normalization="online")`, cached in `listener_net_sets_online.pkl` and in feature files whose name includes the footing.
 
 Expected: the two footings differ by a small shift (the online 800 contain the base 400). Found: per clue, means move by 0.06-0.16 sd and the sd ratio is close to 1. On the 1,852 "online words, generated" positions, 15 of the 75 columns change (mean |difference| 0.004-0.43, largest `peak_z` and `gaptop_numberbatch`); the other 60, ranks and raw similarities among them, are identical. Current model unchanged: `floored_overpromise_1` gives MUM 3 (0.444449), THRUST 3, CENTS 3 on seeds 11-13. 503 tests pass.
+
+## 2026-11-01 — Online split collection: done
+
+The collection started 2026-11-01 00:52 EST (`collect_listener_data.py --vocab online_holdout --n 2100`, then `--vocab online_train --n 11300`, two passes each, then `collect_relatedness.py --sets "online train" --max-calls 10000`). It ran at 8 workers (76 rankings/min, about 6 s per call; the collector used 2% of a core) until the user asked whether it could go faster; it was stopped and restarted at 32 workers (253/min). Nothing was lost: every ranking is committed to `cache/llm_store.db` as it arrives and the plan is a function of the seed, so the restart reported 1,808 of 1,826 held-out positions and 1,053 training positions already cached. Store backed up first (`cache/backups/llm_store_2026-11-01_pre_workers32.db`). Finished 03:18.
+
+- `online held-out words, generated`: 1,886 positions on 1,840 boards (the plan counts boards; a few boards carry two clues).
+- `online train`: 9,980 positions on 9,891 boards, all with graded-v2 STOP labels.
+- DeepInfra: November usage $1.67 at 03:18 (it lags), checklist balance unchanged, auto top-up off.
+
+A fresh load of the older sets is not the base set cache any more: arena games since 2026-10-01 bought rankings on the arena boards, 848 more positions on seeds 0-100 (training words, which also redraws the train/val split) and 16,930 on the 100 held-out arena boards. The test sets used for comparisons (`held-out words, generated` and its Sonnet copies, the online sets) are identical in both. The new model is trained on the incumbent's exact train/val rows (by key) plus the new data, so that only the new data, the normalisation and the features differ.
+
+## 2026-11-01 — Clue-history probe 3: can gpt-oss be prompted to go back to earlier clues?
+
+Why: the user wants the model to learn not to re-clue words its guesser could pick up from an earlier clue. That needs a guesser that does pick them up. Three earlier probes (2026-10-06, 10-07, 10-27) found that gpt-oss, shown the history but not told it may use it, ignores it: a pending word (an own word an earlier clue was meant for, still unfound) is listed 3.3% of the time with or without the history. Those probes measured unprompted behaviour on purpose. This one asks whether a prompt can produce the behaviour.
+
+How: `scripts/data/probe_history_rule.py`, the 10-27 probe's 300 *main* positions (later incumbent clues in the comfort arena with pending words the current clue does not target), the turn-level prompt (list the guesses in order, up to number + 1, stop at any point). The rule sentence, in the rulebook's terms: guesses need not be for the current clue; the extra guess exists so that a team can go back to an earlier clue. Arms differ in the rule, the history, the format and the reasoning effort. 2,070 calls, about $0.38 by tokens.
+
+| arm | used +1 | pending listed | pending found | own found | wrong guess |
+|---|---|---|---|---|---|
+| history (10-27 prompt, low) | 0.3% | 3.3% | 3.3% | 1.58 | 27.3% |
+| rule + history, low | 23.3% | 10.7% | 8.3% | 1.61 | 38.7% |
+| rule, no history, low (control) | 7.7% | 4.3% | 4.3% | 1.55 | 35.7% |
+| rule + history, low, name the earlier clues' words first | 25.0% | 16.7% | 13.7% | 1.65 | 40.3% |
+| rule + history as a multi-turn chat, low | 12.0% | 6.0% | 6.0% | 1.60 | 34.7% |
+| **rule + history, medium** | **50.3%** | **32.0%** | **22.8%** | **1.72** | **47.6%** |
+| history, medium (control) | 0.0% | 7.1% | 6.4% | 1.54 | 33.6% |
+| rule, no history, medium (control) | 1.3% | 4.7% | 3.7% | 1.48 | 37.0% |
+
+Expected: the stated rule to move the rate. Found: it takes the rule and medium effort together. Neither alone does it (7.1% and 4.7%, against 32.0% together). The behaviour comes from the history: of the 144 guesses beyond the number in the medium arm, 76 were pending words; without the history, none were. At low effort, asking first which word each earlier clue meant mostly gets "null" (it names a pending word in 21.7% of positions), so low effort does not link an earlier clue to its leftover word. The chat form is worse than the summary. The cost of the behaviour: the medium arm uses the +1 half the time, and its turns end on a wrong guess 47.6% of the time against 27.3%; it finds 0.14 more own words a turn. 14 medium positions failed because 58 calls hit the 4,096-token cap (raise it for medium).
+
+So a history-aware gpt-oss guesser exists: the rule prompt at medium effort. Whether humans go back to earlier clues as often (32%) is not measured: the game page does not log games, and `human_eval.jsonl` holds single turns.

@@ -134,6 +134,7 @@ def positions(db: Path) -> list[dict]:
                 pending = {w for ws in sent for w in ws} & own_left
                 out.append({"game": game_id, "turn": i, "team": us, "clue": t["clue"], "number": int(t["number"]),
                             "words": [w for w in board.words if w not in board.revealed],
+                            "all_words": list(board.words),
                             "roles": {w: view.role_of(w).value for w in board.words if w not in board.revealed},
                             "past": [{k: p[k] for k in ("team", "clue", "number", "guesses")} for p in turns[:i]],
                             "targets": meant, "pending": sorted(pending), "own_left": len(own_left),
@@ -159,7 +160,8 @@ def sample(all_pos: list[dict], n_main: int, n_desperate: int) -> tuple[list[dic
 
 
 class Store:
-    def __init__(self, db: Path):
+    def __init__(self, db: Path, version: str = VERSION):
+        self.version = version
         self.conn = sqlite3.connect(str(db), check_same_thread=False, timeout=60)
         self.lock = threading.Lock()
         self.conn.execute("""CREATE TABLE IF NOT EXISTS turn_probe (
@@ -168,7 +170,7 @@ class Store:
         self.conn.commit()
 
     def key(self, model: str, prompt: str) -> str:
-        return json.dumps([model, VERSION, prompt])
+        return json.dumps([model, self.version, prompt])
 
     def get(self, model: str, prompt: str):
         with self.lock:
@@ -179,7 +181,7 @@ class Store:
     def put(self, model: str, prompt: str, raw: str, guesses: list[str]) -> None:
         with self.lock:
             self.conn.execute("INSERT OR REPLACE INTO turn_probe VALUES (?, ?, ?, ?, ?, ?)",
-                              (self.key(model, prompt), model, VERSION, prompt, raw, json.dumps(guesses)))
+                              (self.key(model, prompt), model, self.version, prompt, raw, json.dumps(guesses)))
             self.conn.commit()
 
 
