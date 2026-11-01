@@ -220,7 +220,9 @@ function fail(msg){
 function newClue(){
   busy=true; clue=null; render();
   const words = B.words.filter((w,i)=>revealed[i]);
-  post('/api/clue', {seed:B.seed, revealed:words, turn, spymaster:smKey})
+  // The game's turns so far: a model that knows the +1 can go back to its last clue reads them.
+  const past = history.map(h=>({turn:h.turn, clue:h.clue, number:h.number, guesses:h.guesses.slice()}));
+  post('/api/clue', {seed:B.seed, revealed:words, turn, spymaster:smKey, history:past})
     .then(r=>{
       busy=false;
       if(r.error) return fail(r.error);
@@ -230,7 +232,7 @@ function newClue(){
                before:revealed.slice()};
       history.push(h);
       post('/api/explain', {seed:B.seed, revealed:words, turn, spymaster:r.spymaster,
-                            clue:r.clue, number:r.number})
+                            clue:r.clue, number:r.number, history:past})
         .then(e=>{ h.expl = e.error ? {error:e.error} : e; if(over) showHistory(); })
         .catch(()=>{ h.expl={error:'no answer'}; if(over) showHistory(); });
       left=r.number+1;                   // Codenames allows one guess beyond the number

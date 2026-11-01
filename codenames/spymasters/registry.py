@@ -55,6 +55,7 @@ from codenames.spymasters.win_prob_overpromise_listener import WinProbOverpromis
 from codenames.spymasters.margin_value_overpromise_listener import MarginValueOverpromiseListenerSpymaster
 from codenames.spymasters.floored_overpromise_listener import FlooredOverpromiseListenerSpymaster
 from codenames.spymasters.online_vocab_listener import OnlineVocabListenerSpymaster
+from codenames.spymasters.leftover_plus_one_listener import LeftoverPlusOneListenerSpymaster
 from codenames.spymasters.profile_temperature_listener import ProfileTemperatureListenerSpymaster
 from codenames.spymasters.isa_listener import IsaListenerSpymaster
 from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaster
@@ -91,6 +92,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "margin_value_overpromise_listener": MarginValueOverpromiseListenerSpymaster,
     "floored_overpromise_listener": FlooredOverpromiseListenerSpymaster,
     "online_vocab_listener": OnlineVocabListenerSpymaster,
+    "leftover_plus_one_listener": LeftoverPlusOneListenerSpymaster,
     "profile_temperature_listener": ProfileTemperatureListenerSpymaster,
     "within_turn_listener": WithinTurnListenerSpymaster,
     "imitation_policy": ImitationPolicySpymaster,

@@ -101,7 +101,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from codenames.board import Board, OpponentBoardView, Role, clue_number_cap, load_wordlist
 from codenames.clue_stats import ClueStats
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
-from codenames.spymasters.base import TurnContext
+from codenames.spymasters.base import PastTurn, TurnContext
 from codenames.spymasters.learned_listener import ListenerBundle, LearnedListenerSpymaster
 from codenames.spymasters.pick_index_lookahead_listener import PickIndexLookaheadListenerSpymaster
 from codenames.spymasters.assoc_profile_listener import AssocProfileListenerSpymaster
@@ -113,6 +113,7 @@ from codenames.spymasters.win_prob_overpromise_listener import WinProbOverpromis
 from codenames.spymasters.margin_value_overpromise_listener import MarginValueOverpromiseListenerSpymaster
 from codenames.spymasters.floored_overpromise_listener import FlooredOverpromiseListenerSpymaster
 from codenames.spymasters.online_vocab_listener import OnlineVocabListenerSpymaster
+from codenames.spymasters.leftover_plus_one_listener import LeftoverPlusOneListenerSpymaster
 from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
@@ -318,6 +319,19 @@ SPYMASTERS: dict[str, dict] = {
                   "clue_stats_online.npz", "extra_sims_online.npz"],
         "about": "The floored overpromise model with its listener and STOP listener retrained on more data from "
                  "the online game's 800 words, with every z-scored feature measured over those 800."},
+    # online_vocab_1 that knows the +1 can go back to its previous clue
+    # (codenames/spymasters/leftover_plus_one_listener.py). The page sends the
+    # game's turns with each request.
+    "leftover_plus_one_1": {
+        "label": "Win probability + overpromise 1, floored, online words, +1 on the last clue's leftover",
+        "model": "listener_gbt_online_vocab.txt", "outside_n": 0, "cls": LeftoverPlusOneListenerSpymaster,
+        "no_k1": True, "kwargs": {"outside_n": 0, "promise_cost": 1.0, "plus_one_rate": 1.0},
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz", "win_value_margin.npz",
+                  "listener_gbt_stop_online_vocab.txt", "listener_gbt_online_vocab.meta.json",
+                  "clue_stats_online.npz", "extra_sims_online.npz"],
+        "about": "The online-words model, but it knows the guesser can spend the extra guess on a word its "
+                 "previous clue was meant for and the team missed: when the last turn ended on a wrong guess, "
+                 "a turn that ends cleanly is worth one more guess at that clue."},
 }
 
 # Online-words twins: each entry above whose only learned parts are the assoc
@@ -418,8 +432,9 @@ class Engine:
     def new_board(self) -> dict:
         return self.describe(Board.generate(seed=random.randrange(1, 2**31), vocabulary=self.words))
 
-    def best_clue(self, board, key: str, turn_index: int) -> tuple[str, int, float] | None:
-        ctx = TurnContext(board=board, turn_index=turn_index)
+    def best_clue(self, board, key: str, turn_index: int,
+                  history: tuple[PastTurn, ...] = ()) -> tuple[str, int, float] | None:
+        ctx = TurnContext(board=board, turn_index=turn_index, history=history)
         with _LOCK:
             picks = self.spymaster(key).top_clues(ctx, self.sims, 1)
         if not picks:
@@ -432,7 +447,7 @@ class Engine:
     SHOW = 6
     RISKS = 3
 
-    def explain(self, board, key: str, clue: str, number: int) -> dict:
+    def explain(self, board, key: str, clue: str, number: int, history: tuple[PastTurn, ...] = ()) -> dict:
         """How spymaster `key` reads its own clue: the `number` own words it
         rates highest (its intended targets), and its listener's first-guess
         distribution over the board -- plus the pass, when it has one. From
@@ -459,7 +474,8 @@ class Engine:
         kind = "net_words"
         if hasattr(sm, "clue_value"):           # a win-probability model: show the P(win) it chose on
             with _LOCK:
-                v = sm.clue_value(board, clue, number, self.sims)
+                v = (sm.clue_value(board, clue, number, self.sims, history=history)
+                     if getattr(sm, "uses_history", False) else sm.clue_value(board, clue, number, self.sims))
             value, kind = (v, getattr(sm, "value_kind", "win")) if v is not None else (value, kind)
         elif SPYMASTERS[key].get("score_is"):
             v = self._scores.get((key, board.seed, frozenset(board.revealed), clue, int(number)))
@@ -498,15 +514,35 @@ class Engine:
         board.revealed = {on_board[w.lower()] for w in revealed if w.lower() in on_board}
         return board if turn == "a" else OpponentBoardView(board)
 
-    def explain_clue(self, seed: int, revealed: list[str], turn: str, key: str, clue: str, number: int) -> dict:
+    def explain_clue(self, seed: int, revealed: list[str], turn: str, key: str, clue: str, number: int,
+                     history: list | None = None) -> dict:
         """`explain` for a clue given earlier in a game, at the position it was
         given in: the game page's history after the game ends."""
-        return self.explain(self.position(seed, revealed, turn), key, clue, number)
+        view = self.position(seed, revealed, turn)
+        return self.explain(view, key, clue, number, self.past_turns(view, turn, history))
 
-    def clue(self, seed: int, revealed: list[str], turn: str, key: str) -> dict:
+    MAX_HISTORY = 60
+
+    @classmethod
+    def past_turns(cls, board, turn: str, history: list | None) -> tuple[PastTurn, ...]:
+        """The page's clue history ({turn, clue, number, guesses}, oldest first)
+        as `turn`'s spymaster sees it. Guesses not on the board are dropped."""
+        on_board = {w.lower(): w for w in board.words}
+        out = []
+        for h in (history if isinstance(history, list) else [])[-cls.MAX_HISTORY:]:
+            if not isinstance(h, dict) or not isinstance(h.get("clue"), str):
+                continue
+            guesses = tuple(on_board[g.lower()] for g in (h.get("guesses") or [])[:26]
+                            if isinstance(g, str) and g.lower() in on_board)
+            out.append(PastTurn(ours=h.get("turn") == turn, clue=h["clue"][:40], number=int(h.get("number") or 0),
+                                guesses=guesses))
+        return tuple(out)
+
+    def clue(self, seed: int, revealed: list[str], turn: str, key: str, history: list | None = None) -> dict:
         view = self.position(seed, revealed, turn)
         t0 = time.time()
-        got = self.best_clue(view, key, turn_index=len(view.revealed))
+        got = self.best_clue(view, key, turn_index=len(view.revealed),
+                             history=self.past_turns(view, turn, history))
         if got is None:
             return {"clue": None}
         return {"clue": got[0], "number": got[1], "score": got[2], "spymaster": key,
@@ -916,12 +952,14 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
                     return self._json(engine.clue(int(req["seed"]),
                                                   list(req.get("revealed") or []),
                                                   req.get("turn", "a"),
-                                                  req.get("spymaster") or default_key))
+                                                  req.get("spymaster") or default_key,
+                                                  req.get("history")))
                 if self.path == "/api/explain":
                     return self._json(engine.explain_clue(int(req["seed"]), list(req.get("revealed") or []),
                                                           req.get("turn", "a"),
                                                           req.get("spymaster") or default_key,
-                                                          str(req["clue"]), int(req["number"])))
+                                                          str(req["clue"]), int(req["number"]),
+                                                          req.get("history")))
                 if self.path == "/api/compare/next" and compare is not None:
                     return self._json(compare.next(str(req["left"]), str(req["right"]),
                                                    bool(req.get("blind", True))))
@@ -958,7 +996,7 @@ def main() -> None:
                     help="disable the k=1 similarity tiebreak")
     # The current best model (docs/versions/floored_overpromise_listener.md);
     # the incumbent is still on the menu as "assoc_profile".
-    ap.add_argument("--spymaster", default="online_vocab_1", choices=sorted(SPYMASTERS),
+    ap.add_argument("--spymaster", default="leftover_plus_one_1", choices=sorted(SPYMASTERS),
                     help="the game page's starting choice")
     ap.add_argument("--eval-arms", default="assoc_profile,profile_temperature",
                     help="comma-separated spymasters the blind study compares. The default "

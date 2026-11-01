@@ -349,6 +349,23 @@
    ]
   },
   {
+   "_comment": "online_vocab_listener with the +1 spent on the previous clue's leftover: where a turn ends cleanly (STOP, or the number with every guess ours) and our previous turn was cut short by a wrong guess with words still unfound, the ending is valued with one more guess drawn from the STOP listener's next pick for the previous clue (plus_one_rate = 1). Reads TurnContext.history; without it, online_vocab_listener exactly. docs/versions/leftover_plus_one_listener.md.",
+   "name": "leftover_plus_one_listener",
+   "type": "leftover_plus_one_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0,
+    "promise_cost": 1.0,
+    "charge_floor": 0.05,
+    "plus_one_rate": 1.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
+  },
+  {
    "_comment": "assoc_profile_listener with per-pick temperatures: at pick j the guesser picks by softmax(s / tau_j), pick 1 at 1 and tau_2..4+ = 1.09 / 1.26 / 1.41 fitted for the assoc profile booster on gpt-oss val (cache/sequential_listener_assoc_profile_temperature.json; scripts/pipeline/train_sequential_listener.py --arm temperature). pick_temperature_listener's exact reward (expected own words minus role costs); single-score speed. docs/versions/profile_temperature_listener.md.",
    "name": "profile_temperature_listener",
    "type": "profile_temperature_listener",

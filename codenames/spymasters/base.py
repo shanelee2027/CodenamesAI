@@ -35,13 +35,27 @@ from pathlib import Path
 from codenames.board import MAX_CLUE_NUMBER, Board, OpponentBoardView
 from codenames.similarity import SimilarityTensor
 
-__all__ = ["Spymaster", "TurnContext", "MAX_CLUE_NUMBER"]
+__all__ = ["Spymaster", "TurnContext", "PastTurn", "MAX_CLUE_NUMBER"]
+
+
+@dataclass(frozen=True)
+class PastTurn:
+    """One earlier turn of the game, as the spymaster to move sees it: whether
+    it was its own team's, the clue, and the words guessed, in order (their
+    roles are on the board)."""
+    ours: bool
+    clue: str
+    number: int
+    guesses: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
 class TurnContext:
     board: Board | OpponentBoardView
     turn_index: int
+    # The game so far, oldest first. Empty where the caller does not track it
+    # (the arena's game loop); only leftover_plus_one_listener reads it.
+    history: tuple[PastTurn, ...] = ()
 
 
 class Spymaster(ABC):
