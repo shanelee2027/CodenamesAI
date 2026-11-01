@@ -49,8 +49,28 @@ SPACE_CONFIGS = {
 }
 
 
-def split_words(word: str) -> list[str]:
-    return re.split(r"[\s-]+", word.lower())
+# Abbreviations in board-word names, spelled out only when the name as
+# written gets no vector, so no word that has one changes. Numberbatch and
+# Wikipedia2Vec have no "st." token, so "St. patrick" had no vector in
+# either (docs/log.md, 2026-11-01); Numberbatch has "saint_patrick".
+ABBREVIATIONS = {"st.": "saint", "mt.": "mount"}
+
+
+def split_words(word: str, expand: bool = False) -> list[str]:
+    parts = re.split(r"[\s-]+", word.lower())
+    return [ABBREVIATIONS.get(p, p) for p in parts] if expand else parts
+
+
+def lookup_tokens(word: str, multiword_join: str | None) -> set[str]:
+    """Every token resolve_board_vector may consult for a board word, for
+    load_filtered_vectors' `wanted`."""
+    out = {word.lower()}
+    for expand in (False, True):
+        parts = split_words(word, expand)
+        out.update(parts)
+        if multiword_join is not None:
+            out.add(multiword_join.join(parts))
+    return out
 
 
 def ranked_alphabetic_words(path: Path, opener, skip_prefixes: tuple[str, ...], has_header: bool, limit: int | None) -> list[str]:
@@ -105,15 +125,16 @@ def resolve_board_vector(word: str, vectors: dict[str, np.ndarray], multiword_jo
     lw = word.lower()
     if lw in vectors:
         return vectors[lw]
-    if multiword_join is not None:
-        joined = re.sub(r"[\s-]+", multiword_join, lw)
-        if joined in vectors:
-            return vectors[joined]
-    parts = split_words(word)
-    if len(parts) > 1:
-        part_vecs = [vectors[p] for p in parts if p in vectors]
-        if len(part_vecs) == len(parts):
-            return np.mean(part_vecs, axis=0)
+    for expand in (False, True):
+        parts = split_words(word, expand)
+        if multiword_join is not None:
+            joined = multiword_join.join(parts)
+            if joined in vectors:
+                return vectors[joined]
+        if len(parts) > 1:
+            part_vecs = [vectors[p] for p in parts if p in vectors]
+            if len(part_vecs) == len(parts):
+                return np.mean(part_vecs, axis=0)
     return None
 
 

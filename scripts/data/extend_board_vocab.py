@@ -13,6 +13,17 @@ anything is written. A mismatch means this script does not reproduce the
 original build, and it stops: appended columns from a different recipe would
 be features the boosters were never fitted on.
 
+**A word with no vector is refused, and one that had none can get one.** A
+board word with no vector in some space leaves its column NaN there, and
+feature extraction refuses any board holding it, so the spymaster has no
+clue to give on that board (it said THE 1 on boards with "St. patrick"). So a
+new word without a vector in every space stops the script before anything is
+written. An existing column that was entirely NaN in a space is the one
+exception to "must come out equal": when a change to the lookup
+(`_embedding_lib.ABBREVIATIONS`) gives that word a vector, rerunning with no
+new words fills it in. No booster was fitted on a value there, since there
+was none.
+
 **Nothing that normalises over the board axis is rebuilt from the new
 columns.** `clue_stats` (each clue's mean and sd over the board words) stays
 as it is, over the base 400, so every existing z-score is unchanged and a new
@@ -32,7 +43,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from _embedding_lib import SPACE_CONFIGS, build_vectors_for_vocab, compute_similarity, load_filtered_vectors, normalize_rows, split_words
+from _embedding_lib import SPACE_CONFIGS, build_vectors_for_vocab, compute_similarity, load_filtered_vectors, lookup_tokens, normalize_rows
 
 
 def main() -> None:
@@ -50,8 +61,9 @@ def main() -> None:
 
     have = {w.lower() for w in board_words}
     new = [w for w in (l.strip() for l in args.words.read_text().splitlines()) if w and w.lower() not in have]
-    if not new:
-        print("no new words")
+    unfilled = np.isnan(tensor).all(axis=0).any(axis=-1)
+    if not new and not unfilled.any():
+        print("no new words and no column without a vector")
         return
     words = board_words + new
     print(f"{len(board_words)} board words + {len(new)} new, {len(clue_words):,} clues, spaces {meta['spaces']}")
@@ -60,13 +72,9 @@ def main() -> None:
     for si, space in enumerate(meta["spaces"]):
         t0 = time.time()
         config = SPACE_CONFIGS[space]
-        wanted: set[str] = set(clue_words) | {w.lower() for w in words}
+        wanted: set[str] = set(clue_words)
         for w in words:
-            parts = split_words(w)
-            if len(parts) > 1:
-                wanted.update(parts)
-                if config["multiword_join"] is not None:
-                    wanted.add(config["multiword_join"].join(parts))
+            wanted |= lookup_tokens(w, config["multiword_join"])
         vectors = load_filtered_vectors(config["default_source"], config["opener"], wanted,
                                         config["skip_prefixes"], config["has_header"])
         dim = next(iter(vectors.values())).shape[0]
@@ -79,16 +87,22 @@ def main() -> None:
 
         old = tensor[:, :, si]
         ours = sim[:, : len(board_words)]
-        same = (old == ours) | (np.isnan(old) & np.isnan(ours))
-        missing = [w for w, ok in zip(new, board_valid[len(board_words):]) if not ok]
+        was_nan = np.isnan(old).all(axis=0)
+        same = ((old == ours) | (np.isnan(old) & np.isnan(ours)))[:, ~was_nan]
+        filled = [w for w, a, b in zip(board_words, was_nan, board_valid) if a and b]
+        missing = [w for w, ok in zip(words, board_valid) if not ok]
         print(f"{space}: old columns reproduced {same.mean():.6%}, max |diff| "
-              f"{np.nanmax(np.abs(old.astype(np.float32) - ours.astype(np.float32))):.2e}; new words without "
-              f"a vector: {missing or 'none'} ({time.time() - t0:.0f}s)", flush=True)
+              f"{np.nanmax(np.abs(old.astype(np.float32) - ours.astype(np.float32))):.2e}; filled: "
+              f"{filled or 'none'}; words without a vector: {missing or 'none'} ({time.time() - t0:.0f}s)",
+              flush=True)
         if not same.all():
             raise SystemExit(f"{space}: this build does not reproduce the tensor on disk; nothing written")
-        slices.append(sim[:, len(board_words):])
+        if set(missing) & set(new):
+            raise SystemExit(f"{space}: new words without a vector {sorted(set(missing) & set(new))}; "
+                             "nothing written")
+        slices.append(sim)
 
-    out = np.concatenate([tensor, np.stack(slices, axis=-1)], axis=1)
+    out = np.stack(slices, axis=-1)
     # A running play server memory-maps the tensor: writing over the file in
     # place would change the pages under it. A new file renamed into place
     # leaves the old one mapped until that server restarts.
@@ -97,7 +111,9 @@ def main() -> None:
     tmp.replace(args.cache_dir / "similarity_tensor.npy")
     (args.cache_dir / "board_vocab.json").write_text(json.dumps(words))
     meta["shape"] = list(out.shape)
-    meta["board_note"] = f"first {len(board_words)} board words are the base game's; the rest from {args.words}"
+    if new:
+        meta["board_note"] = (meta.get("board_note", "first 400 board words are the base game's")
+                              + f"; {len(board_words)}-{len(words) - 1} from {args.words}")
     (args.cache_dir / "similarity_meta.json").write_text(json.dumps(meta, indent=2))
     print(f"tensor {tensor.shape} -> {out.shape}")
 
