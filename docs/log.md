@@ -7893,3 +7893,20 @@ Why: the word-difficulty test found proper names overrated and many-meaning comm
 How: `codenames/word_kind.py`, built by `scripts/data/build_word_kind.py` into `cache/word_kind.npz`: `proper_share` (share of the word's WordNet senses that are named instances), `hub_assoc` (share of the 11,145 pool clues whose gpt-oss association lists name the word) and `hub_z` (share of pool clues for which the word's z is >= 2, over the three tensor spaces). All against fixed references, so adding board words never moves another word's value. Appended as the last feature block (72 features) through `APPENDED_TABLES`, so a booster loads the table only if it reads one of the three; `listener_training.complete_columns` appends both later blocks to cached positions.
 
 Found: values look like the intent. `hub_assoc` mean 0.0071; CODE 0.021, BRIDGE 0.025, KEY 0.0135 (2-3.5x the mean), POTATO 0.0037, names 0.0002-0.003 (Homer 0.0008). `proper_share`: Australia, Robin Hood, St. Patrick 1.0, Homer 0.33, KEY 0.05, CODE 0. `hub_assoc` and `hub_z` correlate at 0.46 (Spearman), so they are not one measure twice. The current model is untouched: `floored_overpromise_1` still gives MUM 3 (0.444449), THRUST 3, CENTS 3 on seeds 11-13. 502 tests pass.
+
+## 2026-11-01 — A text-embedding space (for the next model)
+
+Why: every embedding in the feature set is a static word-vector model (2013-2019), so a multi-word name gets a phrase token at best and otherwise the mean of its words' vectors (Robin Hood as bird plus garment). The user asked for better data for such words and approved downloads; three options were weighed: Wikipedia2Vec entity vectors (already on disk), word2vec Google News phrase vectors, and a current open text-embedding model. The entity vectors turned out to be in the model already: `ent_rank`/`ent_has` read exactly those vectors, for the same 11 of the 16 multi-word names, so putting them into the tensor's Wikipedia2Vec column too would repeat them while changing columns the live model reads; skipped. The text-embedding model was added.
+
+How: `scripts/data/build_text_sims.py` encodes the 11,145 pool clues and the 857 board words once (GPU, under 30 s) and stores the cosine z-scored per clue over the online game's 800 words (no older model reads it, so it is on the online split's footing from the start). Play only reads the table: no model is loaded live. Models downloaded into `data/hf_home` (gitignored, 2.3 GB). Three candidates were built and compared on the `val` positions (training vocabulary; the test sets were not looked at), by how often the space's top word is gpt-oss's first pick:
+
+| space | top-1 | MRR |
+|---|---|---|
+| Numberbatch (tensor) | 0.633 | 0.740 |
+| fastText | 0.603 | 0.715 |
+| mixedbread-ai/mxbai-embed-large-v1 | 0.551 | 0.672 |
+| sentence-transformers/all-mpnet-base-v2 | 0.548 | 0.670 |
+| GloVe 6B (tensor) | 0.544 | 0.673 |
+| BAAI/bge-large-en-v1.5 | 0.521 | 0.648 |
+
+Expected: a current model to beat the static ones. Found: it does not on its own; sentence encoders are not trained for single-word association, and the comparison favours Numberbatch, from whose neighbours the training clues were generated. Whether it adds information the others lack can only be measured by training with it. mxbai kept (best of the three). Features `te_z`, `te_rank`, `te_gaptop`, appended last (75 features) like `g840_*`; `complete_columns` appends the block to cached positions and was checked equal to `extract()` on 200 positions. Current model unchanged (seeds 11-13 as before). 503 tests pass.

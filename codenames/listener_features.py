@@ -71,6 +71,9 @@ _U_LO, _U_HI, _U_N = -6.0, 6.0, 49
 COHESION_TOP = 5
 
 
+# The text-embedding block (build_text_sims.py), appended last.
+TEXT_FEATURES = ("te_z", "te_rank", "te_gaptop")
+
 FEATURE_NAMES: list[str] = [
     # per-word signal, one per embedding space
     # Only two raw z survive the leave-one-out prune, and none of the within-
@@ -189,6 +192,11 @@ FEATURE_NAMES: list[str] = [
     # (codenames/word_kind.py): its share of proper-name senses, and how many
     # clues reach it in gpt-oss's association lists and in the embeddings.
     *KIND_FEATURES,
+    # tier 2: a current text-embedding model's similarity (mxbai-embed-large,
+    # scripts/data/build_text_sims.py), which gives names and phrases a vector
+    # of their own rather than a mean of their words. z over the online 800,
+    # its rank on the board, its gap to the board's best.
+    *TEXT_FEATURES,
 ]
 
 CONCEPTNET_FEATURES = ("cn_isa", "cn_isa_rev", "cn_part", "cn_typed", "cn_any", "cmp_cw", "cmp_wc")
@@ -204,6 +212,7 @@ APPENDED_TABLES: dict[str, tuple[str, tuple[str, ...]]] = {
     "assoc": ("assoc_sims.npz", ("assoc_share", "assoc_rank")),
     "profile": ("assoc_profile.npz", PROFILE_FEATURES),
     "kind": ("word_kind.npz", KIND_FEATURES),
+    "text": ("text_sims.npz", TEXT_FEATURES),
 }
 # Tables that are not clue x word similarity rows load through their own class.
 TABLE_LOADERS: dict[str, type] = {"profile": AssocProfile, "kind": WordKind}
@@ -519,6 +528,7 @@ def extract(
     assoc: "ExtraSims | None" = None,
     profile: "AssocProfile | None" = None,
     kind: "WordKind | None" = None,
+    text: "ExtraSims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -708,6 +718,14 @@ def extract(
         cols.extend(np.full(n, np.nan) for _ in KIND_FEATURES)
     else:
         cols.extend(kind.columns(clue, candidates).T)
+
+    if text is None:
+        cols.extend(np.full(n, np.nan) for _ in TEXT_FEATURES)
+    else:
+        v = text.row("text", ci, np.array([text.board_pos.get(w.lower(), -1) for w in candidates]))
+        cols.append(v)
+        cols.append(_ranks(v))
+        cols.append(v - np.nanmax(v) if np.isfinite(v).any() else np.full(n, np.nan))
 
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)

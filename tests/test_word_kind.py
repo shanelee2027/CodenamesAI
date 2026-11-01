@@ -16,7 +16,14 @@ def test_columns_follow_the_candidates_not_the_clue():
     assert np.array_equal(f, k.columns("anything", ["Code", "zebra", "Homer"]), equal_nan=True)
 
 
-def test_appended_last():
-    """Older boosters read their columns by name, so the new block comes
-    after every existing feature."""
-    assert tuple(FEATURE_NAMES[-len(KIND_FEATURES):]) == KIND_FEATURES
+def test_appended_after_the_first_69():
+    """Older boosters read their columns by name, so the block comes after
+    every feature that existed before it (69), and stays put when a later
+    block is appended (cached positions are completed by position)."""
+    assert tuple(FEATURE_NAMES[69:69 + len(KIND_FEATURES)]) == KIND_FEATURES
+
+
+def test_text_block_appended_last():
+    from codenames.listener_features import TEXT_FEATURES
+
+    assert tuple(FEATURE_NAMES[-len(TEXT_FEATURES):]) == TEXT_FEATURES
