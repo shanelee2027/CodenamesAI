@@ -7987,3 +7987,11 @@ With separate weights, within the number a = 0.757, b1 = −0.245, b2 = 0.466: t
 Whether the +1 is taken at all is a near coin flip: 46.2% of fit turns, 50.8% of test turns. A logistic on the strongest leftover link and the number barely predicts it (log-loss R² 0.038 fit, 0.051 test; weight 0.508 on the link). So *which* word the spare guess goes to is predictable from the history; *whether* it is spent mostly is not, beyond its base rate.
 
 Expected: a history term that helps. Found: it helps most where it should, on the spare guess, and the shape is simple: two regimes (within and beyond the number) with three weights each, on top of the existing listener. This is the h of option B in the plan. Building a spymaster on it is the user's decision (plan, step 3); h and the take rate are what such a spymaster would read.
+
+## 2026-11-01 — online_vocab_listener (trained overnight)
+
+The model approved with the online split: retrain on the new data, with the online normalisation and the new feature blocks (docs/versions/online_vocab_listener.md). `scripts/pipeline/train_online_vocab_listener.py` fits four variants on identical rows: the incumbent's rows by key plus 8,485 online positions (1,495 more to validation), each in about 20 min on 8 cores.
+
+Expected: the word-kind and text blocks to add on top of the new data. Found: they add on gpt-oss's sets and subtract on Sonnet 5.5's, both significantly (+0.0081 [+0.0046, +0.0116] on the online held-out words; −0.0035 [−0.0066, −0.0005] on Sonnet 5.5, paired against the 67-column variant). Listeners are judged on Sonnet 5.5, so the shipped booster is the 67-column one: +0.0053 [+0.0028, +0.0077] on the clean online held-out set and +0.0057 [+0.0028, +0.0087] on Sonnet 5.5 over the incumbent. A decision made overnight without the user; the 73-column booster is kept (`listener_gbt_online_vocab_kind_text.txt`).
+
+STOP listener retrained the same way (`train_stop_listener.py` now takes `--base-booster`, `--normalization`, `--with-online`, `--out`): 0.4768 against the incumbent's 0.4689 on 1,520 online validation positions neither saw. Spymaster `online_vocab_listener` (registry, config, play server entry `online_vocab_1`, not the default; the running servers were not restarted). Same clue as floored_overpromise_1 on 13 of 20 online boards. 506 tests pass.

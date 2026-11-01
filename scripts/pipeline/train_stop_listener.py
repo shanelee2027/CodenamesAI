@@ -29,8 +29,15 @@ Train and validation are split by board seed (15% validation), within the
 labelled positions. Events are weighted equally: unlike the ranking data,
 late picks here are the turn ending, which is what this model is for.
 
+For a listener trained on the online split (online_vocab_listener),
+`--base-booster` names it, `--normalization online` builds the rows on its
+footing, and `--with-online` adds the labelled `online train` positions to
+the incumbent's (the base set cache's `train`, by key).
+
     python scripts/pipeline/train_stop_listener.py
     python scripts/pipeline/train_stop_listener.py --set guess
+    python scripts/pipeline/train_stop_listener.py --set guess --base-booster listener_gbt_online_vocab.txt \
+        --normalization online --with-online --out cache/listener_gbt_stop_online_vocab.txt
 """
 
 from __future__ import annotations
@@ -55,13 +62,13 @@ SEED_BASE = 1_000_000
 OUT = {"guess+stretch": CACHE / "listener_gbt_stop.txt", "guess": CACHE / "listener_gbt_stop_guess.txt"}
 
 
-def base_columns() -> tuple[list[str], list[int], list[int]]:
+def base_columns(base_booster: str = BASE_BOOSTER) -> tuple[list[str], list[int], list[int]]:
     """(names, their FEATURE_NAMES indices, positions of the clue-level ones)."""
     import lightgbm as lgb
 
     from codenames.listener_features import FEATURE_NAMES
 
-    names = [n for n in lgb.Booster(model_file=str(CACHE / BASE_BOOSTER)).feature_name() if n not in DROP]
+    names = [n for n in lgb.Booster(model_file=str(CACHE / base_booster)).feature_name() if n not in DROP]
     return names, [FEATURE_NAMES.index(n) for n in names], [names.index(n) for n in CLUE_LEVEL]
 
 
@@ -153,14 +160,26 @@ def main() -> None:
     ap.add_argument("--set", choices=list(OUT), default="guess+stretch")
     ap.add_argument("--version", default="graded-v2")
     ap.add_argument("--depth", type=int, default=9)
+    ap.add_argument("--base-booster", default=BASE_BOOSTER, help="the listener whose columns the rows read")
+    ap.add_argument("--normalization", choices=("base", "online"), default="base")
+    ap.add_argument("--with-online", action="store_true", help="add the labelled online-split training positions")
+    ap.add_argument("--out", type=Path, default=None, help="default: by --set")
     args = ap.parse_args()
+    out_path = args.out or OUT[args.set]
 
     import codenames.listener_training as T
     from eval_listener_accuracy import with_all_columns
-    from train_listener_net import load_sets
+    from train_listener_net import ONLINE_TRAIN, load_sets, pkey
 
-    names, cols, clue_pos = base_columns()
-    train = [p for p in load_sets()["train"] if p["seed"] >= SEED_BASE]
+    names, cols, clue_pos = base_columns(args.base_booster)
+    sets = load_sets(normalization=args.normalization)
+    if args.normalization == "base":
+        old = sets["train"]
+    else:
+        # The incumbent's own `train` rows, on the online footing.
+        by_key = {pkey(p): p for k in ("train", "val") for p in sets[k]}
+        old = [by_key[pkey(p)] for p in load_sets()["train"]]
+    train = [p for p in old if p["seed"] >= SEED_BASE] + (sets[ONLINE_TRAIN] if args.with_online else [])
     labels = load_labels(train, args.version)
     pos = with_all_columns([p for p in train if p["key"] in labels])
     fit, val = T.split_positions(pos, 0.15, 0)
@@ -174,11 +193,12 @@ def main() -> None:
     b, _ = T.train(Xf, yf, gf, Xv, yv, gv, 8000, 0, names + EXTRA, np.ones(len(gf)))
     print(f"{b.best_iteration} trees")
     report = {"fit": event_report(b, Xf, yf, gf, inf, "fit"), "val": event_report(b, Xv, yv, gv, inv, "val")}
-    b.save_model(str(OUT[args.set]), num_iteration=b.best_iteration)
-    OUT[args.set].with_suffix(".json").write_text(json.dumps(
+    b.save_model(str(out_path), num_iteration=b.best_iteration)
+    out_path.with_suffix(".json").write_text(json.dumps(
         {"version": args.version, "set": args.set, "depth": args.depth, "clue_level": CLUE_LEVEL, "dropped": DROP,
-         "trees": b.best_iteration, "report": report}, indent=1))
-    print(f"saved -> {OUT[args.set]}")
+         "trees": b.best_iteration, "base_booster": args.base_booster, "normalization": args.normalization,
+         "with_online": args.with_online, "report": report}, indent=1))
+    print(f"saved -> {out_path}")
 
 
 if __name__ == "__main__":

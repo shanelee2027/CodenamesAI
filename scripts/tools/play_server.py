@@ -112,6 +112,7 @@ from codenames.spymasters.overpromise_listener import OverpromiseListenerSpymast
 from codenames.spymasters.win_prob_overpromise_listener import WinProbOverpromiseListenerSpymaster
 from codenames.spymasters.margin_value_overpromise_listener import MarginValueOverpromiseListenerSpymaster
 from codenames.spymasters.floored_overpromise_listener import FlooredOverpromiseListenerSpymaster
+from codenames.spymasters.online_vocab_listener import OnlineVocabListenerSpymaster
 from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
@@ -306,6 +307,17 @@ SPYMASTERS: dict[str, dict] = {
        for key, label, lam in (
            ("floored_overpromise", "Win probability + overpromise 0.5, strict, V without ties, floored", 0.5),
            ("floored_overpromise_1", "Win probability + overpromise 1, strict, V without ties, floored", 1.0))},
+    # floored_overpromise_1 with both boosters retrained for the online game's
+    # 800 words (codenames/spymasters/online_vocab_listener.py).
+    "online_vocab_1": {
+        "label": "Win probability + overpromise 1, floored, retrained on the online words",
+        "model": "listener_gbt_online_vocab.txt", "outside_n": 0, "cls": OnlineVocabListenerSpymaster, "no_k1": True,
+        "kwargs": {"outside_n": 0, "promise_cost": 1.0},
+        "needs": ["isa_sims.npz", "conceptnet_sims.npz", "assoc_sims.npz", "assoc_profile.npz", "win_value_margin.npz",
+                  "listener_gbt_stop_online_vocab.txt", "listener_gbt_online_vocab.meta.json",
+                  "clue_stats_online.npz", "extra_sims_online.npz"],
+        "about": "The floored overpromise model with its listener and STOP listener retrained on more data from "
+                 "the online game's 800 words, with every z-scored feature measured over those 800."},
 }
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
