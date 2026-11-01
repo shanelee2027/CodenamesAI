@@ -95,10 +95,16 @@ HOLDOUT_BOARD_BASE = 3_000_000
 HOLDOUT_COLLECTED_BASE = 5_000_000
 # The same on the online game's words outside the base 400 (--vocab online).
 ONLINE_COLLECTED_BASE = 7_000_000
+# Generated positions on the online split (board.py::load_online_split):
+# training boards from its 550 training words, test boards from its 250
+# held-out words (--vocab online_train / online_holdout).
+ONLINE_TRAIN_BASE = 8_000_000
+ONLINE_HOLDOUT_BASE = 9_000_000
 
 
 def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
-                 holdout_collected: int = 0, online_collected: int = 0) -> BoardIndex:
+                 holdout_collected: int = 0, online_collected: int = 0, online_train: int = 0,
+                 online_holdout: int = 0) -> BoardIndex:
     """(seed, word set) for every board a cached response could have come from.
 
     Three sources, built with different vocabularies and disjoint seed ranges:
@@ -114,9 +120,11 @@ def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
     `holdout_collected` adds the generated held-out-vocabulary boards, seeds
     HOLDOUT_COLLECTED_BASE + i, also for scoring only. `online_collected` adds
     the generated online-vocabulary boards, seeds ONLINE_COLLECTED_BASE + i,
-    likewise.
+    likewise. `online_train` and `online_holdout` add the online split's
+    generated boards, seeds ONLINE_TRAIN_BASE + i and ONLINE_HOLDOUT_BASE + i.
     """
-    from codenames.board import load_holdout_wordlist, load_online_test_wordlist, load_training_wordlist
+    from codenames.board import (load_holdout_wordlist, load_online_split, load_online_test_wordlist,
+                                 load_training_wordlist)
 
     out = [(s, frozenset(w.lower() for w in Board.generate(seed=s).words)) for s in range(max_seed)]
     if collected:
@@ -138,6 +146,12 @@ def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
         out += [(ONLINE_COLLECTED_BASE + i,
                  frozenset(w.lower() for w in Board.generate(seed=ONLINE_COLLECTED_BASE + i, vocabulary=vocab).words))
                 for i in range(online_collected)]
+    if online_train or online_holdout:
+        split = load_online_split()
+        for n, base, vocab in ((online_train, ONLINE_TRAIN_BASE, split[0]),
+                               (online_holdout, ONLINE_HOLDOUT_BASE, split[1])):
+            out += [(base + i, frozenset(w.lower() for w in Board.generate(seed=base + i, vocabulary=vocab).words))
+                    for i in range(n)]
     return BoardIndex(out)
 
 
@@ -229,7 +243,8 @@ def scored_path(steps: list[dict]) -> list[str]:
 def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                    refresh_features: bool = False, decoys: Path | None = None,
                    soft_labels: dict | None = None, seed_filter=None, holdout_boards: int = 0,
-                   holdout_collected: int = 0, online_collected: int = 0):
+                   holdout_collected: int = 0, online_collected: int = 0, online_train: int = 0,
+                   online_holdout: int = 0):
     """Positions for training.
 
     `refresh_features` decides what a step-2+ row means. Off (the default and
@@ -291,7 +306,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
           f"   senses: {'loaded' if senses else 'ABSENT'}"
           f"   assoc: {'loaded' if assoc else 'ABSENT'}"
           f"   profile: {'loaded' if profile else 'ABSENT'}")
-    boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected, online_collected)
+    boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected, online_collected,
+                          online_train, online_holdout)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = conn.execute(

@@ -78,6 +78,13 @@ GENERATED_SONNET55 = "held-out words, generated, Sonnet 5.5"
 # The same generator on the online game's words outside the base 400
 # (collect_listener_data.py --vocab online), ranked by gpt-oss.
 GENERATED_ONLINE = "online words, generated"
+# The online split (board.py::load_online_split): generated training
+# positions on its 550 training words, and a test set on its 250 held-out
+# words, both ranked by gpt-oss. Seeds searched when resolving them.
+ONLINE_TRAIN = "online train"
+ONLINE_HELDOUT = "online held-out words, generated"
+ONLINE_TRAIN_BOARDS = 12_000
+ONLINE_HELDOUT_BOARDS = 2_500
 SONNET55 = "claude-sonnet-5-5+effort=medium"
 
 
@@ -94,6 +101,16 @@ def load_sets(reload: bool = False) -> dict[str, list[dict]]:
         if name not in sets:
             sets[name] = _load_generated_holdout(model)
             SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
+    for name, kw, base in ((ONLINE_TRAIN, "online_train", T.ONLINE_TRAIN_BASE),
+                           (ONLINE_HELDOUT, "online_holdout", T.ONLINE_HOLDOUT_BASE)):
+        if name not in sets:
+            n = ONLINE_TRAIN_BOARDS if kw == "online_train" else ONLINE_HELDOUT_BOARDS
+            pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 0, 0, **{kw: n},
+                                            seed_filter=lambda s, b=base: b <= s < b + 1_000_000)
+            print(f"{name}: {len(pos)} positions, dropped {dropped}")
+            if pos:
+                sets[name] = pos
+                SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
     if GENERATED_ONLINE not in sets:
         pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 0, 0, online_collected=GENERATED_BOARDS,
                                         seed_filter=lambda s: s >= T.ONLINE_COLLECTED_BASE)

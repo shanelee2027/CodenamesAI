@@ -260,6 +260,33 @@ def load_training_wordlist(all_path: Path = ASSET_WORDLIST_PATH, holdout_path: P
     return [w for w in load_wordlist(all_path) if w not in holdout]
 
 
+ONLINE_HOLDOUT_SIZE = 250
+ONLINE_SPLIT_SEED = 2026
+
+
+def load_online_split(path: Path = ONLINE_WORDLIST_PATH) -> tuple[list[str], list[str]]:
+    """(training, held-out) words of the online game's 800, for models trained
+    on its words (docs/log.md, 2026-11-01, "A split of the online words").
+
+    The held-out 250 are drawn uniformly from the online words that were NOT
+    base-game training words (load_training_wordlist), with a fixed seed. Not
+    from all 800: the ~25k existing training positions were generated on the
+    old 250 training words, so an old training word held out now would sit on
+    thousands of training boards. The old held-out 150 and the online-only
+    words are both eligible. At 250 held out, two random eval boards share
+    about 625/250 = 2.5 words.
+
+    The frozen eval suite keeps dealing from board_words_holdout.txt, so past
+    results stay reproducible; for a model trained on this split some of
+    those 150 are training words, and it is judged on this held-out list
+    instead. Kept out of codenames/assets/ for the reason the 800 are."""
+    online = load_wordlist(path)
+    old_training = {w.lower() for w in load_training_wordlist()}
+    eligible = sorted(w for w in online if w.lower() not in old_training)
+    held = set(random.Random(ONLINE_SPLIT_SEED).sample(eligible, ONLINE_HOLDOUT_SIZE))
+    return [w for w in online if w not in held], [w for w in online if w in held]
+
+
 def _normalize(word: str) -> str:
     return re.sub(r"[^a-z0-9]", "", word.lower())
 
