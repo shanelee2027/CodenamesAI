@@ -16,12 +16,12 @@ for a word:
   (cache/assoc_sims.npz) name the word at least once. How many unrelated
   clues lead the guesser's own model to it.
 - `hub_z`: the share of the clue pool for which the word is a strong
-  outlier, z >= 2 against the clue's mean and sd over the base game's 400
-  (clue_stats), averaged over the tensor's three spaces. The embedding
-  analogue of the same thing (k-occurrence "hubness").
+  outlier, z >= 2 against the clue's mean and sd over the online game's 800
+  (clue_stats_online), averaged over the tensor's three spaces. The
+  embedding analogue of the same thing (k-occurrence "hubness").
 
 All three are measured against fixed references, the clue pool and the
-base 400, so appending board words later never moves an existing word's
+online 800, so appending board words later never moves an existing word's
 value. Built by scripts/data/build_word_kind.py into cache/word_kind.npz.
 """
 

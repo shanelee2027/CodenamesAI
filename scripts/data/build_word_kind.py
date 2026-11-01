@@ -1,7 +1,7 @@
 """Build cache/word_kind.npz: per board word, the three columns described in
 codenames/word_kind.py (proper_share, hub_assoc, hub_z). No API calls.
 
-Reads the similarity tensor and clue_stats (hub_z), cache/assoc_sims.npz
+Reads the similarity tensor and clue_stats_online (hub_z), cache/assoc_sims.npz
 (hub_assoc) and WordNet from data/nltk_data (proper_share; multi-word names
 joined with underscores, as WordNet spells them).
 
@@ -39,12 +39,15 @@ def main() -> None:
 
     sims = SimilarityTensor.load(DEFAULT_CACHE_DIR)
     stats = ClueStats.load(DEFAULT_CACHE_DIR)
+    # hub_z against the online game's 800 (clue_stats_online), the footing of
+    # the models trained on the online split, which are the only readers.
+    online = ClueStats.load(DEFAULT_CACHE_DIR, stem="clue_stats_online")
     board_words = sorted(sims.board_index, key=lambda w: sims.board_index[w])
     pool = np.flatnonzero(stats.rarity_percentile <= args.max_rarity)
 
     # hub_z: per space, the share of pool clues with z >= 2 for the word.
     t = np.asarray(sims.tensor[pool], dtype=np.float32)              # (n_pool, n_board, n_spaces)
-    mu, sd = stats.mean[pool][:, None, :], stats.std[pool][:, None, :]
+    mu, sd = online.mean[pool][:, None, :], online.std[pool][:, None, :]
     with np.errstate(invalid="ignore", divide="ignore"):
         z = (t - mu) / sd
     hub_z = np.nanmean(np.where(np.isfinite(z), z >= Z_HUB, np.nan), axis=0).mean(axis=1)

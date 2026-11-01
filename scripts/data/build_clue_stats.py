@@ -37,11 +37,12 @@ from codenames.clue_stats import clue_vocab_fingerprint
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
 
-def build_clue_stats(sims: SimilarityTensor) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def build_clue_stats(sims: SimilarityTensor, words: list[str] | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """`(mean, std, rarity_percentile)`, indexed by `sims.clue_words`
     order. `mean`/`std` are `(n_clues, n_spaces)` float32, each clue's
-    similarity statistics across all `len(sims.board_words)` board
-    words; `rarity_percentile` is `(n_clues,)` float32."""
+    similarity statistics across the board words `words` (default every
+    board word in the tensor); `rarity_percentile` is `(n_clues,)` float32."""
+    cols = None if words is None else np.array(sorted(sims.board_index[w.lower()] for w in words))
     n_clues = len(sims.clue_words)
     n_spaces = len(sims.spaces)
     mean = np.empty((n_clues, n_spaces), dtype=np.float32)
@@ -50,6 +51,12 @@ def build_clue_stats(sims: SimilarityTensor) -> tuple[np.ndarray, np.ndarray, np
         # One space's full (n_clues, n_board_words) slice, materialized as
         # float32 -- bounded, unlike loading every space at once.
         column = np.asarray(sims.tensor[:, :, si], dtype=np.float32)
+        if cols is not None:
+            # A contiguous run (the base 400 are columns 0-399) is sliced, not
+            # copied: float32 sums run in a different order over a copy, and the
+            # stored base statistics are reproduced bit for bit only this way.
+            contiguous = np.array_equal(cols, np.arange(cols[0], cols[0] + len(cols)))
+            column = column[:, cols[0]:cols[0] + len(cols)] if contiguous else column[:, cols]
         with np.errstate(invalid="ignore"):
             mean[:, si] = np.nanmean(column, axis=1)
             std[:, si] = np.nanstd(column, axis=1)
@@ -62,17 +69,27 @@ def build_clue_stats(sims: SimilarityTensor) -> tuple[np.ndarray, np.ndarray, np
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
+    parser.add_argument("--words", choices=("base", "online"), default="base",
+                        help="the board words the statistics are taken over: the base game's 400 "
+                             "(cache/clue_stats.npz, what every model before the online split reads) "
+                             "or the online game's 800 (cache/clue_stats_online.npz). Not the whole "
+                             "tensor: it holds every word appended since, and statistics over it "
+                             "would move every existing z-score")
     args = parser.parse_args()
+    from codenames.board import ONLINE_WORDLIST_PATH, load_wordlist
+
+    words = load_wordlist() if args.words == "base" else load_wordlist(ONLINE_WORDLIST_PATH)
+    stem = "clue_stats" if args.words == "base" else "clue_stats_online"
 
     t0 = time.time()
     sims = SimilarityTensor.load(cache_dir=args.cache_dir)
     print(f"loaded similarity tensor: {len(sims.clue_words)} clues x {len(sims.board_words)} board words x {len(sims.spaces)} spaces")
 
-    mean, std, rarity_percentile = build_clue_stats(sims)
+    mean, std, rarity_percentile = build_clue_stats(sims, words)
     print(f"computed mean/std/rarity in {time.time() - t0:.1f}s")
 
     np.savez(
-        args.cache_dir / "clue_stats.npz",
+        args.cache_dir / f"{stem}.npz",
         mean=mean,
         std=std,
         rarity_percentile=rarity_percentile,
@@ -81,10 +98,11 @@ def main() -> None:
         "clue_vocab_hash": clue_vocab_fingerprint(sims.clue_words),
         "spaces": sims.spaces,
         "n_clues": len(sims.clue_words),
-        "n_board_words": len(sims.board_words),
+        "n_board_words": len(words),
+        "board_words": args.words,
     }
-    (args.cache_dir / "clue_stats_meta.json").write_text(json.dumps(meta, indent=2) + "\n")
-    print(f"wrote {args.cache_dir / 'clue_stats.npz'} and clue_stats_meta.json in {time.time() - t0:.1f}s total")
+    (args.cache_dir / f"{stem}_meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+    print(f"wrote {args.cache_dir / stem}.npz and {stem}_meta.json in {time.time() - t0:.1f}s total")
 
 
 if __name__ == "__main__":

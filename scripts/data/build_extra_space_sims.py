@@ -109,11 +109,10 @@ def build(vecs: dict[str, np.ndarray], clue_words: list[str], board_words: list[
     bi = np.array([board_words.index(w) for w in have_b])
     out[np.ix_(ci, bi)] = C @ B.T
 
-    # z-score each clue row over the base game's board words it does cover,
-    # with a vector of their own. Only those: words added later
-    # (scripts/data/extend_board_vocab.py) and parts means are scored on the
-    # same footing without moving any existing value.
-    base = base & np.array([w in vecs for w in board_words])
+    # z-score each clue row over the reference words it covers (`base`, from
+    # main()). For the base 400 only those with a vector of their own: words
+    # added later (scripts/data/extend_board_vocab.py) and parts means are
+    # scored on the same footing without moving any existing value.
     with np.errstate(invalid="ignore"):
         mu = np.nanmean(out[:, base], axis=1, keepdims=True)
         sd = np.nanstd(out[:, base], axis=1, keepdims=True)
@@ -132,13 +131,23 @@ def main() -> None:
                     help="keep the values already in --out for the board words it has, and add only "
                          "the board words appended since (scripts/data/extend_board_vocab.py) and those "
                          "whose column was entirely NaN (no vector before)")
+    ap.add_argument("--words", choices=("base", "online"), default="base",
+                    help="z-score over the base game's 400 (cache/extra_sims.npz, what every model "
+                         "before the online split reads) or the online game's 800, every one with a "
+                         "vector (cache/extra_sims_online.npz unless --out is given)")
     args = ap.parse_args()
+    if args.words == "online" and args.out == OUT:
+        args.out = OUT.with_name("extra_sims_online.npz")
+    if args.words == "online" and args.append:
+        raise SystemExit("--append keeps the base footing's stored values; build the online table in full")
 
     sims = SimilarityTensor.load(DEFAULT_CACHE_DIR)
     stats = ClueStats.load(DEFAULT_CACHE_DIR)
     board_words = sorted(sims.board_index, key=lambda w: sims.board_index[w])
-    base_words = {w.lower() for w in load_wordlist()}
-    base = np.array([w in base_words for w in board_words])
+    from codenames.board import ONLINE_WORDLIST_PATH
+
+    ref_words = {w.lower() for w in (load_wordlist() if args.words == "base" else load_wordlist(ONLINE_WORDLIST_PATH))}
+    base = np.array([w in ref_words for w in board_words])
     pool_rows = np.flatnonzero(stats.rarity_percentile <= args.max_rarity)
     pool_words = [stats.clue_words[i].lower() for i in pool_rows]
     wanted = set(pool_words) | {t for w in board_words for t in lookup_tokens(w, None)}
@@ -155,7 +164,8 @@ def main() -> None:
         print(f"{name}: scanning {path.name} for {len(wanted):,} words...", flush=True)
         vecs = read_vectors(path, member, wanted)
         print(f"  matched {len(vecs):,}")
-        payload[name] = build(vecs, pool_words, board_words, base)
+        ref = base & np.array([w in vecs for w in board_words]) if args.words == "base" else base
+        payload[name] = build(vecs, pool_words, board_words, ref)
         if args.append:
             # A rebuild reproduces the stored values only to ~4e-6 (measured
             # 2026-10-30, even on the original 400 words alone), and the stored

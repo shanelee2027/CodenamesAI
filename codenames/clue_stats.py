@@ -73,7 +73,7 @@ class ClueStats:
     spaces: list[str]
 
     @classmethod
-    def load(cls, cache_dir: Path = DEFAULT_CACHE_DIR) -> "ClueStats":
+    def load(cls, cache_dir: Path = DEFAULT_CACHE_DIR, stem: str = "clue_stats") -> "ClueStats":
         """Loads the cached arrays and validates them against the live
         `SimilarityTensor` at `cache_dir`. `clue_vocab_hash` mismatch
         raises rather than silently continuing: clue indices are
@@ -81,8 +81,11 @@ class ClueStats:
         here would corrupt every downstream score rather than fail
         loudly."""
         cache_dir = Path(cache_dir)
-        meta = json.loads((cache_dir / "clue_stats_meta.json").read_text())
-        data = np.load(cache_dir / "clue_stats.npz")
+        # `stem` "clue_stats_online": the same over the online game's 800 words
+        # (scripts/data/build_clue_stats.py --words online), for models trained
+        # on the online split.
+        meta = json.loads((cache_dir / f"{stem}_meta.json").read_text())
+        data = np.load(cache_dir / f"{stem}.npz")
         sims = SimilarityTensor.load(cache_dir=cache_dir)
 
         live_hash = clue_vocab_fingerprint(sims.clue_words)

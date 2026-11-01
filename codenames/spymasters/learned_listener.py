@@ -28,6 +28,7 @@ would look excellent in the arena and be worthless as a model of a guesser.
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,6 +79,17 @@ NCAND = FEATURE_NAMES.index("n_candidates")
 ISA, ISA_N = FEATURE_NAMES.index("isa"), FEATURE_NAMES.index("isa_n")
 
 
+def bundle_normalization(model_path: Path) -> str:
+    """Which board words a booster's z-scored features were normalised over:
+    "base" (the base game's 400: clue_stats.npz, extra_sims.npz), or "online"
+    (the online game's 800: clue_stats_online.npz, extra_sims_online.npz)
+    for a booster trained on the online split. Read from a sidecar next to
+    the booster, `<stem>.meta.json` with {"normalization": "online"}; every
+    booster without one is "base", so all older models load as before."""
+    side = Path(model_path).with_suffix(".meta.json")
+    return json.loads(side.read_text()).get("normalization", "base") if side.exists() else "base"
+
+
 @dataclass(frozen=True)
 class ListenerBundle:
     """Every artifact `extract` needs, loaded once.
@@ -99,6 +111,9 @@ class ListenerBundle:
     lexical: ExtraSims | None
     appended: dict | None = None     # extract() keyword -> table, for the tables this booster reads
     columns: list[int] | None = None
+    # The z-scoring statistics this booster was fitted on, when they are not the
+    # spymaster's own (the base game's 400): see bundle_normalization.
+    clue_stats: ClueStats | None = None
 
     @classmethod
     def load(cls, cache_dir: Path, model_path: Path) -> "ListenerBundle":
@@ -108,7 +123,9 @@ class ListenerBundle:
             p = cache_dir / name
             return loader(p) if p.exists() else None
 
-        missing = [n for n in ("swow.npz", "lm_pmi.npz", "extra_sims.npz", "word_norms.npz",
+        online = bundle_normalization(Path(model_path)) == "online"
+        extra_name = "extra_sims_online.npz" if online else "extra_sims.npz"
+        missing = [n for n in ("swow.npz", "lm_pmi.npz", extra_name, "word_norms.npz",
                                "wordnet_sims.npz", "lexical_sims.npz", "entity_sims.npz")
                    if not (cache_dir / n).exists()]
         if missing:
@@ -134,12 +151,13 @@ class ListenerBundle:
             swow=maybe(SwowTables.load, "swow.npz"),
             entity=maybe(EntitySims.load, "entity_sims.npz"),
             pmi=maybe(EntitySims.load, "lm_pmi.npz"),
-            extra=maybe(ExtraSims.load, "extra_sims.npz"),
+            extra=maybe(ExtraSims.load, extra_name),
             norms=maybe(WordNorms.load, "word_norms.npz"),
             wordnet=maybe(ExtraSims.load, "wordnet_sims.npz"),
             lexical=maybe(ExtraSims.load, "lexical_sims.npz"),
             appended=appended,
             columns=columns,
+            clue_stats=ClueStats.load(cache_dir, stem="clue_stats_online") if online else None,
         )
 
 
@@ -197,7 +215,9 @@ class LearnedListenerSpymaster(Spymaster):
     @classmethod
     def model_files(cls, params: dict) -> list[Path]:
         cache_dir = Path(params.get("cache_dir", DEFAULT_CACHE_DIR))
-        return [Path(params.get("model_path") or cache_dir / "listener_gbt.txt")]
+        model = Path(params.get("model_path") or cache_dir / "listener_gbt.txt")
+        side = model.with_suffix(".meta.json")
+        return [model, side] if side.exists() else [model]
 
     def _outside_words(self, board, sims: SimilarityTensor) -> list[str]:
         """`outside_n` vocabulary words that are not on this board.
@@ -249,7 +269,8 @@ class LearnedListenerSpymaster(Spymaster):
         building, and it grew with the booster.
         """
         b = self.bundle
-        feats = extract(clue, candidates, number, sims, self.clue_stats, b.word_stats,
+        stats = b.clue_stats if b.clue_stats is not None else self.clue_stats
+        feats = extract(clue, candidates, number, sims, stats, b.word_stats,
                         self._clue_index, b.swow, b.entity, b.pmi, b.extra, b.norms,
                         b.wordnet, b.lexical, **(b.appended or {}))
         if feats is None:

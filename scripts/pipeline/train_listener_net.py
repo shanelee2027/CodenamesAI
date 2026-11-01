@@ -88,47 +88,52 @@ ONLINE_HELDOUT_BOARDS = 2_500
 SONNET55 = "claude-sonnet-5-5+effort=medium"
 
 
-def load_sets(reload: bool = False) -> dict[str, list[dict]]:
+def load_sets(reload: bool = False, normalization: str = "base") -> dict[str, list[dict]]:
     """The five sets below, cached after the first load so that parallel fits
     do not each spend a minute resolving boards. `--reload` rebuilds it (after
-    new rankings are collected)."""
-    if SETS_CACHE.exists() and not reload:
-        sets = pickle.loads(SETS_CACHE.read_bytes())
+    new rankings are collected). `normalization="online"` gives the same
+    positions with features z-scored over the online game's 800 words
+    (load_positions), cached in a file of its own."""
+    cache = SETS_CACHE if normalization == "base" else SETS_CACHE.with_name(f"{SETS_CACHE.stem}_{normalization}.pkl")
+    nz = {"normalization": normalization}
+    if cache.exists() and not reload:
+        sets = pickle.loads(cache.read_bytes())
     else:
-        sets = _load_sets()
-        SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
+        sets = _load_sets(normalization)
+        cache.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
     for name, model in ((GENERATED, T.DEFAULT_MODEL), (GENERATED_SONNET, SONNET), (GENERATED_SONNET55, SONNET55)):
         if name not in sets:
-            sets[name] = _load_generated_holdout(model)
-            SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
+            sets[name] = _load_generated_holdout(model, normalization)
+            cache.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
     for name, kw, base in ((ONLINE_TRAIN, "online_train", T.ONLINE_TRAIN_BASE),
                            (ONLINE_HELDOUT, "online_holdout", T.ONLINE_HOLDOUT_BASE)):
         if name not in sets:
             n = ONLINE_TRAIN_BOARDS if kw == "online_train" else ONLINE_HELDOUT_BOARDS
             pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 0, 0, **{kw: n},
-                                            seed_filter=lambda s, b=base: b <= s < b + 1_000_000)
+                                            seed_filter=lambda s, b=base: b <= s < b + 1_000_000, **nz)
             print(f"{name}: {len(pos)} positions, dropped {dropped}")
             if pos:
                 sets[name] = pos
-                SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
+                cache.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
     if GENERATED_ONLINE not in sets:
         pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 0, 0, online_collected=GENERATED_BOARDS,
-                                        seed_filter=lambda s: s >= T.ONLINE_COLLECTED_BASE)
+                                        seed_filter=lambda s: s >= T.ONLINE_COLLECTED_BASE, **nz)
         print(f"{GENERATED_ONLINE}: {len(pos)} positions, dropped {dropped}")
         if pos:
             sets[GENERATED_ONLINE] = pos
-            SETS_CACHE.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
+            cache.write_bytes(pickle.dumps(sets, protocol=pickle.HIGHEST_PROTOCOL))
     for k, v in sets.items():
         print(f"  {k:24s} {len(v):6d} positions {sum(min(p['k'], p['n'] - 1) for p in v):6d} events")
     return sets
 
 
-def _load_sets() -> dict[str, list[dict]]:
-    pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 60, 45000, holdout_boards=100)
+def _load_sets(normalization: str = "base") -> dict[str, list[dict]]:
+    pos, dropped = T.load_positions(T.DB, T.DEFAULT_MODEL, 60, 45000, holdout_boards=100,
+                                    normalization=normalization)
     print(f"gpt-oss positions {len(pos)}, dropped {dropped}")
     rest = [p for p in pos if p["seed"] < NEW_BOARDS]
     tr, va = T.split_positions(rest, 0.25, 0)
-    son, _ = T.load_positions(T.DB, SONNET, 0, 0, holdout_boards=100)
+    son, _ = T.load_positions(T.DB, SONNET, 0, 0, holdout_boards=100, normalization=normalization)
     sets = {
         "train": tr,
         "val": va,
@@ -139,10 +144,11 @@ def _load_sets() -> dict[str, list[dict]]:
     return sets
 
 
-def _load_generated_holdout(model: str) -> list[dict]:
+def _load_generated_holdout(model: str, normalization: str = "base") -> list[dict]:
     pos, dropped = T.load_positions(T.DB, model, 60, 45000, holdout_boards=100,
                                     holdout_collected=GENERATED_BOARDS,
-                                    seed_filter=lambda s: s >= T.HOLDOUT_COLLECTED_BASE)
+                                    seed_filter=lambda s: s >= T.HOLDOUT_COLLECTED_BASE,
+                                    normalization=normalization)
     print(f"held-out words, generated ({model}): {len(pos)} positions, dropped {dropped}")
     return pos
 

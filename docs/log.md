@@ -7910,3 +7910,15 @@ How: `scripts/data/build_text_sims.py` encodes the 11,145 pool clues and the 857
 | BAAI/bge-large-en-v1.5 | 0.521 | 0.648 |
 
 Expected: a current model to beat the static ones. Found: it does not on its own; sentence encoders are not trained for single-word association, and the comparison favours Numberbatch, from whose neighbours the training clues were generated. Whether it adds information the others lack can only be measured by training with it. mxbai kept (best of the three). Features `te_z`, `te_rank`, `te_gaptop`, appended last (75 features) like `g840_*`; `complete_columns` appends the block to cached positions and was checked equal to `extract()` on 200 positions. Current model unchanged (seeds 11-13 as before). 503 tests pass.
+
+## 2026-11-01 — Normalisation over the online 800 (for the next model)
+
+Why: the z-scored features (`z_*`, `gaptop_*`, `peak_z`, `cohesion`, `g840_z`, `ft_z`, ...) divide a clue's similarity to a board word by that clue's mean and sd over the base game's 400 words (`clue_stats.npz`; for GloVe-840 and fastText, `extra_sims.npz`). The online game deals from 800, so a model trained on the online split should be standardised over the words it is dealt from. The older models were trained on the base footing and must keep it.
+
+How: both footings exist side by side, and a model says which one it reads.
+- `build_clue_stats.py --words online` writes `clue_stats_online.npz`; `build_extra_space_sims.py --words online` writes `extra_sims_online.npz`. The base files are untouched; `--words base` reproduces the stored `clue_stats.npz` bit for bit (columns are sliced, not fancy-indexed, so the sums run in the same order).
+- `word_kind.npz`'s `hub_z` is now counted against `clue_stats_online` (no existing model reads it) and was rebuilt.
+- Play: a booster with a sidecar `<stem>.meta.json` reading `{"normalization": "online"}` gets the online tables in its bundle (`learned_listener.bundle_normalization`); without one it is "base", so every existing model loads as before.
+- Training: `load_positions(..., normalization="online")` and `train_listener_net.load_sets(normalization="online")`, cached in `listener_net_sets_online.pkl` and in feature files whose name includes the footing.
+
+Expected: the two footings differ by a small shift (the online 800 contain the base 400). Found: per clue, means move by 0.06-0.16 sd and the sd ratio is close to 1. On the 1,852 "online words, generated" positions, 15 of the 75 columns change (mean |difference| 0.004-0.43, largest `peak_z` and `gaptop_numberbatch`); the other 60, ranks and raw similarities among them, are identical. Current model unchanged: `floored_overpromise_1` gives MUM 3 (0.444449), THRUST 3, CENTS 3 on seeds 11-13. 503 tests pass.

@@ -36,6 +36,9 @@ SWOW_TABLES = CACHE / "swow.npz"
 ENTITY_SIMS = CACHE / "entity_sims.npz"
 LM_PMI = CACHE / "lm_pmi.npz"
 EXTRA_SIMS = CACHE / "extra_sims.npz"
+# The online split's normalisation (load_positions(normalization="online")):
+# z-scores over the online game's 800 words instead of the base game's 400.
+EXTRA_SIMS_ONLINE = CACHE / "extra_sims_online.npz"
 WORD_NORMS = CACHE / "word_norms.npz"
 WORDNET_SIMS = CACHE / "wordnet_sims.npz"
 LEXICAL_SIMS = CACHE / "lexical_sims.npz"
@@ -179,11 +182,13 @@ def resolve_seed(candidates: list[str], boards: list[tuple[int, frozenset[str]]]
     return hits[0] if len(hits) == 1 else None
 
 
-def _feature_cache_path() -> Path:
+def _feature_cache_path(normalization: str = "base") -> Path:
     """Where extracted features are cached, named by a fingerprint of
     everything they depend on: the feature list, this module and
     listener_features.py, and every side table's size and mtime. Change any
-    of them and the name changes, so a stale cache is never read."""
+    of them and the name changes, so a stale cache is never read. The
+    normalisation is part of it: the same position has different z
+    features under each."""
     import hashlib
 
     h = hashlib.sha256(",".join(FEATURE_NAMES).encode())
@@ -194,6 +199,11 @@ def _feature_cache_path() -> Path:
               LEXICAL_SIMS, ISA_SIMS, CONCEPTNET_SIMS, WORDNET_SENSES, ASSOC_SIMS, ASSOC_PROFILE, WORD_KIND, TEXT_SIMS,
               CACHE / "similarity_tensor.npy", CACHE / "clue_stats.npz"):
         if f.exists():
+            st = f.stat()
+            h.update(f"{f.name}:{st.st_size}:{st.st_mtime_ns}".encode())
+    if normalization != "base":
+        h.update(normalization.encode())
+        for f in (EXTRA_SIMS_ONLINE, CACHE / "clue_stats_online.npz"):
             st = f.stat()
             h.update(f"{f.name}:{st.st_size}:{st.st_mtime_ns}".encode())
     return CACHE / "training_data" / f"features_{h.hexdigest()[:12]}.pkl"
@@ -250,7 +260,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                    refresh_features: bool = False, decoys: Path | None = None,
                    soft_labels: dict | None = None, seed_filter=None, holdout_boards: int = 0,
                    holdout_collected: int = 0, online_collected: int = 0, online_train: int = 0,
-                   online_holdout: int = 0):
+                   online_holdout: int = 0, normalization: str = "base"):
     """Positions for training.
 
     `refresh_features` decides what a step-2+ row means. Off (the default and
@@ -279,7 +289,9 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     actual board -- and this exists so it can be measured rather than assumed.
     """
     sims = SimilarityTensor.load(DEFAULT_CACHE_DIR)
-    stats = ClueStats.load(DEFAULT_CACHE_DIR)
+    # "online": z-scored features over the online game's 800 words, for models
+    # trained on the online split (learned_listener.bundle_normalization).
+    stats = ClueStats.load(DEFAULT_CACHE_DIR, stem="clue_stats" if normalization == "base" else "clue_stats_online")
     clue_index = {w.lower(): i for i, w in enumerate(stats.clue_words)}
     if WORD_STATS.exists():
         wstats = WordStats.load(WORD_STATS)
@@ -292,7 +304,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     # lm_pmi.npz has the same layout as entity_sims.npz, so it loads through
     # the same class rather than a near-duplicate one.
     pmi = EntitySims.load(LM_PMI) if LM_PMI.exists() else None
-    extra = ExtraSims.load(EXTRA_SIMS) if EXTRA_SIMS.exists() else None
+    extra_path = EXTRA_SIMS if normalization == "base" else EXTRA_SIMS_ONLINE
+    extra = ExtraSims.load(extra_path) if extra_path.exists() else None
     norms = WordNorms.load(WORD_NORMS) if WORD_NORMS.exists() else None
     wordnet = ExtraSims.load(WORDNET_SIMS) if WORDNET_SIMS.exists() else None
     lexical = ExtraSims.load(LEXICAL_SIMS) if LEXICAL_SIMS.exists() else None
@@ -326,7 +339,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
 
     import pickle
 
-    fcache_path = _feature_cache_path()
+    fcache_path = _feature_cache_path(normalization)
     fcache = pickle.loads(fcache_path.read_bytes()) if fcache_path.exists() else {}
     n_cached = len(fcache)
     out, dropped = [], {"clue_oov": 0, "bad_ranking": 0, "no_seed": 0, "features": 0}
