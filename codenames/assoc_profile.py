@@ -43,6 +43,27 @@ def clue_forms(norm: str) -> set[str]:
     return {norm, norm + "s", norm + "es"} | ({norm[:-1]} if norm.endswith("s") else set())
 
 
+def mediators(lists: list[list[str]], clue: str, max_n: int = 10, min_lists: int = 2) -> list[str]:
+    """The words a clue reaches its board words through, for the mediated
+    block (scripts/data/build_mediated_sims.py): the associations named in at
+    least `min_lists` of the clue's lists, most lists first, then by mean
+    position, at most `max_n`. Lists are already assoc_norm'd. A form of the
+    clue, or a word containing it or contained in it (HONEYMOONERS), is the
+    clue again and is left out."""
+    c = assoc_norm(clue)
+    own = clue_forms(c)
+    count: dict[str, int] = {}
+    pos: dict[str, list[int]] = {}
+    for lst in lists:
+        for k, w in enumerate(dict.fromkeys(lst)):
+            count[w] = count.get(w, 0) + 1
+            pos.setdefault(w, []).append(k)
+    keep = [w for w, n in count.items()
+            if n >= min_lists and w and w not in own and c not in w and w not in c]
+    keep.sort(key=lambda w: (-count[w], float(np.mean(pos[w])), w))
+    return keep[:max_n]
+
+
 def vagueness(lists: list[list[str]]) -> tuple[float, float, float]:
     """(distinct share, mean pairwise Jaccard, share opening with the modal
     first word) over a cue's lists, NaN without lists."""

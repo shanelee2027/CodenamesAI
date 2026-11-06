@@ -71,8 +71,11 @@ _U_LO, _U_HI, _U_N = -6.0, 6.0, 49
 COHESION_TOP = 5
 
 
-# The text-embedding block (build_text_sims.py), appended last.
+# The text-embedding block (build_text_sims.py).
 TEXT_FEATURES = ("te_z", "te_rank", "te_gaptop")
+# The two-hop association block (build_mediated_sims.py), appended last.
+MEDIATED_SPACES = ("med_glove", "med_numberbatch", "med_wikipedia2vec")
+MEDIATED_FEATURES = (*MEDIATED_SPACES, "med_gaptop")
 
 FEATURE_NAMES: list[str] = [
     # per-word signal, one per embedding space
@@ -197,6 +200,12 @@ FEATURE_NAMES: list[str] = [
     # of their own rather than a mean of their words. z over the online 800,
     # its rank on the board, its gap to the board's best.
     *TEXT_FEATURES,
+    # tier 2: the second hop of association (scripts/data/build_mediated_sims.py).
+    # Every feature above reads the direct link from clue to word; HONEYMOON
+    # reaches HEART only through LOVE. Per tensor space, the word's best z to
+    # the words gpt-oss associates with the clue (itself excluded), and the
+    # mean of the three spaces' values minus the board's best.
+    *MEDIATED_FEATURES,
 ]
 
 CONCEPTNET_FEATURES = ("cn_isa", "cn_isa_rev", "cn_part", "cn_typed", "cn_any", "cmp_cw", "cmp_wc")
@@ -213,6 +222,7 @@ APPENDED_TABLES: dict[str, tuple[str, tuple[str, ...]]] = {
     "profile": ("assoc_profile.npz", PROFILE_FEATURES),
     "kind": ("word_kind.npz", KIND_FEATURES),
     "text": ("text_sims.npz", TEXT_FEATURES),
+    "mediated": ("mediated_sims.npz", MEDIATED_FEATURES),
 }
 # Tables that are not clue x word similarity rows load through their own class.
 TABLE_LOADERS: dict[str, type] = {"profile": AssocProfile, "kind": WordKind}
@@ -529,6 +539,7 @@ def extract(
     profile: "AssocProfile | None" = None,
     kind: "WordKind | None" = None,
     text: "ExtraSims | None" = None,
+    mediated: "ExtraSims | None" = None,
 ) -> np.ndarray | None:
     """`(len(candidates), N_FEATURES)` in the order `candidates` is given, or
     None when the clue is outside the tensor's vocabulary or a candidate has no
@@ -727,6 +738,23 @@ def extract(
         cols.append(_ranks(v))
         cols.append(v - np.nanmax(v) if np.isfinite(v).any() else np.full(n, np.nan))
 
+    if mediated is None:
+        cols.extend(np.full(n, np.nan) for _ in MEDIATED_FEATURES)
+    else:
+        cols.extend(mediated_columns(mediated, ci, candidates).T)
+
     out = np.column_stack(cols)
     assert out.shape == (n, N_FEATURES), (out.shape, N_FEATURES)
     return out
+
+
+def mediated_columns(table: "ExtraSims", clue_i: int, candidates: list[str]) -> np.ndarray:
+    """(len(candidates), len(MEDIATED_FEATURES)): the block as extract() and
+    listener_training.complete_columns both compute it."""
+    pos = np.array([table.board_pos.get(w.lower(), -1) for w in candidates])
+    v = np.column_stack([table.row(s, clue_i, pos) for s in MEDIATED_SPACES])
+    m = np.full(len(candidates), np.nan)
+    ok = np.isfinite(v).all(axis=1)
+    m[ok] = v[ok].mean(axis=1)
+    gap = m - np.nanmax(m) if ok.any() else m
+    return np.column_stack([v, gap])

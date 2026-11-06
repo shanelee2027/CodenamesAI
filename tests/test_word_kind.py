@@ -23,7 +23,7 @@ def test_appended_after_the_first_69():
     assert tuple(FEATURE_NAMES[69:69 + len(KIND_FEATURES)]) == KIND_FEATURES
 
 
-def test_text_block_appended_last():
+def test_text_block_appended_after_the_first_72():
     from codenames.listener_features import TEXT_FEATURES
 
-    assert tuple(FEATURE_NAMES[-len(TEXT_FEATURES):]) == TEXT_FEATURES
+    assert tuple(FEATURE_NAMES[72:72 + len(TEXT_FEATURES)]) == TEXT_FEATURES

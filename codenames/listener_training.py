@@ -24,7 +24,7 @@ from codenames.clue_stats import ClueStats
 from codenames.assoc_profile import B_FEATURES, C_FEATURES, AssocProfile
 from codenames.word_kind import KIND_FEATURES, WordKind
 from codenames.listener_features import (
-    FEATURE_NAMES, TEXT_FEATURES, EntitySims, ExtraSims, SwowTables, WordNorms, WordStats,
+    FEATURE_NAMES, MEDIATED_FEATURES, TEXT_FEATURES, EntitySims, ExtraSims, SwowTables, WordNorms, WordStats,
     extract,
 )
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
@@ -49,6 +49,7 @@ ASSOC_SIMS = CACHE / "assoc_sims.npz"
 ASSOC_PROFILE = CACHE / "assoc_profile.npz"
 WORD_KIND = CACHE / "word_kind.npz"
 TEXT_SIMS = CACHE / "text_sims.npz"
+MEDIATED_SIMS = CACHE / "mediated_sims.npz"
 DEFAULT_MODEL = "deepinfra/openai/gpt-oss-120b+effort=low"  # the teacher
 
 # Named feature blocks, so an ablation is a flag rather than an edit. The point
@@ -79,6 +80,7 @@ FEATURE_BLOCKS: dict[str, list[str]] = {
     "reverse_assoc": list(C_FEATURES),
     "word_kind": list(KIND_FEATURES),
     "text": list(TEXT_FEATURES),
+    "mediated": list(MEDIATED_FEATURES),
 }
 assert sorted(sum(FEATURE_BLOCKS.values(), [])) == sorted(FEATURE_NAMES), "blocks must partition FEATURE_NAMES"
 
@@ -197,6 +199,7 @@ def _feature_cache_path(normalization: str = "base") -> Path:
         h.update(f.read_bytes())
     for f in (WORD_STATS, SWOW_TABLES, ENTITY_SIMS, LM_PMI, EXTRA_SIMS, WORD_NORMS, WORDNET_SIMS,
               LEXICAL_SIMS, ISA_SIMS, CONCEPTNET_SIMS, WORDNET_SENSES, ASSOC_SIMS, ASSOC_PROFILE, WORD_KIND, TEXT_SIMS,
+              MEDIATED_SIMS,
               CACHE / "similarity_tensor.npy", CACHE / "clue_stats.npz"):
         if f.exists():
             st = f.stat()
@@ -316,6 +319,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     profile = AssocProfile.load(ASSOC_PROFILE) if ASSOC_PROFILE.exists() else None
     kind = WordKind.load(WORD_KIND) if WORD_KIND.exists() else None
     text = ExtraSims.load(TEXT_SIMS) if TEXT_SIMS.exists() else None
+    mediated = ExtraSims.load(MEDIATED_SIMS) if MEDIATED_SIMS.exists() else None
     print(f"SWOW: {'loaded' if swow else 'ABSENT'}   entity sims: "
           f"{'loaded' if entity else 'ABSENT'}   LM PMI: {'loaded' if pmi else 'ABSENT'}"
           f"   extra spaces: {'loaded' if extra else 'ABSENT'}"
@@ -327,7 +331,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
           f"   senses: {'loaded' if senses else 'ABSENT'}"
           f"   assoc: {'loaded' if assoc else 'ABSENT'}"
           f"   profile: {'loaded' if profile else 'ABSENT'}"
-          f"   kind: {'loaded' if kind else 'ABSENT'}   text: {'loaded' if text else 'ABSENT'}")
+          f"   kind: {'loaded' if kind else 'ABSENT'}   text: {'loaded' if text else 'ABSENT'}"
+          f"   mediated: {'loaded' if mediated else 'ABSENT'}")
     boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected, online_collected,
                           online_train, online_holdout)
 
@@ -377,7 +382,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
             feats = fcache[fkey]
         else:
             feats = extract(clue, shuffled, number, sims, stats, wstats, clue_index, swow, entity, pmi, extra,
-                            norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile, kind, text)
+                            norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile, kind, text,
+                            mediated)
             fcache[fkey] = feats
         if feats is None:
             dropped["features"] += 1
@@ -404,7 +410,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                 keep = [r for r in range(len(rank)) if r not in taken]
                 sub = [shuffled[r] for r in keep]
                 f = extract(clue, sub, number, sims, stats, wstats, clue_index, swow, entity,
-                            pmi, extra, norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile, kind, text)
+                            pmi, extra, norms, wordnet, lexical, isa, conceptnet, senses, assoc, profile, kind, text,
+                            mediated)
                 if f is None:
                     ok = False
                     break
@@ -888,12 +895,12 @@ def complete_columns(positions: list[dict]) -> list[dict]:
     """Append to cached positions the feature blocks added since they were
     cached, computed exactly as extract() computes them in play: the
     association profile (positions cached before it carry the first 58
-    columns), the word-kind block (cached before it: 69) and the text
-    block (72). So every
-    booster reads the columns it was fitted on, whatever the cache's age."""
+    columns), the word-kind block (cached before it: 69), the text block
+    (72) and the mediated block (75). So every booster reads the columns it
+    was fitted on, whatever the cache's age."""
     from codenames.assoc_profile import PROFILE_FEATURES
     from codenames.listener_features import FEATURE_NAMES, N_FEATURES
-    from codenames.listener_features import _ranks
+    from codenames.listener_features import _ranks, mediated_columns
     from codenames.word_kind import KIND_FEATURES
 
     class _Text:
@@ -908,9 +915,18 @@ def complete_columns(positions: list[dict]) -> list[dict]:
             gap = v - np.nanmax(v) if np.isfinite(v).any() else np.full(len(v), np.nan)
             return np.column_stack([v, _ranks(v), gap])
 
+    class _Mediated:
+        def __init__(self):
+            self.t = ExtraSims.load(MEDIATED_SIMS)
+            self.ci = {w.lower(): i for i, w in enumerate(ClueStats.load(DEFAULT_CACHE_DIR).clue_words)}
+
+        def columns(self, clue, words):
+            return mediated_columns(self.t, self.ci.get(clue.lower(), -1), words)
+
     blocks = [(FEATURE_NAMES.index(PROFILE_FEATURES[0]), lambda: AssocProfile.load(ASSOC_PROFILE)),
               (FEATURE_NAMES.index(KIND_FEATURES[0]), lambda: WordKind.load(WORD_KIND)),
-              (FEATURE_NAMES.index(TEXT_FEATURES[0]), _Text)]
+              (FEATURE_NAMES.index(TEXT_FEATURES[0]), _Text),
+              (FEATURE_NAMES.index(MEDIATED_FEATURES[0]), _Mediated)]
     tables: dict[int, object] = {}
     out = []
     for p in positions:

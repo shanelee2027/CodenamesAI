@@ -9,9 +9,12 @@ for the online game's 800 words (docs/versions/online_vocab_listener.md).
   (load_sets(normalization="online")), the population it is dealt from.
 - Features: `--features incumbent` reads the incumbent's 67 columns;
   `--features all` adds the word-kind block (codenames/word_kind.py) and the
-  text-embedding block (te_*), 73; `kind` and `text` add one block each. All
-  are fitted on identical rows, so the differences between them are the
-  blocks alone.
+  text-embedding block (te_*), 73; `kind` and `text` add one block each;
+  `mediated` adds the two-hop association block (med_*, 71;
+  scripts/data/build_mediated_sims.py). All are fitted on identical rows, so
+  the differences between them are the blocks alone, and a block's variant
+  is also scored against the shipped 67-column booster on the online
+  footing (`vs online_vocab`).
 
 Recipe as the incumbent's: listener_training.train, step weights, early
 stopping on validation. The old rows are exactly the incumbent's `train` and
@@ -51,7 +54,8 @@ INCUMBENT = ROOT / "cache" / "listener_gbt_assoc_profile.txt"
 OUT = {"incumbent": ROOT / "cache" / "listener_gbt_online_vocab.txt",
        "all": ROOT / "cache" / "listener_gbt_online_vocab_kind_text.txt",
        "kind": ROOT / "cache" / "listener_gbt_online_vocab_kind.txt",
-       "text": ROOT / "cache" / "listener_gbt_online_vocab_text.txt"}
+       "text": ROOT / "cache" / "listener_gbt_online_vocab_text.txt",
+       "mediated": ROOT / "cache" / "listener_gbt_online_vocab_mediated.txt"}
 TEST = ("online held-out words, generated", "online held-out words, generated, Sonnet 5.5", "held-out words, generated, Sonnet 5.5", "held-out words, generated",
         "online words, generated", "new boards")
 
@@ -106,18 +110,20 @@ def main() -> None:
     import lightgbm as lgb
 
     import codenames.listener_training as T
-    from codenames.listener_features import FEATURE_NAMES, TEXT_FEATURES
+    from codenames.listener_features import FEATURE_NAMES, MEDIATED_FEATURES, TEXT_FEATURES
     from codenames.word_kind import KIND_FEATURES
     from eval_listener_accuracy import with_all_columns
     from train_listener_net import ONLINE_TRAIN, load_sets, pkey
 
     old = lgb.Booster(model_file=str(INCUMBENT))
     block = {"all": list(KIND_FEATURES) + list(TEXT_FEATURES), "incumbent": [], "kind": list(KIND_FEATURES),
-             "text": list(TEXT_FEATURES)}[args.features]
+             "text": list(TEXT_FEATURES), "mediated": list(MEDIATED_FEATURES)}[args.features]
     names = old.feature_name() + block
     cols = [FEATURE_NAMES.index(n) for n in names]
 
     sets, base = load_sets(normalization="online"), load_sets()
+    # Blocks added since the online cache was built (the mediated block).
+    sets = {k: with_all_columns(v) for k, v in sets.items()}
     by_key = {pkey(p): p for k in ("train", "val") for p in sets[k]}
     old_tr, old_va = ([by_key[pkey(p)] for p in base[k]] for k in ("train", "val"))
     on_fit, on_val = T.split_positions(sets[ONLINE_TRAIN], 0.15, 0)
@@ -148,6 +154,14 @@ def main() -> None:
         print(f"{s:40s} {r['positions']:5d} pos  incumbent {r['incumbent'][0]:.4f} (pick 1 {r['incumbent'][1]:.4f}, "
               f"2+ {r['incumbent'][2]:.4f})  new {r['new'][0]:.4f} (pick 1 {r['new'][1]:.4f}, 2+ {r['new'][2]:.4f})  "
               f"gain {r['gain']:+.4f} [{r['ci'][0]:+.4f}, {r['ci'][1]:+.4f}]", flush=True)
+        if args.features != "incumbent":
+            # Against the shipped booster, both on the online footing: the block's own gain.
+            shipped = lgb.Booster(model_file=str(OUT["incumbent"]))
+            r = report[s]["vs online_vocab"] = compare(shipped, b, sets[s], sets[s], rng)
+            print(f"{'':40s} vs online_vocab {r['incumbent'][0]:.4f} (pick 1 {r['incumbent'][1]:.4f}, "
+                  f"2+ {r['incumbent'][2]:.4f})  gain {r['gain']:+.4f} [{r['ci'][0]:+.4f}, {r['ci'][1]:+.4f}]  "
+                  f"pick 1 {r['new'][1] - r['incumbent'][1]:+.4f}, 2+ {r['new'][2] - r['incumbent'][2]:+.4f}",
+                  flush=True)
     out.with_suffix(".json").write_text(json.dumps({"features": names, "trees": b.num_trees(), "report": report},
                                                    indent=1))
 
