@@ -932,7 +932,9 @@ def complete_columns(positions: list[dict]) -> list[dict]:
     for p in positions:
         for start, load in blocks:
             if p["x"].shape[1] == start:
-                t = tables.setdefault(start, load())
+                if start not in tables:          # setdefault would call load() every time
+                    tables[start] = load()
+                t = tables[start]
                 p = {**p, "x": np.hstack([p["x"], t.columns(p["clue"], p["words"])])}
         assert p["x"].shape[1] == N_FEATURES, (p["x"].shape, N_FEATURES)
         out.append(p)
