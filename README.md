@@ -19,6 +19,8 @@ plays against.
   model is registered, trained and evaluated.
 - [`docs/versions/`](docs/versions/): one doc per model.
 - [`docs/log.md`](docs/log.md): the working log, entry by entry.
+- The thesis lives in a separate private repo, `shanelee2027/codenames-thesis`,
+  synced with Overleaf.
 
 ## Setup
 

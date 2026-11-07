@@ -8068,3 +8068,5 @@ So the block helps on every set gpt-oss ranked (about +0.005, both pick 1 and 2+
 ## 2026-11-06 — Thesis skeleton
 
 The user asked for the final paper's skeleton, nothing written yet, in LaTeX for Overleaf, possibly two-column. `thesis/`: `main.tex` (article class, `twocolumn` as a one-word toggle, appendix switched to one column), one file per section under `sections/` holding only headings, an empty `references.bib`, `figures/`. Sections follow the structure proposed in conversation (introduction, background, problem, listener, spymaster, evaluation method, results, analysis, conclusion; appendix: features, prompts, reproducibility), organised by the system's parts and one frozen evaluation rather than by the sequence of models. The user noted much of what was explored will be left out. No TeX toolchain here, so it has not been compiled.
+
+The user chose a separate private repo for the thesis, synced with Overleaf. Created `shanelee2027/codenames-thesis` (private) with the skeleton at its root and a LaTeX .gitignore; `thesis/` and its .gitignore lines removed from this repo so there is one copy; README points to it.
