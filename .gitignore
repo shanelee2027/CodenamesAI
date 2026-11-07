@@ -34,3 +34,14 @@ docs/*.out
 /requirements-demo.txt
 /start.sh
 /start.bat
+
+# Thesis build artifacts (thesis/ compiles on Overleaf).
+thesis/*.aux
+thesis/*.log
+thesis/*.bbl
+thesis/*.blg
+thesis/*.out
+thesis/*.synctex.gz
+thesis/*.fdb_latexmk
+thesis/*.fls
+thesis/main.pdf

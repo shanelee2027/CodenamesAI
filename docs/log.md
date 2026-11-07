@@ -8064,3 +8064,7 @@ Expected: a gain at picks 2+, where HEART was missed. Found, against online_voca
 | new boards | +0.0040 | [+0.0011, +0.0070] | +0.0044 | +0.0037 |
 
 So the block helps on every set gpt-oss ranked (about +0.005, both pick 1 and 2+) and not on Sonnet 5.5's; on the clean Sonnet set it is slightly negative, interval touching zero, and picks 2+ do not gain either. A likely reason, not tested: the mediators are gpt-oss's own associations, so the block teaches the listener gpt-oss's habits more than a link a different reader would make. By the standing rule (the clean Sonnet set decides) the block does not become a model; the booster and table stay in cache/ for the record. HONEYMOON itself is off-pool, so the new booster would read the block as NaN for it without the one-clue row.
+
+## 2026-11-06 — Thesis skeleton
+
+The user asked for the final paper's skeleton, nothing written yet, in LaTeX for Overleaf, possibly two-column. `thesis/`: `main.tex` (article class, `twocolumn` as a one-word toggle, appendix switched to one column), one file per section under `sections/` holding only headings, an empty `references.bib`, `figures/`. Sections follow the structure proposed in conversation (introduction, background, problem, listener, spymaster, evaluation method, results, analysis, conclusion; appendix: features, prompts, reproducibility), organised by the system's parts and one frozen evaluation rather than by the sequence of models. The user noted much of what was explored will be left out. No TeX toolchain here, so it has not been compiled.
