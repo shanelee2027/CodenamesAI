@@ -223,6 +223,7 @@ class ExpectedWordsSpymaster(Spymaster):
         assassin_cost: float | None = None,
         exclude_acronyms: bool = True,
         max_number: int | None = MAX_CLUE_NUMBER,
+        clue_stats_stem: str = "clue_stats",
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         clue_stats: ClueStats | None = None,
@@ -241,7 +242,12 @@ class ExpectedWordsSpymaster(Spymaster):
         # None -> the game's own reward magnitudes, so the default is byte-for-byte
         # the previous behaviour; see codenames/game.py::role_costs.
         self.costs = role_costs(neutral_cost, opponent_cost, assassin_cost)
-        self.clue_stats = clue_stats if clue_stats is not None else ClueStats.load(cache_dir=cache_dir)
+        # `clue_stats_stem` picks the words z is standardized over: "clue_stats" (the
+        # base game's 400, the default) or "clue_stats_online" (the online game's 800,
+        # what sigma was fitted on by scripts/pipeline/fit_gaussian_sigma.py). The
+        # clue pool is the same in both (identical rarity percentiles).
+        self.clue_stats = (clue_stats if clue_stats is not None
+                           else ClueStats.load(cache_dir=cache_dir, stem=clue_stats_stem))
         # A pool restriction like max_rarity, not a rule of the game -- see
         # scripts/data/build_acronym_mask.py on why this is not in is_legal_clue.
         self.exclude_acronyms = exclude_acronyms

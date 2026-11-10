@@ -80,6 +80,11 @@ def main() -> None:
     )
     parser.add_argument("--max-turns", type=int, default=None, help="override codenames.game.DEFAULT_MAX_TURNS (per team)")
     parser.add_argument(
+        "--vocab", choices=["base", "online_heldout", "online_train", "online"], default="base",
+        help="words the boards are dealt from (--vs only): the base game's 400 (default), or the online "
+             "game's 800 / its 250 held-out / its 550 training words (codenames/board.py::load_online_split).",
+    )
+    parser.add_argument(
         "--max-workers",
         type=int,
         default=None,
@@ -178,6 +183,13 @@ def main() -> None:
         kwargs["run_label"] = run_label
 
     seeds = list(range(args.n_boards))
+    if args.vocab != "base":
+        if args.vs is None:
+            parser.error("--vocab is only wired for head-to-head (--vs) runs")
+        from codenames.board import load_online_split
+        train_words, heldout_words = load_online_split()
+        kwargs["vocabulary"] = {"online_heldout": heldout_words, "online_train": train_words,
+                                "online": train_words + heldout_words}[args.vocab]
     start = time.time()
 
     if args.vs is not None:
