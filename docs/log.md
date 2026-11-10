@@ -8072,3 +8072,25 @@ The user asked for the final paper's skeleton, nothing written yet, in LaTeX for
 The user chose a separate private repo for the thesis, synced with Overleaf. Created `shanelee2027/codenames-thesis` (private) with the skeleton at its root and a LaTeX .gitignore; `thesis/` and its .gitignore lines removed from this repo so there is one copy; README points to it.
 
 2026-11-07: the user compared two example papers (NeurIPS one-column, ACL two-column) and chose ACL. codenames-thesis now uses acl.sty / acl_natbib.bst from acl-org/acl-style-files at d5adc82 with the `preprint` option (name shown, page numbers, no review ruler).
+
+## 2026-11-09 — Naive Gaussian model: sigma fitted to gpt-oss rankings on the 800-word bank
+
+The paper now assumes the online game's 800-word bank throughout, and its first spymaster is the naive Gaussian model (Numberbatch only) with sigma fitted by maximum likelihood instead of set by hand (expected_words uses 2.5).
+
+**Data.** `collect_listener_data.py --vocab online_train` with the default mix, 17,000 seeds -> 14,920 planned positions on the 550 online training words; 9,875 were already cached, 5,045 bought from gpt-oss-120b (low effort). It ran 132 minutes, the provider slowing to ~2 positions/s after 10,000; 105 requests failed (no usable ranking) and are skipped. Cost $0.35 (November usage $4.01 -> $4.36; about $4.14 of credit left, auto top-up off). llm_store.db was backed up first to `cache/backups/llm_store_20261109_pre_online_rankings.db`.
+
+**Fit.** `scripts/pipeline/fit_gaussian_sigma.py`: each ranking is one data point; its log-likelihood is log P(the model's first m words are gpt-oss's first m, in order), a one-dimensional integral computed on a grid (Q_j by reverse cumulative sums; checked against Monte Carlo, probabilities sum to 1). Depth per ranking is min(max(k+2, 3), 5), because a request only had to name max(k+2, 3) words and the rest were backfilled in board order. z is per clue over the 800 online words. Bootstrap over rankings, 1,000 resamples. Free; ~6 minutes.
+
+Expected: sigma near the hand-set values (1.5–2.5), and perhaps larger at deeper positions. Found, on a 0.02 grid (`cache/fits/gaussian_sigma_numberbatch_fine.json`):
+
+| Fit | n | sigma | 95% |
+|---|---|---|---|
+| own depth | 14,815 | 2.02 | [2.00, 2.04] |
+| depth 1 | 14,815 | 2.04 | [2.00, 2.06] |
+| depth 2 | 14,815 | 1.96 | [1.92, 1.98] |
+| depth 3 | 14,815 | 1.98 | [1.94, 2.00] |
+| depth 4 | 11,105 | 2.02 | [2.00, 2.06] |
+| depth 5 | 7,134 | 2.06 | [2.02, 2.10] |
+| k=4 only, depths 1–5 | 3,757 (3,590 at 5) | 2.08, 2.00, 2.02, 2.06, 2.08 | each about ±0.06 |
+
+Sigma is about 2 at every depth, within 0.06. Some depths differ by more than their intervals (depth 2 vs 5), but the differences are a few percent and not monotone, so a single sigma is a fair summary. At sigma = 2 two words one standard deviation apart in Numberbatch are ranked in that order by gpt-oss only about 64% of the time.
