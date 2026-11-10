@@ -8106,3 +8106,16 @@ Expected: 2.02, the likelihood fit, to do at least as well. Found, on 83 boards 
 Expected: if the objective is the cause, 1.5 still wins; if gpt-oss's departure from the model is, 2.0 wins. Found: sigma 1.5 won 56.0%, 95% bootstrap over boards [51.7%, 60.3%] (52 boards won both seatings, 120 split, 28 lost both); mean k 2.04 vs 1.53, assassin in 12.2% vs 3.8% of games. The same 56.0% as against gpt-oss. So the edge comes from the objective: with the per-turn reward (1 per word, costs 0.2/1/10), the spymaster that knows the guesser exactly plays too cautiously to win the race, and underestimating the noise makes it bolder. With exact win-maximizing play the true sigma would get at least 50% (perfect-information zero-sum game with chance), so this is a property of the greedy reward, not of the model.
 
 **Sigma round robin, and no cap on the number (2026-11-10).** For the thesis's Section 3 results: expected_words at sigma 1, 1.5, 2, 2.5, pairwise, gpt-oss guessing, 100 boards of online held-out words, both seatings, each matchup run twice (the second pass retries boards whose gpt-oss calls failed). The first launch used `--max-workers 48`; WSL rebooted and took VS Code with it, likely out of memory (24 workers measured at ~12 GB, each worker ~0.5 GB, 30 GB total), so runs now use 24 workers and a watchdog that kills the arena under 4 GB available. The relaunch got through the three sigma = 1 pairs with the default cap of 4 on the number before the user asked for no cap (games under `sigma-rr-1.0-vs-*`; superseded). `run_two_team_arena.py --param` now reads `None` as None, so `--param expected_words=max_number=None` removes the cap (expected_words already supported it). The round robin was restarted uncapped (`sigma-rr-nocap-*`).
+
+**Uncapped round robin, results (2026-11-10).** `sigma-rr-nocap-*`, pass 2 of each pair, boards with both seatings kept (85-99 of 100 per pair; the rest lost to gpt-oss ranking failures). Win rate of the row sigma against the column, 95% bootstrap over boards:
+
+| | 1.0 | 1.5 | 2.0 | 2.5 | mean |
+|---|---|---|---|---|---|
+| 1.0 | | 43.9 [38.3, 49.5] | 45.5 [39.4, 51.5] | 45.9 [38.8, 53.5] | 45.1 |
+| 1.5 | 56.1 | | 52.6 [47.4, 57.9] | 59.8 [53.4, 65.5] | 56.2 |
+| 2.0 | 54.5 | 47.4 | | 59.8 [53.4, 66.1] | 53.9 |
+| 2.5 | 54.1 | 40.2 | 40.2 | | 44.8 |
+
+Per sigma (1.0 / 1.5 / 2.0 / 2.5): mean k 2.97 / 2.14 / 1.54 / 1.23; k > 4 on 11.9% / 1.8% / 0.2% / 0% of clues; own words per clue 1.39 / 1.37 / 1.19 / 1.09; own share of revealed words 65.8 / 75.2 / 83.7 / 90.7%; assassin in 21.3 / 11.4 / 4.6 / 2.1% of games. Expected: an interior optimum. Found: 1.5 beats every other sigma, 2.0 second; 1.5 vs 2.0 is now within noise (52.6%, it was 56.0% with the cap), and the cap mattered mostly for sigma = 1, which loses to everyone uncapped.
+
+Against the simulated Gaussian guesser (sigma = 2, exactly the model), uncapped, 200 boards: sigma 1.5 beats 2.0 56.2% [52.0, 60.5], the same as capped (the cap rarely binds at these sigmas). So under the reward the true sigma loses clearly when the model is exact; against gpt-oss the gap is smaller and not significant. DeepInfra: November usage $5.13 after everything today (round robin ~$0.27); checklist $8.50, so about $3.37 left; auto top-up off.
