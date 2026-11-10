@@ -115,6 +115,8 @@ def main() -> None:
         )
 
     def _coerce(v):
+        if v == "None":  # e.g. max_number=None: no cap on the clue number
+            return None
         for cast in (int, float):
             try:
                 return cast(v) if cast is not float or "." in v or "e" in v.lower() else int(v)
