@@ -95,6 +95,12 @@ def main() -> None:
         "network-bound, so values well past os.cpu_count() are the point. Default: os.cpu_count().",
     )
     parser.add_argument(
+        "--threads-per-worker", type=int, default=1,
+        help="(--vs only) games each worker process keeps in flight, as threads; games in flight = "
+        "max-workers x this. Threads share one process's memory, so this raises the number of guesser "
+        "calls waiting at once without the ~1 GB a process costs (codenames/two_team_arena.py).",
+    )
+    parser.add_argument(
         "--record-games",
         type=Path,
         default=None,
@@ -206,6 +212,7 @@ def main() -> None:
             seeds,
             guesser_pool_config=args.guesser_pool_config,
             max_workers=args.max_workers,
+            threads_per_worker=args.threads_per_worker,
             progress=True,
             **kwargs,
         )
