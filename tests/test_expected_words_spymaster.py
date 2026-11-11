@@ -366,3 +366,22 @@ class TestEveryCandidateGetsAFiniteScore:
         idx = sims.clue_index["clue"]
         assert np.isfinite(scores[idx])
         assert best_n[idx] >= 1
+
+
+class TestPrefilter:
+    def test_no_prefilter_scores_every_candidate(self, tmp_path):
+        rows = {f"clue{i}": make_row(own=[1.0 + 0.1 * i] + [_FAR_OWN] * 8) for i in range(9)}
+        sm, sims = build(tmp_path, rows)
+        _, scores, _ = sm._score_all_clues(make_board(), sims)
+        assert np.isfinite(scores).all()
+
+    def test_prefilter_keeps_the_best_margins_and_the_same_pick(self, tmp_path):
+        # Margins rise with i, so with prefilter=3 (one per k) the k = 1 slot
+        # keeps clue8, the best clue; the k = 2, 3 slots are ties here.
+        rows = {f"clue{i}": make_row(own=[1.0 + 0.1 * i] + [_FAR_OWN] * 8) for i in range(9)}
+        full, sims = build(tmp_path, rows)
+        fast, _ = build(tmp_path, rows, prefilter=3)
+        ctx = make_ctx(make_board())
+        assert fast.top_clues(ctx, sims, 1) == full.top_clues(ctx, sims, 1)
+        _, scores, _ = fast._score_all_clues(ctx.board, sims)
+        assert np.isfinite(scores).sum() < len(rows)

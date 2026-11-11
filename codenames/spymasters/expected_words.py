@@ -224,6 +224,7 @@ class ExpectedWordsSpymaster(Spymaster):
         exclude_acronyms: bool = True,
         max_number: int | None = MAX_CLUE_NUMBER,
         clue_stats_stem: str = "clue_stats",
+        prefilter: int | None = None,
         *,
         cache_dir: Path = DEFAULT_CACHE_DIR,
         clue_stats: ClueStats | None = None,
@@ -255,6 +256,30 @@ class ExpectedWordsSpymaster(Spymaster):
         # The most a clue may announce. MAX_CLUE_NUMBER (4) by default; None
         # lets it announce every own word left.
         self.max_number = max_number
+        # Only the `prefilter` candidates that rank best on a quick margin go
+        # through the full integral; None scores every candidate. See
+        # `_prefilter`.
+        self.prefilter = prefilter
+
+    def _prefilter(self, a: np.ndarray, b: np.ndarray) -> np.ndarray:
+        """Indices of the candidates worth the full integral: the top
+        `prefilter // 3` by `a_k - max_w b_w` for each of k = 1, 2, 3, joined.
+
+        The integral costs ~0.6 s per clue over ~10k candidates, and almost
+        all of them have no own word near the top. Measured on 1,500
+        positions of the online held-out words (500 boards at the start,
+        middle and late game, sigma 1.5, no cap), prefilter=1000 picked the
+        same clue as the full integral at every position, 26x faster; 300
+        missed 9 of them. Splitting the budget over every k up to the own
+        words left did worse (it leaves fewer for k = 2 and 3, where most
+        best clues are). docs/log.md, 2026-11-11."""
+        per = self.prefilter // 3
+        max_b = b.max(axis=1) if b.shape[1] > 0 else np.zeros(len(a), dtype=a.dtype)
+        keep: set[int] = set()
+        for k in range(min(3, a.shape[1])):
+            margin = a[:, k] - max_b
+            keep.update(np.argpartition(-margin, per)[:per].tolist())
+        return np.array(sorted(keep), dtype=np.int64)
 
     def _score_all_clues(
         self, board: Board | OpponentBoardView, sims: SimilarityTensor
@@ -298,6 +323,11 @@ class ExpectedWordsSpymaster(Spymaster):
 
         z_own = self.clue_stats.z_for_board(sims, own, self.space)[candidate_idx]  # (n_cand, n_own)
         z_non_own = self.clue_stats.z_for_board(sims, non_own, self.space)[candidate_idx]  # (n_cand, n_non_own)
+
+        if self.prefilter is not None and len(candidate_idx) > self.prefilter:
+            # Candidates left out keep score -inf, so they are never picked.
+            keep = self._prefilter(-np.sort(-z_own, axis=1), z_non_own)
+            candidate_idx, z_own, z_non_own = candidate_idx[keep], z_own[keep], z_non_own[keep]
 
         n_cand = len(candidate_idx)
         K_max = clue_number_cap(len(own), self.max_number)

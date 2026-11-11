@@ -19,7 +19,8 @@
     "space": "numberbatch",
     "sigma": 2.5,
     "max_rarity": 10.0,
-    "max_number": null
+    "max_number": null,
+    "prefilter": 1000
    },
    "trained": false,
    "roles": [
