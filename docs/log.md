@@ -8119,3 +8119,17 @@ Expected: if the objective is the cause, 1.5 still wins; if gpt-oss's departure 
 Per sigma (1.0 / 1.5 / 2.0 / 2.5): mean k 2.97 / 2.14 / 1.54 / 1.23; k > 4 on 11.9% / 1.8% / 0.2% / 0% of clues; own words per clue 1.39 / 1.37 / 1.19 / 1.09; own share of revealed words 65.8 / 75.2 / 83.7 / 90.7%; assassin in 21.3 / 11.4 / 4.6 / 2.1% of games. Expected: an interior optimum. Found: 1.5 beats every other sigma, 2.0 second; 1.5 vs 2.0 is now within noise (52.6%, it was 56.0% with the cap), and the cap mattered mostly for sigma = 1, which loses to everyone uncapped.
 
 Against the simulated Gaussian guesser (sigma = 2, exactly the model), uncapped, 200 boards: sigma 1.5 beats 2.0 56.2% [52.0, 60.5], the same as capped (the cap rarely binds at these sigmas). So under the reward the true sigma loses clearly when the model is exact; against gpt-oss the gap is smaller and not significant. DeepInfra: November usage $5.13 after everything today (round robin ~$0.27); checklist $8.50, so about $3.37 left; auto top-up off.
+
+## 2026-11-11 — Sigma round robin with every board kept; case bug in the LLM guesser parser; Sonnet pilot
+
+**Goal.** The user asked that every round-robin pair play exactly 100 boards instead of discarding boards where gpt-oss would not rank. Plain replacement with new boards was rejected because discards were not random (arm-specific), so the failing calls themselves had to succeed.
+
+**Step 1: more retries.** `openai_compat.ATTEMPTS` 4 -> 12, then pass 3 of the round robin (cached turns replay free). Discards fell from 49 to 13. Passes 4-7 left six boards failing every time (48 tries each), so not transient.
+
+**Step 2: the real cause.** Replaying seed 95 (sigma 2.0 vs 2.5) showed gpt-oss answering correctly but in lower case (`["troll","blind",...]`) while the online bank capitalizes words ("Troll", "Blind"). `json_array` matched exactly, counted 0 named words, and rejected the answer on every retry. Fixed: match ignoring case, return the board's spelling (codenames/guessers/llm.py, shared by the Sonnet guesser; test added; fc51430). No cached result changes: those answers were always rejected, never misread. Pass 8 then completed every pair with 100 boards.
+
+**Result (uncapped, gpt-oss guessing, 100 boards per pair, both seatings, bootstrap over boards).** Win rate of the lower sigma: 1 v 1.5 44.0% [38.0, 50.0]; 1 v 2 45.5% [39.5, 52.0]; 1 v 2.5 46.0% [39.0, 53.0]; 1.5 v 2 52.0% [46.5, 57.5]; 1.5 v 2.5 59.0% [53.0, 65.0]; 2 v 2.5 59.5% [53.5, 65.5]. Mean win rate 1 = 45.2, 1.5 = 55.7, 2 = 54.0, 2.5 = 45.2. Same picture as the run with discards (1.5 first, its edge over 2 not significant). Thesis Tables 1-2 and 4.4 updated.
+
+**No caps.** `LLMSpymaster(max_number=None)` lets the number go up to the words left (default 4 keeps cached prompts); `configs/spymasters.json` now sets `max_number: null` for `expected_words` and `sonnet_spymaster`; `--vs` may name a reference spymaster (by name only).
+
+**Sonnet pilot.** sigma 1.5 (uncapped) vs Sonnet 5.5 spymaster (uncapped), Sonnet 5.5 medium guessing, 5 boards x 2 seatings: Sonnet won 8 of 10. Cost from measured tokens at $2/$10 per M: spymaster 37 clues, 17.3k in / 16.7k out, ~$0.20; guesser 72 calls at the measured ~$0.0025, ~$0.18; ~$0.38 total, ~$0.04 a game. Full 100 boards ~ $7.5 (190 new games). Backup before: cache/backups/llm_store_20261111_pre_sonnet_pilot.db.
