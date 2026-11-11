@@ -86,3 +86,18 @@ class TestAsk:
         assert first.give_clue(TurnContext(b, 0), None) == ("zzyzx", 2)
         again = _spy([], tmp_path)                     # no answers left: a call would fail
         assert again.give_clue(TurnContext(b, 0), None) == ("zzyzx", 2)
+
+
+class TestNoCap:
+    def test_default_prompt_still_says_four(self):
+        assert "a number from 1 to 4." in board_prompt(_board())
+
+    def test_uncapped_prompt_allows_every_word_left(self):
+        b = _board()
+        n_own = len(b.words_by_role(Role.OWN, unrevealed_only=True))
+        assert f"a number from 1 to {n_own}." in board_prompt(b, max_number=None)
+
+    def test_uncapped_spymaster_accepts_a_number_above_four(self):
+        spy = LLMSpymaster(client=FakeClient(['{"clue": "zzyzx", "number": 6}']), cache_path=None,
+                           max_number=None)
+        assert spy.give_clue(TurnContext(_board(), 0), None) == ("zzyzx", 6)

@@ -67,9 +67,12 @@ from codenames.similarity import SimilarityTensor
 # these are shorthands so a config file names a provider, not a URL.
 # Four, not two. See `_query`: the failure is a transient repetition loop at
 # roughly 1 call in 4 on a bad position, and a board needs ~30 calls to finish,
-# so two attempts still lost ~20% of boards. Four takes that to a few percent.
+# so two attempts still lost ~20% of boards. Four took that to a few percent,
+# but the dropped boards were arm-specific (every sigma round-robin pair with
+# sigma 2.5 lost 13-15 of 100 boards, the others 1-5), which biases the
+# comparison. Twelve is meant to drop none.
 # Retries only ever fire on failure, so this costs nothing on the happy path.
-ATTEMPTS = 4
+ATTEMPTS = 12
 
 # Waits (seconds, before jitter) between retries of a request the host
 # refused as busy (HTTP 429, "Model busy, retry later"). The client's own

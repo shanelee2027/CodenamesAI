@@ -39,6 +39,9 @@ from codenames.two_team_arena import run_two_team_matchup, run_two_team_self_pla
 # Selected by role from configs/spymasters.json rather than by name, so a
 # new entry needs no edit here.
 BASE_SPYMASTER_NAMES = spymaster_names("baseline", "exploration")
+# --vs may also name a reference opponent (the Sonnet spymaster). Every game it
+# plays costs money, so it is never picked by role, only ever typed by name here.
+VS_SPYMASTER_NAMES = BASE_SPYMASTER_NAMES + spymaster_names("reference")
 
 
 def main() -> None:
@@ -56,7 +59,7 @@ def main() -> None:
     parser.add_argument("--spymaster", choices=BASE_SPYMASTER_NAMES, required=True, help="the spymaster to play (team A's, with --vs)")
     parser.add_argument(
         "--vs",
-        choices=BASE_SPYMASTER_NAMES,
+        choices=VS_SPYMASTER_NAMES,
         default=None,
         help="head-to-head against this spymaster instead of self-play. Every board is played twice "
         "with the sides swapped, so first-move advantage falls on both equally.",

@@ -6,7 +6,9 @@ job?", with the same LLM guessing for both sides.
 **It is told this arena's rules, not the board game's.** codenames/game.py
 has the guesser take exactly `number` guesses, stopping at the first one that
 is not its team's, with no bonus guess and no passing, and caps the number at
-MAX_CLUE_NUMBER. The learned listener's reward is built on exactly that rule
+MAX_CLUE_NUMBER unless the spymaster is built with `max_number=None`, in
+which case the number may be anything up to the team's words left. The
+learned listener's reward is built on exactly that rule
 (codenames/pl_reward.py), so leaving the LLM to assume the tabletop rules
 would handicap it: it might count on a guesser that stops when unsure.
 
@@ -65,9 +67,15 @@ _RETRY = ('\n\nYour previous answer was not allowed: {reason} Give a different c
           'ONLY a JSON object.')
 
 
-def board_prompt(board) -> str:
+def _max_n(n_own: int, max_number: int | None) -> int:
+    return n_own if max_number is None else max_number
+
+
+def board_prompt(board, max_number: int | None = MAX_CLUE_NUMBER) -> str:
     """The whole prompt for one board state, from the spymaster's own side
-    (an OpponentBoardView already has OWN and OPPONENT swapped)."""
+    (an OpponentBoardView already has OWN and OPPONENT swapped). The largest
+    number allowed is `max_number` (exactly as before, even with fewer words
+    left), or the team's words left if it is None."""
     def words(role: Role) -> list[str]:
         return board.words_by_role(role, unrevealed_only=True)
 
@@ -77,10 +85,10 @@ def board_prompt(board) -> str:
         n_own=len(own), own=", ".join(own), n_opp=len(opp), opp=", ".join(opp),
         neutral=", ".join(words(Role.NEUTRAL)) or "(none)",
         assassin=", ".join(words(Role.ASSASSIN)) or "(already revealed)",
-        revealed=", ".join(revealed) or "(none)", max_n=MAX_CLUE_NUMBER)
+        revealed=", ".join(revealed) or "(none)", max_n=_max_n(len(own), max_number))
 
 
-def parse_clue(text: str, board_words) -> tuple[str, int] | str:
+def parse_clue(text: str, board_words, max_n: int = MAX_CLUE_NUMBER) -> tuple[str, int] | str:
     """(clue, number), or the reason the answer is unusable."""
     m = re.search(r"\{.*\}", text, re.DOTALL)
     try:
@@ -96,8 +104,8 @@ def parse_clue(text: str, board_words) -> tuple[str, int] | str:
         return f"the number {obj['number']!r} is not an integer."
     if not re.fullmatch(r"[A-Za-z]+", clue):
         return f"'{clue}' is not a single alphabetic word."
-    if not 1 <= number <= MAX_CLUE_NUMBER:
-        return f"the number must be between 1 and {MAX_CLUE_NUMBER}, not {number}."
+    if not 1 <= number <= max_n:
+        return f"the number must be between 1 and {max_n}, not {number}."
     if not is_legal_clue(clue, board_words):
         return f"'{clue}' matches, contains, or shares a root with a word on the board."
     return clue.lower(), number
@@ -106,8 +114,11 @@ def parse_clue(text: str, board_words) -> tuple[str, int] | str:
 class LLMSpymaster(Spymaster):
     def __init__(self, model: str = "claude-sonnet-5", effort: str | None = "medium",
                  max_tokens: int = 16000, cache_path: str | Path | None = DEFAULT_DB_PATH,
-                 client=None):
+                 client=None, max_number: int | None = MAX_CLUE_NUMBER):
         self.model = model
+        # MAX_CLUE_NUMBER (4) by default, so every cached prompt from earlier
+        # runs still matches; None lets the number go up to the words left.
+        self.max_number = max_number
         self.effort = effort
         self.max_tokens = max_tokens
         self.cache_path = cache_path
@@ -149,14 +160,15 @@ class LLMSpymaster(Spymaster):
         """One clue: the LLM is asked for its best, not a ranked list, so k
         is ignored (the interface allows returning fewer). The score is 0.0,
         having no meaning here."""
-        prompt = board_prompt(ctx.board)
+        prompt = board_prompt(ctx.board, self.max_number)
+        max_n = _max_n(len(ctx.board.words_by_role(Role.OWN, unrevealed_only=True)), self.max_number)
         cached = self.cache.get(self.model_id, prompt) if self.cache else None
         if cached is not None:
             return [(cached[0], cached[1], 0.0)]
-        clue, number = self._ask(prompt, list(ctx.board.words))
+        clue, number = self._ask(prompt, list(ctx.board.words), max_n)
         return [(clue, number, 0.0)]
 
-    def _ask(self, prompt: str, board_words: list[str]) -> tuple[str, int]:
+    def _ask(self, prompt: str, board_words: list[str], max_n: int = MAX_CLUE_NUMBER) -> tuple[str, int]:
         ask, reasons, tin, tout = prompt, [], 0, 0
         for attempt in range(1, ATTEMPTS + 1):
             request = {"model": self.model, "max_tokens": self.max_tokens,
@@ -167,7 +179,7 @@ class LLMSpymaster(Spymaster):
             tin += response.usage.input_tokens
             tout += response.usage.output_tokens
             text = next((b.text for b in response.content if b.type == "text"), "")
-            got = parse_clue(text, board_words)
+            got = parse_clue(text, board_words, max_n)
             if isinstance(got, tuple):
                 if self.cache:
                     self.cache.put(self.model_id, prompt, text, got[0], got[1], tin, tout, attempt)
