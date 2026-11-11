@@ -441,10 +441,14 @@ def _matchup_task(task: tuple[int, bool]) -> tuple[TwoTeamGameResult | None, boo
         # Under a frozen suite the game is also keyed by its seating and the
         # suite (codenames/eval_suite.py), so a rerun overwrites rather than
         # duplicates and only missing boards are ever played.
+        # Under --threads-per-worker several games share this process's one
+        # connection; concurrent commits on it raised SystemError from inside
+        # sqlite3 (2026-11-11), so writes take the same lock as _play_task.
         suite_id = state.get("suite_id")
-        state["record_store"].add_game(
-            by_role, result, label=f"{state['run_label']}|A={name_a},B={name_b}",
-            spymaster_id=f"A={name_a},B={name_b}" if suite_id else None, suite_id=suite_id)
+        with _RECORD_LOCK:
+            state["record_store"].add_game(
+                by_role, result, label=f"{state['run_label']}|A={name_a},B={name_b}",
+                spymaster_id=f"A={name_a},B={name_b}" if suite_id else None, suite_id=suite_id)
     return result, swapped, seed, None
 
 
