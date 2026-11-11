@@ -56,14 +56,22 @@ def json_array(text: str, candidate_words: list[str]) -> list:
     Corrected answer: [...]") or reason in the visible text before the array.
     A greedy first-[-to-last-] match spans several arrays and fails to parse,
     which discarded the whole answer. Shared by both LLM guessers so what is
-    parsed and what is counted as named cannot disagree."""
-    allowed = set(candidate_words)
+    parsed and what is counted as named cannot disagree.
+
+    Words are matched ignoring case and returned in the board's spelling.
+    The online bank capitalizes its words ("Blind"), and gpt-oss sometimes
+    answers a whole board in lower case; matching exactly rejected those
+    answers on every retry and discarded the board (docs/log.md, 2026-11-11)."""
+    canonical = {w.casefold(): w for w in candidate_words}
     for chunk in reversed(re.findall(r"\[[^\[\]]*\]", text)):
         try:
             raw = json.loads(chunk)
         except json.JSONDecodeError:
             continue
-        if isinstance(raw, list) and any(isinstance(w, str) and w in allowed for w in raw):
+        if not isinstance(raw, list):
+            continue
+        raw = [canonical.get(w.strip().casefold(), w) if isinstance(w, str) else w for w in raw]
+        if any(isinstance(w, str) and w in canonical.values() for w in raw):
             return raw
     return []
 

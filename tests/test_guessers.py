@@ -515,6 +515,13 @@ class TestOpenAICompatGuesserStrictness:
             "Car", "Apple", "Doghouse", "Banana", "Elephant"
         ]
 
+    def test_lower_case_answer_is_matched_and_returned_in_board_spelling(self):
+        # The online bank capitalizes words; gpt-oss sometimes answers in lower case.
+        g, _ = self._guesser([_FakeOpenAIChoice(self.RANKING.lower())])
+        assert g.rank_candidates("vehicle", self.WORDS, None, number=2) == [
+            "Car", "Apple", "Doghouse", "Banana", "Elephant"
+        ]
+
     def test_truncated_response_raises_rather_than_returning_board_order(self):
         g, _ = self._guesser([_FakeOpenAIChoice("", "length")] * ATTEMPTS)
         with pytest.raises(RuntimeError, match="max_completion_tokens"):
