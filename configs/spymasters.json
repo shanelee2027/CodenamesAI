@@ -18,7 +18,8 @@
    "params": {
     "space": "numberbatch",
     "sigma": 2.5,
-    "max_rarity": 10.0
+    "max_rarity": 10.0,
+    "max_number": null
    },
    "trained": false,
    "roles": [
@@ -85,12 +86,13 @@
    ]
   },
   {
-   "_comment": "Reference opponent, not a model of ours: Claude Sonnet 5 shown the board with roles and asked for a clue (codenames/spymasters/llm_spymaster.py). Role 'reference' is picked up by no script automatically -- every game it plays costs money, so it is only ever run by name (scripts/pipeline/run_eval_suite.py learned_listener sonnet_spymaster).",
+   "_comment": "Reference opponent, not a model of ours: Claude Sonnet 5 shown the board with roles and asked for a clue (codenames/spymasters/llm_spymaster.py). No cap on the number (max_number null, as in the paper); runs before 2026-11-11 capped it at 4. Role 'reference' is picked up by no script automatically -- every game it plays costs money, so it is only ever run by name (scripts/pipeline/run_eval_suite.py learned_listener sonnet_spymaster).",
    "name": "sonnet_spymaster",
    "type": "llm",
    "params": {
     "model": "claude-sonnet-5",
-    "effort": "medium"
+    "effort": "medium",
+    "max_number": null
    },
    "trained": false,
    "roles": [
