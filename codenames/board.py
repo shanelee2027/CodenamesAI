@@ -39,10 +39,19 @@ needed to catch "led"/"lead" it also forbade "able"/Marble,
 "after"/Water, "agree"/Green and "am"/Arm -- coincidental letter overlap,
 not shared roots -- taking 7.0% of the pool with it.
 
-Neither rule catches irregular forms (mouse/mice, go/went, lead/led). A
-full lemmatizer would, at the cost of a new dependency and much less
-predictable behavior for a rule where false negatives silently inflate
-every downstream score. Predictable and testable beats broad coverage.
+**Irregular forms.** Neither rule above reaches irregular forms
+(mouse/mice, knife/knives, draw/drew, lead/led). They used to be left
+uncaught, on the grounds that a full lemmatizer adds a dependency and makes
+the rule unpredictable. But on boards of the 800 online words 1.6% of the
+Gaussian spymaster's clues were such forms, and the guesser took the board
+word every time (docs/log.md, 2026-11-11). So irregular forms are mapped to
+their base forms through a fixed table, WordNet's exception lists
+(codenames/assets/irregular_forms.tsv, built by
+scripts/data/build_irregular_forms.py). The table is finite and checked in,
+nothing is lemmatized at game time, and the base forms only join the
+equality and shared-prefix comparisons, not the substring one, since a
+short base ("went" -> "go") would otherwise fall inside unrelated words
+("Goat").
 """
 
 from __future__ import annotations
@@ -51,11 +60,13 @@ import random
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 
 ASSET_WORDLIST_PATH = Path(__file__).parent / "assets" / "board_words.txt"
 ASSET_HOLDOUT_WORDLIST_PATH = Path(__file__).parent / "assets" / "board_words_holdout.txt"
+IRREGULAR_FORMS_PATH = Path(__file__).parent / "assets" / "irregular_forms.tsv"
 # The online game's 800 words (codenames.game's two packs). Gitignored like
 # the rest of data/: Czech Games Edition's content, and the repo is public.
 ONLINE_WORDLIST_PATH = Path(__file__).resolve().parents[1] / "data" / "word_packs" / "codenames_online.txt"
@@ -358,7 +369,25 @@ def _stems(word: str) -> set[str]:
             # before: "centres" only reaches "centre" once the plural is
             # gone, and only then can it fold to "center".
             stems |= found | {_spelling_normalized(s) for s in found}
+    # Irregular forms join as whole base words, compared like stems (by
+    # equality and shared prefix, never substring): "knives" -> "knife",
+    # "drew" -> "draw", which "Drawing" reaches by stripping "-ing".
+    irregular = _irregular_bases()
+    for v in variants:
+        stems.update(irregular.get(v, ()))
     return {s for s in stems if s}
+
+
+@lru_cache(maxsize=1)
+def _irregular_bases() -> dict[str, tuple[str, ...]]:
+    """Irregular form -> its base forms ("knives" -> ("knife",)), from
+    WordNet's exception lists; see the module docstring."""
+    table: dict[str, tuple[str, ...]] = {}
+    for line in IRREGULAR_FORMS_PATH.read_text().splitlines():
+        if line and not line.startswith("#"):
+            form, bases = line.split("\t")
+            table[form] = tuple(bases.split(","))
+    return table
 
 
 def _shares_root(clue_variants: set[str], board_variants: set[str]) -> bool:

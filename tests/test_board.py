@@ -353,8 +353,23 @@ class TestLegalityDerivationalForms:
         assert is_legal_clue("amazing", ["Amazon"])     # "amaz"
         assert not is_legal_clue("charging", ["Charge"])  # "charg"
 
-    def test_known_gap_irregular_forms(self):
-        """Irregular morphology is out of scope: no dependency-free rule
-        sees "led" as a form of "lead". Documented so the gap is a choice
-        rather than a surprise."""
-        assert is_legal_clue("led", ["Lead"])
+    @pytest.mark.parametrize(
+        "clue,word",
+        [
+            ("led", "Lead"),
+            ("knives", "Knife"),
+            ("knife", "Knives"),
+            ("mice", "Mouse"),
+            ("drew", "Drawing"),  # drew -> draw, which "Drawing" reaches by stripping -ing
+            ("flown", "Fly"),
+            ("struck", "Strike"),
+        ],
+    )
+    def test_irregular_forms_are_illegal(self, clue, word):
+        """Caught through WordNet's exception lists (assets/irregular_forms.tsv)."""
+        assert not is_legal_clue(clue, [word])
+
+    def test_irregular_base_is_not_a_substring_match(self):
+        """"went" -> "go" must not make every board word containing "go" illegal."""
+        assert is_legal_clue("went", ["Goat"])
+        assert is_legal_clue("went", ["Ago"])
