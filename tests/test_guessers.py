@@ -582,6 +582,15 @@ class TestOpenAICompatGuesserStrictness:
         assert "frequency_penalty" not in client.calls[0]
         assert client.calls[1]["frequency_penalty"] > 0
 
+    def test_temperature_is_added_from_the_third_attempt(self):
+        """The host's default is near-deterministic, so retries need sampling
+        to give a different answer; the first two calls stay as before."""
+        bad = _FakeOpenAIChoice('["vehicle", "vehicle"]')
+        g, client = self._guesser([bad, bad, _FakeOpenAIChoice(self.RANKING)])
+        g.rank_candidates("vehicle", self.WORDS, None, number=2)
+        assert "temperature" not in client.calls[0] and "temperature" not in client.calls[1]
+        assert client.calls[2]["temperature"] > 0
+
     def test_budget_doubles_once_and_then_stops_growing(self):
         """Doubling guards the truncation case, but growing it every attempt
         just buys a longer degenerate response."""

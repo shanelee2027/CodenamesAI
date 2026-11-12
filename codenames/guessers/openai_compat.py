@@ -82,6 +82,12 @@ ATTEMPTS = 12
 # same request is re-sent, so no answer can change.
 BUSY_WAITS = (15, 30, 60, 120, 240)
 RETRY_FREQUENCY_PENALTY = 1.0
+# From the third attempt on, retries also sample at this temperature (unless
+# the guesser already sets its own). The host's default is near-deterministic,
+# so attempts 2-12 on the same prompt were mostly the same answer: one
+# gpt-oss prompt (clue 'pollution', 22 words) looped on "Dust" through three
+# passes of 12 attempts each (docs/log.md, 2026-11-11).
+RETRY_TEMPERATURE = 1.0
 
 PROVIDERS = {
     "deepinfra": ("https://api.deepinfra.com/v1/openai", "DEEPINFRA_API_KEY"),
@@ -217,6 +223,10 @@ class OpenAICompatGuesser(Guesser):
         both attempts failing discards ~20% of boards, which is what an
         11-setting sweep actually saw.
 
+        (Not quite: the host's default is near-deterministic, see __init__, so
+        repeated attempts mostly return the same text. Hence RETRY_TEMPERATURE
+        from the third attempt on.)
+
         Hence ATTEMPTS, not a cleverer single call. `frequency_penalty` from
         the second attempt on, because a repetition loop is what it exists to
         break and it measured 4/4 against the default's 3/4 (small samples --
@@ -250,6 +260,8 @@ class OpenAICompatGuesser(Guesser):
                 request["temperature"] = self.temperature
             if attempt > 1:
                 request["frequency_penalty"] = RETRY_FREQUENCY_PENALTY
+            if attempt > 2 and self.temperature is None:
+                request["temperature"] = RETRY_TEMPERATURE
             choice = self._create(request).choices[0]
             text = choice.message.content or ""
             named = self._named_by_model(text, candidate_words)
