@@ -28,6 +28,24 @@
    ]
   },
   {
+   "_comment": "Thesis Section 4: the Gaussian model scored by the probability of winning, W(c, k), with V(a, b) estimated by policy iteration in self-play against a simulated Gaussian guesser at the fitted sigma 2.02 (scripts/pipeline/gaussian_policy_iteration.py). value_path is the latest round's V. docs/versions/gaussian_win_value.md.",
+   "name": "gaussian_win_value",
+   "type": "gaussian_win_value",
+   "params": {
+    "space": "numberbatch",
+    "sigma": 2.02,
+    "max_rarity": 10.0,
+    "max_number": null,
+    "prefilter": 1000,
+    "clue_stats_stem": "clue_stats_online",
+    "value_path": "cache/policy_iteration/V_round0.npz"
+   },
+   "trained": true,
+   "roles": [
+    "exploration"
+   ]
+  },
+  {
    "_comment": "Clue search against the distilled listener (cache/listener_gbt.txt) scored by codenames/pl_reward.py, derived in docs/clue-selection-learned.tex. Two-stage: expected_words shortlists the clue pool with its Gaussian model (extract() is ~750us/clue, so scoring all 11,145 would be ~8.4s per turn), then the listener rescores the top `shortlist`. `sigma` tunes ONLY that shortlisting pass and has no effect on the final ranking -- it is set to 1.5 rather than the baseline's 2.5 because the sigma ladder found 1.5 the better value and the first stage's job is recall, not order. The listener is fitted to gpt-oss-120b, so evaluating against Sonnet is a transfer test, not a self-evaluation.",
    "name": "learned_listener",
    "type": "learned_listener",

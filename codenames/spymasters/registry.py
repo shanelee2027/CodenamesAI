@@ -62,6 +62,7 @@ from codenames.spymasters.within_turn_listener import WithinTurnListenerSpymaste
 from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
+from codenames.spymasters.gaussian_win_value import GaussianWinValueSpymaster
 from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaster
 from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import LearnedListenerSpymaster
@@ -74,6 +75,7 @@ DEFAULT_SPYMASTER_CONFIG = Path(__file__).parent.parent.parent / "configs" / "sp
 SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "centroid": CentroidSpymaster,
     "expected_words": ExpectedWordsSpymaster,
+    "gaussian_win_value": GaussianWinValueSpymaster,
     "learned_listener": LearnedListenerSpymaster,
     "llm": LLMSpymaster,
     "association_listener": AssociationListenerSpymaster,

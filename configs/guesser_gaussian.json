@@ -1,12 +1,32 @@
 {
-  "_comment": "The naive Gaussian model's guesser made literal: Numberbatch z over the online 800 words (clue_stats_online) plus N(0, sigma^2) noise, fixed per (clue, word). Not a pool for training; for checking the Gaussian spymaster in a world where its model is exactly true (docs/log.md, 2026-11-10). Use with --guesser-pool-config configs/guesser_gaussian.json --guesser gaussian_numberbatch_s2.",
+  "_comment": "The naive Gaussian model's guesser made literal: Numberbatch z over the online 800 words (clue_stats_online) plus N(0, sigma^2) noise, fixed per (clue, word). Not a pool for training; for checking the Gaussian spymaster in a world where its model is exactly true (docs/log.md, 2026-11-10). Use with --guesser-pool-config configs/guesser_gaussian.json --guesser gaussian_numberbatch_s2. gaussian_numberbatch_s2.02 is the fitted sigma (thesis 4.3), the guesser of the policy iteration in Section 4 (scripts/pipeline/gaussian_policy_iteration.py).",
   "guessers": [
     {
       "name": "gaussian_numberbatch_s2",
       "type": "noisy",
       "params": {
-        "base": { "type": "single_space", "params": { "space": "numberbatch", "clue_stats_stem": "clue_stats_online" } },
+        "base": {
+          "type": "single_space",
+          "params": {
+            "space": "numberbatch",
+            "clue_stats_stem": "clue_stats_online"
+          }
+        },
         "noise_std": 2.0
+      }
+    },
+    {
+      "name": "gaussian_numberbatch_s2.02",
+      "type": "noisy",
+      "params": {
+        "base": {
+          "type": "single_space",
+          "params": {
+            "space": "numberbatch",
+            "clue_stats_stem": "clue_stats_online"
+          }
+        },
+        "noise_std": 2.02
       }
     }
   ]

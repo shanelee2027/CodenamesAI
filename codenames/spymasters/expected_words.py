@@ -281,6 +281,14 @@ class ExpectedWordsSpymaster(Spymaster):
             keep.update(np.argpartition(-margin, per)[:per].tolist())
         return np.array(sorted(keep), dtype=np.int64)
 
+    def _score_matrix(self, a: np.ndarray, b: np.ndarray, costs: np.ndarray,
+                      non_own_roles: list[Role], n_opponent: int) -> np.ndarray:
+        """`(n_cand, K_max)`: the score of each candidate at each k. Here the
+        expected reward, gain minus penalty; a subclass may score the same
+        turn model another way (codenames/spymasters/gaussian_win_value.py)."""
+        gain, penalty = gain_and_penalty(a, b, costs, self.sigma, max_number=self.max_number)
+        return gain - penalty
+
     def _score_all_clues(
         self, board: Board | OpponentBoardView, sims: SimilarityTensor
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -336,8 +344,7 @@ class ExpectedWordsSpymaster(Spymaster):
         a = -np.sort(-z_own, axis=1)  # (n_cand, n_own), descending
         b = z_non_own  # (n_cand, n_non_own)
 
-        gain, penalty = gain_and_penalty(a, b, costs, self.sigma, max_number=self.max_number)
-        score = gain - penalty  # (n_cand, K_max)
+        score = self._score_matrix(a, b, costs, non_own_roles, len(opponent))  # (n_cand, K_max)
 
         if b.shape[1] > 0:
             max_b = np.max(b, axis=1)  # (n_cand,)

@@ -184,6 +184,28 @@ def monotone_with_margin(V: np.ndarray, weight: np.ndarray, prior: np.ndarray, m
     return monotone(V - floor, weight) + floor
 
 
+def fill_empty(V: np.ndarray, n: np.ndarray) -> np.ndarray:
+    """Cells with no games (n = 0) of a monotone table V (rows a, columns b,
+    index 0 the boundary), set to the middle of the interval monotonicity
+    allows them: at least every cell with more own words left and fewer of
+    the other's, at most every cell with fewer own words left and more of the
+    other's. Filled one at a time, so later cells see earlier fills."""
+    V = V.copy()
+    known = n > 0
+    known[0, :] = known[:, 0] = True          # V(0, b) = 1 and V(a, 0) = 0
+    for a in range(1, V.shape[0]):
+        for b in range(1, V.shape[1]):
+            if known[a, b]:
+                continue
+            below = V[a:, :b + 1][known[a:, :b + 1]]
+            above = V[:a + 1, b:][known[:a + 1, b:]]
+            lo = below.max() if below.size else 0.0
+            hi = above.min() if above.size else 1.0
+            V[a, b] = 0.5 * (lo + hi)
+            known[a, b] = True
+    return V
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--db", type=Path, default=PROJECT_ROOT / "cache" / "llm_store.db")
@@ -197,17 +219,32 @@ def main() -> None:
                     help="shrink toward this V table instead of a logistic fit")
     ap.add_argument("--max-game-id", type=int, default=None,
                     help="only games up to this game_records id (15907 = the games behind cache/win_value.npz)")
+    ap.add_argument("--isotonic", action="store_true",
+                    help="pure weighted isotonic regression: no prior (--prior is ignored), and a cell with "
+                         "no games takes the middle of the interval monotonicity allows (fill_empty)")
     ap.add_argument("--margin", type=float, default=0.0,
                     help="every step of V at least this times the prior's step (0: plain projection, with ties)")
     args = ap.parse_args()
 
     n, w, games = tally(args.db, tuple(args.label) if args.label else LABEL_PREFIXES,
                         include_suite=not args.no_suite, mover=args.mover, max_game_id=args.max_game_id)
-    prior = np.load(args.prior_table)["V"] if args.prior_table else logistic_fit(n, w)
-    prior = np.nan_to_num(prior)
-    V = (w + args.prior * prior) / (n + args.prior)
-    raw_inner = V[1:, 1:].copy()
-    V[1:, 1:] = monotone_with_margin(raw_inner, n[1:, 1:] + args.prior, prior[1:, 1:], args.margin)
+    if args.isotonic:
+        # No prior at all: the only assumption is monotonicity. Empty cells
+        # get a stand-in value at (almost) no weight for the projection, then
+        # the middle of their allowed interval.
+        prior = np.zeros_like(n)
+        V = np.where(n > 0, w / np.maximum(n, 1), 0.5)
+        raw_inner = V[1:, 1:].copy()
+        V[1:, 1:] = monotone(raw_inner, np.maximum(n[1:, 1:], 1e-9))
+        V[0, :], V[:, 0] = 1.0, 0.0
+        V = fill_empty(V, n)
+        print(f"empty cells filled: {int((n[1:, 1:] == 0).sum())} of {n[1:, 1:].size}")
+    else:
+        prior = np.load(args.prior_table)["V"] if args.prior_table else logistic_fit(n, w)
+        prior = np.nan_to_num(prior)
+        V = (w + args.prior * prior) / (n + args.prior)
+        raw_inner = V[1:, 1:].copy()
+        V[1:, 1:] = monotone_with_margin(raw_inner, n[1:, 1:] + args.prior, prior[1:, 1:], args.margin)
     moved = np.abs(V[1:, 1:] - raw_inner)
     print(f"monotone projection: largest change {moved.max():.3f} at (a, b) = "
           f"{tuple(int(i) + 1 for i in np.unravel_index(moved.argmax(), moved.shape))}; "
