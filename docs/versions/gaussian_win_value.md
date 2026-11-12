@@ -40,7 +40,7 @@ V depends on how both sides play. `scripts/pipeline/gaussian_policy_iteration.py
 - V is pure weighted isotonic regression (non-increasing in a, non-decreasing
   in b), with no prior: `build_win_value.py --isotonic`. A cell with no games
   takes the middle of the interval monotonicity allows. With 5,000 games per
-  round, 3 to 7 of the 81 cells were empty, all in corners.
+  round, 3 to 7 of the 81 cells were empty, all at the edge of the table.
 
 Round-to-round change in V (game-weighted mean absolute difference): 0.080,
 0.018, 0.019, 0.020. Two bootstrap resamples of one round's games differ by
