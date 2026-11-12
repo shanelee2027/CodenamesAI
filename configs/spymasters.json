@@ -38,7 +38,7 @@
     "max_number": null,
     "prefilter": 1000,
     "clue_stats_stem": "clue_stats_online",
-    "value_path": "cache/policy_iteration/V_round0.npz"
+    "value_path": "cache/policy_iteration/V_round4.npz"
    },
    "trained": true,
    "roles": [
