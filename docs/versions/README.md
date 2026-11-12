@@ -6,6 +6,8 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
 - [`learned_listener`](learned_listener.md): the incumbent.
 - [`expected_words`](expected_words.md): the Gaussian baseline, and the
   incumbent's first stage.
+- [`gaussian_win_value`](gaussian_win_value.md): the Gaussian model scored by
+  the probability of winning, with V from policy iteration (thesis Section 4).
 - [`association_listener`](association_listener.md): the incumbent retrained
   with free-association counts, plus a pass priced on the absolute level they
   give.
