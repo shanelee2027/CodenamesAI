@@ -8,7 +8,11 @@ cost of a fixed board pool. Here there is no such constraint: this serves the
 pages and calls `LearnedListenerSpymaster` directly, so every board is freshly
 generated and the clue is the same one the arena would see.
 
-Three pages:
+Three pages. The game page's menu has a "Paper models only" filter (on by
+default): it shows only the entries tagged "paper" in SPYMASTERS, the models
+the thesis reports (built from configs/spymasters.json via the registry).
+
+The pages:
 
     /       a full game. Pick the spymaster from a menu (SPYMASTERS below);
             the choice applies from the next clue. When the game ends, a clue
@@ -115,6 +119,7 @@ from codenames.spymasters.floored_overpromise_listener import FlooredOverpromise
 from codenames.spymasters.online_vocab_listener import OnlineVocabListenerSpymaster
 from codenames.spymasters.leftover_plus_one_listener import LeftoverPlusOneListenerSpymaster
 from codenames.spymasters.win_prob_listener import WinProbListenerSpymaster
+from codenames.spymasters.registry import spymaster_spec
 
 PAGES = {"/": "index.html", "/index.html": "index.html", "/eval": "eval.html",
          "/compare": "compare.html"}
@@ -368,6 +373,27 @@ def _online_twin(spec: dict) -> dict:
 
 SPYMASTERS.update({f"{k}_online": _online_twin(SPYMASTERS[k]) for k in ONLINE_TWINS})
 
+# The models in the thesis, built from their configs/spymasters.json entries
+# (`registry`) with the params the paper's runs used (`overrides`). "paper"
+# marks them for the page's "Paper models only" filter. These have no
+# listener: explain() shows the own words the clue is closest to in
+# Numberbatch instead.
+PAPER_PARAMS = {"clue_stats_stem": "clue_stats_online", "max_number": None, "prefilter": 1000}
+SPYMASTERS.update({
+    "paper_expected_words_1.5": {
+        "label": "Paper: expected reward, sigma 1.5 (Section 3)", "paper": True,
+        "registry": "expected_words", "overrides": {**PAPER_PARAMS, "sigma": 1.5},
+        "model": "clue_stats_online.npz", "score_is": "net_words",
+        "about": "The Gaussian spymaster with sigma = 1.5, the winner of the round robin: the clue and number "
+                 "with the highest expected reward (+1, -0.2, -1, -10). The value shown is that reward."},
+    "paper_policy_iteration_2.02": {
+        "label": "Paper: policy iteration, sigma 2.02 (Section 4)", "paper": True,
+        "registry": "gaussian_win_value", "overrides": {**PAPER_PARAMS, "sigma": 2.02},
+        "model": "clue_stats_online.npz", "needs": ["policy_iteration/V_round4.npz"], "score_is": "win",
+        "about": "The Gaussian spymaster with the fitted sigma = 2.02, choosing the clue and number with the "
+                 "highest probability of winning W(c, k) under V_4 from policy iteration. The value shown is W."},
+})
+
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
 # single user never needs two clues at once. ~0.7-1.1 s per clue.
 _LOCK = threading.Lock()
@@ -409,6 +435,12 @@ class Engine:
             raise ValueError(f"unknown or unavailable spymaster {key!r}; have {self.available()}")
         if key not in self._spymasters:
             spec = SPYMASTERS[key]
+            if spec.get("registry"):
+                cls, params = spymaster_spec(spec["registry"], **spec["overrides"])
+                if "value_path" in params and not Path(params["value_path"]).is_absolute():
+                    params["value_path"] = PROJECT_ROOT / params["value_path"]
+                self._spymasters[key] = cls(**params, cache_dir=self.cache_dir)
+                return self._spymasters[key]
             if spec.get("policy"):
                 self._spymasters[key] = spec["cls"](model_path=self.cache_dir / spec["model"],
                                                     cache_dir=self.cache_dir)
@@ -453,6 +485,8 @@ class Engine:
         distribution over the board -- plus the pass, when it has one. From
         `LearnedListenerSpymaster.listen`, i.e. the numbers the clue was
         chosen on."""
+        if SPYMASTERS[key].get("registry"):
+            return self._explain_gaussian(board, key, clue, number)
         with _LOCK:
             sm = self.spymaster(key)
             # A trained policy has no listener to explain its clue with.
@@ -503,6 +537,29 @@ class Engine:
         return {"targets": [entries[i][0] for i in own[:number]], "risks": risks, "order": out,
                 "value": round(value, 3), "value_kind": kind,
                 **({"points_at": round(points, 2)} if points is not None else {})}
+
+    def _explain_gaussian(self, board, key: str, clue: str, number: int) -> dict:
+        """`explain` for the paper's Gaussian spymasters: the `number` own words
+        with the highest standardized similarity to the clue (what the clue is
+        meant for), the non-own words nearest it, and the search's value."""
+        idx = self.sims.clue_index.get(clue.lower())
+        value = self._scores.get((key, board.seed, frozenset(board.revealed), clue, int(number)))
+        kind = SPYMASTERS[key]["score_is"]
+        if idx is None:
+            return {"targets": [], "risks": [], "order": [], "value": value, "value_kind": kind}
+        with _LOCK:
+            sm = self.spymaster(key)
+            words, roles = [], []
+            for role in (Role.OWN, Role.OPPONENT, Role.NEUTRAL, Role.ASSASSIN):
+                got = board.words_by_role(role, unrevealed_only=True)
+                words += got
+                roles += [role] * len(got)
+            z = sm.clue_stats.z_for_board(self.sims, words, sm.space)[idx]
+        order = sorted(range(len(words)), key=lambda i: -z[i])
+        targets = [words[i] for i in order if roles[i] is Role.OWN][:number]
+        risks = [{"word": words[i], "role": ROLE_CODE[roles[i]]} for i in order if roles[i] is not Role.OWN][:self.RISKS]
+        return {"targets": targets, "risks": risks, "order": [],
+                "value": None if value is None else round(value, 3), "value_kind": kind}
 
     def position(self, seed: int, revealed: list[str], turn: str):
         """The board `seed` with `revealed` turned over, as `turn`'s spymaster
@@ -929,7 +986,8 @@ def make_handler(engine: Engine, study: EvalStudy | None, default_key: str,
                 return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
             if path == "/api/spymasters" and not public:
                 return self._json({"default": default_key, "spymasters": [
-                    {"id": k, **{f: SPYMASTERS[k][f] for f in ("label", "about")}}
+                    {"id": k, "paper": bool(SPYMASTERS[k].get("paper")),
+                     **{f: SPYMASTERS[k][f] for f in ("label", "about")}}
                     for k in engine.available()]})
             self._send(404, b"not found", "text/plain")
 

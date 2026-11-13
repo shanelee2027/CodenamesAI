@@ -105,6 +105,7 @@ button.back{margin-top:8px;align-self:flex-start;font:600 12px Inter,sans-serif;
 .picker select{flex:1;min-width:0;font-family:Inter,sans-serif;font-size:13px;font-weight:500;
   padding:7px 8px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
 .picker select:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+.picker .paperonly{display:flex;align-items:center;gap:5px;white-space:nowrap;letter-spacing:0;text-transform:none;font-size:12px;cursor:pointer}
 .about{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;line-height:1.45}
 .banner{border-radius:12px;padding:12px 14px;margin-bottom:12px;font-weight:600;font-size:14px;color:#fff}
 .banner.a{background:var(--blue)} .banner.b{background:var(--red)}
@@ -122,6 +123,7 @@ __NAV__
 <div class="picker">
   <label for="sm">Spymaster</label>
   <select id="sm" aria-describedby="smabout"></select>
+  <label class="paperonly"><input type="checkbox" id="paperonly"> Paper models only</label>
 </div>
 <div class="about" id="smabout"></div>
 <div id="banner"></div>
@@ -149,7 +151,7 @@ __NAV__
 
 <script>
 let B=null, revealed=[], turn='a', clue=null, left=0, over=null, busy=false;
-let SM={}, smKey=null;
+let SM={}, smKey=null, ALL=[], paperOnly=true;
 // Every clue of this game, with what the spymaster meant by it: the words
 // it was meant for and the near misses (the words not its own that its
 // listener rated highest), as on /compare. Each is fetched from /api/explain
@@ -324,17 +326,34 @@ $('sm').onchange = e => {
   if(B && !over) say(`Spymaster set to <b>${SM[smKey].label}</b> — from the next clue.`);
 };
 
+// The menu lists every model, or with "Paper models only" just the ones in
+// the thesis. A selection the filter hides moves to the first model shown.
+function fillMenu(){
+  const sel=$('sm'), list=ALL.filter(m=>!paperOnly || m.paper);
+  sel.innerHTML='';
+  list.forEach(m=>{ const o=document.createElement('option'); o.value=m.id; o.textContent=m.label; sel.appendChild(o); });
+  if(!list.some(m=>m.id===smKey) && list.length) smKey=list[0].id;
+  sel.value=smKey; showAbout();
+}
+$('paperonly').onchange = e => {
+  paperOnly = e.target.checked;
+  try { localStorage.setItem('paperOnly', paperOnly ? '1' : '0'); } catch(_) {}
+  const before=smKey; fillMenu();
+  if(smKey!==before && B && !over) say(`Spymaster set to <b>${SM[smKey].label}</b> — from the next clue.`);
+};
+
 // ?seed=12345 replays a specific board; ?spymaster=profile_temperature picks a model.
 const qs=new URLSearchParams(location.search);
 fetch('/api/spymasters').then(r=>r.json()).then(d=>{
-  const sel=$('sm');
-  d.spymasters.forEach(m=>{
-    SM[m.id]=m;
-    const o=document.createElement('option'); o.value=m.id; o.textContent=m.label; sel.appendChild(o);
-  });
+  ALL=d.spymasters; ALL.forEach(m=>{ SM[m.id]=m; });
+  try { paperOnly = localStorage.getItem('paperOnly') !== '0'; } catch(_) {}
+  if(!ALL.some(m=>m.paper)) paperOnly=false;
+  // A model asked for in the URL is shown even if the filter would hide it.
+  if(qs.get('spymaster') && SM[qs.get('spymaster')] && !SM[qs.get('spymaster')].paper) paperOnly=false;
+  $('paperonly').checked=paperOnly;
   let saved=null; try { saved=localStorage.getItem('spymaster'); } catch(_) {}
-  smKey = [qs.get('spymaster'), saved, d.default].find(k=>k && SM[k]);
-  sel.value=smKey; showAbout();
+  smKey = [qs.get('spymaster'), saved, d.default].find(k=>k && SM[k] && (!paperOnly || SM[k].paper)) || null;
+  fillMenu();
   start(qs.has('seed') ? parseInt(qs.get('seed'),10) : null);
 }).catch(()=>fail('Could not reach the server.'));
 </script>
