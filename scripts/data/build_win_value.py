@@ -222,13 +222,21 @@ def main() -> None:
     ap.add_argument("--isotonic", action="store_true",
                     help="pure weighted isotonic regression: no prior (--prior is ignored), and a cell with "
                          "no games takes the middle of the interval monotonicity allows (fill_empty)")
+    ap.add_argument("--logistic", action="store_true",
+                    help="V is the logistic fit itself, with no per-cell data on top and no projection "
+                         "(policy iteration: isotonic V follows its noise, which flips near-tied choices of k)")
     ap.add_argument("--margin", type=float, default=0.0,
                     help="every step of V at least this times the prior's step (0: plain projection, with ties)")
     args = ap.parse_args()
 
     n, w, games = tally(args.db, tuple(args.label) if args.label else LABEL_PREFIXES,
                         include_suite=not args.no_suite, mover=args.mover, max_game_id=args.max_game_id)
-    if args.isotonic:
+    if args.logistic:
+        # Smooth by construction; any monotonicity violation is reported below.
+        V = logistic_fit(n, w)
+        prior = V.copy()
+        raw_inner = np.where(n > 0, w / np.maximum(n, 1), V)[1:, 1:]
+    elif args.isotonic:
         # No prior at all: the only assumption is monotonicity. Empty cells
         # get a stand-in value at (almost) no weight for the projection, then
         # the middle of their allowed interval.
@@ -246,7 +254,7 @@ def main() -> None:
         raw_inner = V[1:, 1:].copy()
         V[1:, 1:] = monotone_with_margin(raw_inner, n[1:, 1:] + args.prior, prior[1:, 1:], args.margin)
     moved = np.abs(V[1:, 1:] - raw_inner)
-    print(f"monotone projection: largest change {moved.max():.3f} at (a, b) = "
+    print(f"{'logistic fit minus raw rates' if args.logistic else 'monotone projection'}: largest change {moved.max():.3f} at (a, b) = "
           f"{tuple(int(i) + 1 for i in np.unravel_index(moved.argmax(), moved.shape))}; "
           f"game-weighted mean change {(moved * n[1:, 1:]).sum() / n.sum():.4f}")
     V[0, :] = 1.0
