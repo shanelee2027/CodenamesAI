@@ -7,8 +7,11 @@ Stops when V changes by less than `--tol` (game-weighted mean absolute
 change over cells) or after `--rounds`.
 
 Every game uses the simulated guesser that follows the Gaussian model
-exactly at the same sigma (configs/guesser_gaussian.json), so the games cost
-nothing. They are recorded in their own database (`--db`, default
+exactly at the fitted sigma 2.02 (configs/guesser_gaussian.json), so the games
+cost nothing. `--sigma` sets the spymaster's sigma only (default 2.02, the
+same); the guesser stays at 2.02, the best model of the real guesser, so a
+spymaster at another sigma gets the V of its own play against that guesser.
+Write such a run to its own `--out-dir`. They are recorded in their own database (`--db`, default
 cache/selfplay_games.db), not cache/llm_store.db, which holds the paid
 results. V is pure weighted isotonic regression
 (scripts/data/build_win_value.py --isotonic). Every round plays the same
@@ -35,13 +38,13 @@ GUESSER = "gaussian_numberbatch_s2.02"
 # Sigma goes to each side separately: the arena takes the same spymaster on
 # both sides only with side-scoped params (its "null control").
 COMMON = ["--param", "{name}=clue_stats_stem=clue_stats_online", "--param", "{name}=max_number=None",
-          "--param", "{name}=prefilter=1000", "--param-a", f"sigma={SIGMA}", "--param-b", f"sigma={SIGMA}"]
+          "--param", "{name}=prefilter=1000", "--param-a", "sigma={sigma}", "--param-b", "sigma={sigma}"]
 
 
 def play(name: str, extra: list[str], label: str, args) -> None:
     cmd = [sys.executable, str(ROOT / "scripts" / "pipeline" / "run_two_team_arena.py"),
            "--n-boards", str(args.boards), "--spymaster", name, "--vs", name,
-           *[c.format(name=name) for c in COMMON], *extra,
+           *[c.format(name=name, sigma=args.sigma) for c in COMMON], *extra,
            "--vocab", "online", "--guesser-pool-config", str(ROOT / "configs" / "guesser_gaussian.json"),
            "--guesser", GUESSER, "--max-workers", str(args.workers),
            "--record-games", str(args.db), "--run-label", label]
@@ -68,21 +71,24 @@ def main() -> None:
     ap.add_argument("--tol", type=float, default=0.01, help="stop when V's game-weighted mean change is below this")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--db", type=Path, default=ROOT / "cache" / "selfplay_games.db")
+    ap.add_argument("--sigma", type=float, default=SIGMA, help="the spymaster's sigma; the guesser stays at 2.02")
+    ap.add_argument("--out-dir", type=Path, default=OUT_DIR, help="where V_round{t}.npz go")
     ap.add_argument("--run", default=time.strftime("%Y%m%d-%H%M"), help="tag in every game label of this run")
     args = ap.parse_args()
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     label = f"pi-{args.run}-r0"
-    print(f"round 0: expected_words (sigma {SIGMA}) self-play, {args.boards} boards", flush=True)
+    print(f"round 0: expected_words (sigma {args.sigma}) self-play, {args.boards} boards", flush=True)
     play("expected_words", [], label, args)
-    prev = build_v(label, OUT_DIR / "V_round0.npz", args)
+    prev = build_v(label, out_dir / "V_round0.npz", args)
 
     for t in range(1, args.rounds + 1):
         label = f"pi-{args.run}-r{t}"
-        value = OUT_DIR / f"V_round{t - 1}.npz"
+        value = out_dir / f"V_round{t - 1}.npz"
         print(f"round {t}: gaussian_win_value with {value.name} self-play", flush=True)
         play("gaussian_win_value", ["--param", f"gaussian_win_value=value_path={value}"], label, args)
-        cur = build_v(label, OUT_DIR / f"V_round{t}.npz", args)
+        cur = build_v(label, out_dir / f"V_round{t}.npz", args)
         inner = (slice(1, None), slice(1, None))
         diff = np.abs(cur["V"][inner] - prev["V"][inner])
         weight = cur["n"][inner]
