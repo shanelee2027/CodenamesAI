@@ -8,10 +8,10 @@ change over cells) or after `--rounds`.
 
 Every game uses the simulated guesser that follows the Gaussian model
 exactly at the fitted sigma 2.02 (configs/guesser_gaussian.json), so the games
-cost nothing. `--sigma` sets the spymaster's sigma only (default 2.02, the
-same); the guesser stays at 2.02, the best model of the real guesser, so a
-spymaster at another sigma gets the V of its own play against that guesser.
-Write such a run to its own `--out-dir`. They are recorded in their own database (`--db`, default
+cost nothing. `--sigma` sets the spymaster's sigma and `--guesser` the
+simulated guesser (e.g. gaussian_numberbatch_s2 for sigma 2), separately, so
+a spymaster at one sigma can get the V of its own play against a guesser at
+another. Write such a run to its own `--out-dir`. They are recorded in their own database (`--db`, default
 cache/selfplay_games.db), not cache/llm_store.db, which holds the paid
 results. V is pure weighted isotonic regression
 (scripts/data/build_win_value.py --isotonic). Every round plays the same
@@ -46,7 +46,7 @@ def play(name: str, extra: list[str], label: str, args) -> None:
            "--n-boards", str(args.boards), "--spymaster", name, "--vs", name,
            *[c.format(name=name, sigma=args.sigma) for c in COMMON], *extra,
            "--vocab", "online", "--guesser-pool-config", str(ROOT / "configs" / "guesser_gaussian.json"),
-           "--guesser", GUESSER, "--max-workers", str(args.workers),
+           "--guesser", args.guesser, "--max-workers", str(args.workers),
            "--record-games", str(args.db), "--run-label", label]
     t = time.time()
     out = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
@@ -71,7 +71,8 @@ def main() -> None:
     ap.add_argument("--tol", type=float, default=0.01, help="stop when V's game-weighted mean change is below this")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--db", type=Path, default=ROOT / "cache" / "selfplay_games.db")
-    ap.add_argument("--sigma", type=float, default=SIGMA, help="the spymaster's sigma; the guesser stays at 2.02")
+    ap.add_argument("--sigma", type=float, default=SIGMA, help="the spymaster's sigma")
+    ap.add_argument("--guesser", default=GUESSER, help="simulated guesser in configs/guesser_gaussian.json")
     ap.add_argument("--out-dir", type=Path, default=OUT_DIR, help="where V_round{t}.npz go")
     ap.add_argument("--run", default=time.strftime("%Y%m%d-%H%M"), help="tag in every game label of this run")
     args = ap.parse_args()
