@@ -8224,3 +8224,23 @@ How: `board.py::load_three_way_split`, a uniform random partition of the 800 int
 `scripts/pipeline/train_fresh_split_listener.py` fits the variants on the new training data only (a position counts only if it is exactly what the generator planned for its board, so an old position whose few remaining words happen to sit on a new board is never picked up) and scores them on the tuning words: `full` (73 columns: all but sense_* and med_*), `no_assoc` (every column built from gpt-oss's association lists: assoc_*, b_assoc_*, c_rev_*, hub_assoc), `no_pmi`, `no_text`, `no_extras`. The user's question for this step: are the association features, the GPT-2 PMI and the text-embedding block worth keeping, given that the associations need prompting. `fit_gaussian_sigma.py --vocab split_train` refits the Gaussian's sigma on the 400 training words, so the Gaussian baseline sees no test word either.
 
 Two registry tests were stale since gaussian_win_value was added (missing from the entry list; marked trained because it needs V); fixed.
+
+## 2026-11-15 — fresh_split_listener: feature blocks and the clue number, on the tuning words
+
+Data in: 29,659 training positions (12 more resolved to a training board by their word set but were not planned there, and were dropped), 2,959 tuning, the test set untouched. All three parts bought at once, plus a second collector on the back half of the training plan: about 17 rankings a second, no errors, 40 minutes. November usage $12.28 at the end (it lags; about $2.3 for 34.7k rankings, under the $3.54 estimate).
+
+Sigma refitted on the 400 training words (`fit_gaussian_sigma.py --vocab split_train`): 2.00 [2.00, 2.00] on the 0.1 grid, as before (2.02 on the old 550). Caveat for the games: the paper's reward baseline sigma 1.5 won a round robin played on boards from all 800 words, so that choice saw test words.
+
+Six variants on identical rows (25,211 positions to fit, 4,448 for early stopping, split by board; one seed), R² on the 150 tuning words, difference from `full` with a 95% bootstrap over boards (2,959 boards, 7,308 choice events):
+
+| variant | R² | pick 1 | 2+ | minus full |
+|---|---|---|---|---|
+| full (73) | 0.3488 | 0.5757 | 0.1848 | |
+| no_assoc (64) | 0.3343 | 0.5612 | 0.1703 | −0.0145 [−0.0175, −0.0114] |
+| no_pmi (72) | 0.3435 | 0.5746 | 0.1765 | −0.0052 [−0.0073, −0.0032] (pick 1 −0.0010, 2+ −0.0083) |
+| no_text (70) | 0.3445 | 0.5717 | 0.1804 | −0.0042 [−0.0068, −0.0017] |
+| no_extras (60) | 0.3254 | 0.5551 | 0.1594 | −0.0233 [−0.0280, −0.0186] |
+| no_k (72) | 0.3489 | 0.5777 | 0.1835 | +0.0001 [−0.0008, +0.0011] (pick 1 +0.0021, 2+ −0.0012) |
+| full, k set to 4 | 0.3499 | 0.5768 | 0.1858 | +0.0011 [+0.0005, +0.0018] |
+
+Expected: the association block marginal (the user's question: is it worth the prompting), and the number to matter since gpt-oss is shown it. Found: every block earns its place, the associations by far the most (−0.0145, ten times the seed noise), PMI mostly at picks 2+, text at both. The clue number carries nothing the model can use: dropping it ties, and telling `full` the wrong number (4 everywhere, the spymaster's shortcut in play) scores slightly better than the true one. So within 1-4 the number does not measurably change gpt-oss's pick order, and positions with larger numbers are not worth buying for the listener. With k out, one prediction per clue is exact rather than a shortcut.
