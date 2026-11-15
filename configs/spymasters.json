@@ -401,7 +401,7 @@
    ]
   },
   {
-   "_comment": "The thesis's GBT spymaster: learned_listener's expected-reward search with a listener trained from scratch on the three-way split of the 800 online words (400 train / 150 tune / 250 test), 72 features chosen on the tuning words, no clue-number feature, no cap on the number. cache/listener_gbt_fresh_split.txt (scripts/pipeline/train_fresh_split_listener.py). docs/versions/fresh_split_listener.md.",
+   "_comment": "The thesis's GBT spymaster: learned_listener's expected-reward search with a listener trained from scratch on the three-way split of the 800 online words (400 train / 150 tune / 250 test), 72 features chosen on the tuning words, no clue-number feature, trained on gpt-oss rankings made without the number (pick weights 0.6^(j-1)), a temperature per pick with the exact reward over picked sets, no cap on the number. cache/listener_gbt_fresh_split.txt (scripts/pipeline/train_fresh_split_listener.py --prompt plain --variant no_k --decay 0.6). docs/versions/fresh_split_listener.md.",
    "name": "fresh_split_listener",
    "type": "fresh_split_listener",
    "params": {

@@ -8289,3 +8289,22 @@ User's design: show gpt-oss the clue alone (no number), use the first n picks of
 **Code** (no runs yet; the user is using the PC): `load_positions(no_number=True)` reads the NULL-number rankings, with the `k` feature at -1. `train_fresh_split_listener.py --prompt plain` keeps the planned positions, sets the depth to min(own words unrevealed, ceil(0.8 n)) (build_groups also caps at n-1), and drops positions with no own word left; `--decay` sets the pick weight ratio (0.75 before); `--score` reports R² for pick 1, 2-4 and 5+; `--eval-on numbered` scores the no-number boosters on the numbered rankings, which is how games show clues. Numbered boosters keep their file names; plain ones are `listener_gbt_fresh_split_plain_{variant}_d{decay}.txt`.
 
 Plan when the PC is free: prepare the plain sets, fit no_k at decay 0.75 / 0.6 / 0.5, pick by tuning R², fit temperatures per pick on the early-stopping slice, then decide how the spymaster's reward uses them (per-pick temperatures break the exponential-clock exactness of pl_reward).
+
+## 2026-11-15 — The GBT listener moved to the no-number rankings, with a temperature per pick
+
+Same model name (fresh_split_listener): the user is choosing the variant of the one standard GBT. Doc rewritten: docs/versions/fresh_split_listener.md, with the numbered version kept under "History".
+
+**Sets.** 29,541 training positions (161,914 choice events, about 5.5 per position against 2.5 numbered), 2,948 tuning, 1,997 test; 137 positions with no own word left dropped. 1.5 minutes to build.
+
+**Pick weights** (decay 0.5 / 0.6 / 0.75 / 0.9 / 1.0, no_k, 12-16 minutes per fit, 2,606-4,043 trees). Tuning R² on the no-number rankings without temperatures rises with flatter weights (0.1626 -> 0.1816), all of it at picks 2+, pick 1 falling slightly (0.5749 at 0.6, 0.5684 at 1.0). Expected: steep weights to help because late picks are noise. Found: the opposite, until temperatures are fitted; then the five sit within 0.001 (0.1942-0.1953), and on the numbered rankings 0.3519-0.3549. So the decay mostly sets how sharp the trees' scores are, which a temperature per pick absorbs. Chose 0.6: best or tied on both rankings, pick 1 sharpest.
+
+**Temperatures** (scratchpad plain_temps.py; fitted on the early-stopping slice, 24,336 events, picks 7+ shared): 0.94, 1.01, 1.16, 1.30, 1.40, 1.75, 2.39. Tuning R² 0.1676 -> 0.1953; picks 5+ from −0.026 to +0.038 (below zero means worse than uniform: the untempered trees are badly overconfident deep in the ranking). Pick 1 −0.0016: the slice's words are training words, on which the trees are sharper than on new words.
+
+**Prompt mismatch.** The no-number listener scored on the numbered rankings (how games show clues): tuning 0.3515 without temperatures, above the numbered listener's own 0.3489. No cost to training without the number.
+
+**Test R²** (chosen listener, with temperatures; without in brackets): no-number 0.1994 (0.1721), picks 5+ 0.0416 (−0.0228); numbered 0.3426 (0.3386), the same as the numbered listener with its temperatures (0.3426).
+
+**Spymaster.** `fresh_split_listener` now loads the decay-0.6 booster (cache/listener_gbt_fresh_split.txt replaced; the numbered one is still listener_gbt_fresh_split_no_k.txt) and computes the reward with pick_temperature_listener.tempered_gain_and_penalty, exact over subsets of our words picked, since per-pick temperatures break pl_reward's clocks.
+
+**Match** (label `gbt-plain-vs-gauss15-test-p1`, same protocol and boards as `gbt-vs-gauss15-test-p1`, 14 minutes, about $0.20, usage $14.97): **72.3% [69.0, 75.7]** against the Gaussian spymaster at sigma 1.5. Boards won in both seatings 147 against 13. Assassin 5.3% against 9.2%; mean number 1.98 against 2.31; own words per clue 1.65 against 1.46; own% of guesses 86.9 against 75.0. Numbers 1/2/3/4/5 = 28.1/51.4/15.5/4.6/0.5%.
+Expected: the deeper picks and calibrated later picks to make long clues trustworthy, so perhaps more of them. Found: fewer long clues (k >= 5 in 0.5% against 4.3%), mean number down from 2.23 to 1.98: the temperatures flatten picks 3+, so long clues now look riskier, correctly by test R². Against the numbered version on the same boards: +2.0 points [−1.8, +5.8], within noise.
