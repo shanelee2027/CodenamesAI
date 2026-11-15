@@ -84,7 +84,8 @@ class TestRegistry:
                                 "overpromise_listener", "win_prob_overpromise_listener",
                                 "margin_value_overpromise_listener", "floored_overpromise_listener",
                                 "profile_temperature_listener", "online_vocab_listener",
-                                "leftover_plus_one_listener", "gaussian_win_value"}
+                                "leftover_plus_one_listener", "gaussian_win_value",
+                                "fresh_split_listener"}
 
     def test_the_paid_spymaster_is_never_picked_up_by_role(self):
         """Every game sonnet_spymaster plays costs money, so no arena may

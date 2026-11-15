@@ -399,6 +399,20 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "The thesis's GBT spymaster: learned_listener's expected-reward search with a listener trained from scratch on the three-way split of the 800 online words (400 train / 150 tune / 250 test), 72 features chosen on the tuning words, no clue-number feature, no cap on the number. cache/listener_gbt_fresh_split.txt (scripts/pipeline/train_fresh_split_listener.py). docs/versions/fresh_split_listener.md.",
+   "name": "fresh_split_listener",
+   "type": "fresh_split_listener",
+   "params": {
+    "shortlist": 200,
+    "sigma": 1.5,
+    "max_rarity": 10.0
+   },
+   "trained": false,
+   "roles": [
+    "exploration"
+   ]
   }
  ]
 }
