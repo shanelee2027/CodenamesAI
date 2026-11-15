@@ -15,7 +15,9 @@ another. Write such a run to its own `--out-dir`. They are recorded in their own
 cache/selfplay_games.db), not cache/llm_store.db, which holds the paid
 results. V is pure weighted isotonic regression
 (scripts/data/build_win_value.py --isotonic), or with `--fit logistic` the
-logistic fit on (a, b) (build_win_value.py --logistic): isotonic V follows the
+logistic fit on (a, b) (build_win_value.py --logistic), or with `--fit shrink
+--prior m` each cell's rate shrunk toward the logistic fit with the weight of m
+games, then projected onto monotone tables: isotonic V follows the
 noise of each round's games, which flips near-tied choices of the number
 between rounds. `--reuse-round0 LABEL` builds V_0 from round-0 games already
 recorded under that label instead of playing them again. Every round plays the same
@@ -62,7 +64,8 @@ def play(name: str, extra: list[str], label: str, args) -> None:
 
 def build_v(label: str, out: Path, args) -> np.ndarray:
     cmd = [sys.executable, str(ROOT / "scripts" / "data" / "build_win_value.py"), "--db", str(args.db),
-           "--label", label, "--no-suite", f"--{args.fit}", "--out", str(out)]
+           "--label", label, "--no-suite", "--out", str(out),
+           *(["--prior", str(args.prior)] if args.fit == "shrink" else [f"--{args.fit}"])]
     res = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=True)
     print("\n".join("    " + l for l in res.stdout.splitlines()), flush=True)
     return np.load(out)
@@ -78,7 +81,10 @@ def main() -> None:
     ap.add_argument("--sigma", type=float, default=SIGMA, help="the spymaster's sigma")
     ap.add_argument("--guesser", default=GUESSER, help="simulated guesser in configs/guesser_gaussian.json")
     ap.add_argument("--out-dir", type=Path, default=OUT_DIR, help="where V_round{t}.npz go")
-    ap.add_argument("--fit", choices=["isotonic", "logistic"], default="isotonic", help="how V is fitted")
+    ap.add_argument("--fit", choices=["isotonic", "logistic", "shrink"], default="isotonic",
+                    help="how V is fitted; shrink: each cell's rate shrunk toward the logistic fit with the weight "
+                         "of --prior games, then the monotone projection")
+    ap.add_argument("--prior", type=float, default=20.0, help="games' weight of the logistic prior for --fit shrink")
     ap.add_argument("--reuse-round0", default=None,
                     help="label of round-0 games already in --db (same sigma, guesser and boards), not replayed")
     ap.add_argument("--run", default=time.strftime("%Y%m%d-%H%M"), help="tag in every game label of this run")
