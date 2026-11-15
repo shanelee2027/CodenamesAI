@@ -392,6 +392,17 @@ SPYMASTERS.update({
         "model": "clue_stats_online.npz", "needs": ["policy_iteration/V_round4.npz"], "score_is": "win",
         "about": "The Gaussian spymaster with the fitted sigma = 2.02, choosing the clue and number with the "
                  "highest probability of winning W(c, k) under V_4 from policy iteration. The value shown is W."},
+    "paper_policy_iteration_shrink300_2": {
+        "label": "Policy iteration, V shrunk to logistic (m = 300), sigma 2", "paper": True,
+        "registry": "gaussian_win_value",
+        "overrides": {**PAPER_PARAMS, "sigma": 2.0,
+                      "value_path": "cache/policy_iteration/shrink300_g2_s2/V_round4.npz"},
+        "model": "clue_stats_online.npz", "needs": ["policy_iteration/shrink300_g2_s2/V_round4.npz"],
+        "score_is": "win",
+        "about": "The Gaussian spymaster with sigma = 2, choosing the clue and number with the highest "
+                 "probability of winning W(c, k) under V_4 from policy iteration against the simulated guesser "
+                 "at sigma 2, each cell of V shrunk toward the logistic fit with the weight of 300 games, then "
+                 "made monotone. Not in the paper. The value shown is W."},
 })
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
