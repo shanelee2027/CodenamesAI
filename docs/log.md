@@ -8244,3 +8244,21 @@ Six variants on identical rows (25,211 positions to fit, 4,448 for early stoppin
 | full, k set to 4 | 0.3499 | 0.5768 | 0.1858 | +0.0011 [+0.0005, +0.0018] |
 
 Expected: the association block marginal (the user's question: is it worth the prompting), and the number to matter since gpt-oss is shown it. Found: every block earns its place, the associations by far the most (−0.0145, ten times the seed noise), PMI mostly at picks 2+, text at both. The clue number carries nothing the model can use: dropping it ties, and telling `full` the wrong number (4 everywhere, the spymaster's shortcut in play) scores slightly better than the true one. So within 1-4 the number does not measurably change gpt-oss's pick order, and positions with larger numbers are not worth buying for the listener. With k out, one prediction per clue is exact rather than a shortcut.
+
+## 2026-11-15 — fresh_split_listener built; the test words, once
+
+At the user's word: `k` dropped (the shipped listener is the `no_k` variant, 72 columns), the Gaussian baseline keeps sigma 1.5 (the user: that choice seeing the test words is like using the whole sample's sd, and does not matter), and in the paper the model is "the GBT spymaster". `codenames/spymasters/fresh_split_listener.py`: learned_listener's expected-reward search, no number cap; registry entry, docs/versions/fresh_split_listener.md; `run_two_team_arena.py --vocab split_*`. Smoke test: about 2.4 s a clue.
+
+Test R² (2,005 positions on the 250 test words, 5,036 choice events; every variant shown for the record, the choice having been made on the tuning words):
+
+| variant | R² | pick 1 | 2+ | minus full |
+|---|---|---|---|---|
+| full | 0.3363 | 0.5580 | 0.1817 | |
+| no_assoc | 0.3200 | 0.5437 | 0.1639 | −0.0163 [−0.0198, −0.0128] |
+| no_pmi | 0.3321 | 0.5576 | 0.1747 | −0.0043 [−0.0067, −0.0018] |
+| no_text | 0.3322 | 0.5533 | 0.1780 | −0.0041 [−0.0071, −0.0012] |
+| no_extras | 0.3103 | 0.5356 | 0.1531 | −0.0260 [−0.0313, −0.0207] |
+| **no_k (shipped)** | **0.3357** | **0.5594** | **0.1796** | −0.0007 [−0.0019, +0.0006] (2+ −0.0021 [−0.0038, −0.0003]) |
+| full, k set to 4 | 0.3371 | 0.5577 | 0.1832 | +0.0008 [+0.0000, +0.0015] |
+
+Expected: the tuning-word ranking to hold. Found: it does, with each block's size within 0.002 of its tuning value; R² is about 0.013 lower on the test words for every variant (word-to-word variation; nothing was chosen on them). On the test words `k` may carry a little at picks 2+ (−0.0021), the one place the two sets differ in sign; the pooled difference stays inside ±0.002.
