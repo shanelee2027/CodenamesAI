@@ -8197,3 +8197,11 @@ Expected: under W the best sigma moves up from the reward round robin's 1.5 towa
 - Sigma 2, logistic V_4, gpt-oss games: 0 of 41; same mean-k table as its self-play within about 0.2.
 - Isotonic V (reference): 7 of 60 two-peaked in self-play, e.g. (9, 8) {2: 756, 4: 4070}, (7, 7) {1: 800, 4: 88}; mean k against the expected direction at 17 adjacent pairs; gpt-oss games: (9, 8) {2: 190, 5: 98}.
 - Sigma 2 self-play shapes: (9, 8) 3/21/20/33/22/2% for k = 1-6 (nearly flat over 2-3, peak at 4); (8, 8) 1/29/40/27/2%; (5, 5) 19/65/15%; (8, 5) behind, peak at 5; (5, 8) ahead, 74% k = 1.
+
+**W (logistic V) at each sigma against expected_words sigma 1.5** (2026-11-15; scratchpad logistic_vs_ew.sh, labels `wlog-s{sigma}-vs-ew15-p1`; gpt-oss, 300 boards of all 800 words, both seatings, no board discarded, $0.37 in all). W's win rate, 95% CI over boards; assassin (W / EW); mean k (W / EW):
+- sigma 1: 41.5% [37.8, 45.2]; 26.2% / 8.7%; 3.90 / 2.20
+- sigma 1.5: 50.3% [47.0, 53.5]; 23.5% / 10.8%; 3.07 / 2.29
+- sigma 2: 50.8% [47.5, 54.2]; 19.3% / 13.0%; 2.50 / 2.25
+- sigma 2.5: 50.3% [46.8, 53.8]; 16.7% / 11.7%; 2.16 / 2.19
+- (earlier) sigma 2.02, V against guesser 2.02: 50.0% [46.8, 53.2]; isotonic V_4: 53.8% [50.5, 57.2]
+Expected: W at the fitted sigma beats the best reward spymaster, as the isotonic match suggested. Found: every logistic W with sigma >= 1.5 ties it. W does fix sigma 2 (43.2% under the reward against 1.5 in the round robin, 50.8% under W), but changing the objective at sigma 1.5 itself gains nothing (50.3%), and W always hits the assassin more. The isotonic 53.8% looks partly luck (paired against logistic 2.02: -3.8 points [-8.2, +0.3]).
