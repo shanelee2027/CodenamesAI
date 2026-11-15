@@ -52,6 +52,9 @@ Usage:
     python scripts/data/collect_listener_data.py --vocab split_tune --n 3400
     python scripts/data/collect_listener_data.py --vocab split_test --n 2300
 
+    # the same positions with the clue shown without its number, fully ranked
+    python scripts/data/collect_listener_data.py --vocab split_train --n 34000 --no-number
+
     # the same held-out test set ranked by Sonnet, stopping before $4 is spent
     python scripts/data/collect_listener_data.py --vocab holdout --n 2100 \
         --guesser anthropic:claude-sonnet-5:medium --budget 4.0
@@ -221,6 +224,10 @@ def main() -> None:
                          "400 (seeds from ONLINE_SEED_BASE); or the online split's training words "
                          "(ONLINE_TRAIN_BASE) or held-out words, a test set only (ONLINE_HOLDOUT_BASE); or the "
                          "three-way split's training, tuning or test words (SPLIT_BASES)")
+    ap.add_argument("--no-number", action="store_true",
+                    help="show gpt-oss the clue without its number and ask for a full ranking (at least 80%% of "
+                         "the words named). Same plan, so the same boards and clues as the numbered collection; "
+                         "the planned number is not used. Cached with number NULL.")
     ap.add_argument("--dry-run", action="store_true", help="plan and report coverage; buy nothing")
     ap.add_argument("--nice", type=int, default=10, help="process niceness, so this yields to your work")
     args = ap.parse_args()
@@ -272,8 +279,9 @@ def main() -> None:
     def spent() -> float:
         u = g.usage
         return (u["input_tokens"] * args.price_in + u["output_tokens"] * args.price_out) / 1e6
+    shown = (lambda p: None) if args.no_number else (lambda p: p["k"])
     cached = sum(1 for p in positions
-                 if g._disk_cache.get(g.cache_model_id, p["clue"], tuple(p["candidates"]), p["k"]) is not None)
+                 if g._disk_cache.get(g.cache_model_id, p["clue"], tuple(p["candidates"]), shown(p)) is not None)
     todo = len(positions) - cached
     print(f"already cached: {cached}   to buy: {todo}"
           + ("" if args.guesser else f"   est ${todo * 0.000102:.2f}"))
@@ -289,7 +297,7 @@ def main() -> None:
         if args.budget is not None and spent() >= args.budget:
             return
         try:
-            g.rank_candidates(p["clue"], p["candidates"], None, number=p["k"])
+            g.rank_candidates(p["clue"], p["candidates"], None, number=shown(p))
         except Exception as exc:  # a dead host or a refusal must not kill an 8-hour run
             with lock:
                 counter["err"] += 1

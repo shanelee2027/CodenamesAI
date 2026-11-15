@@ -276,7 +276,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                    refresh_features: bool = False, decoys: Path | None = None,
                    soft_labels: dict | None = None, seed_filter=None, holdout_boards: int = 0,
                    holdout_collected: int = 0, online_collected: int = 0, online_train: int = 0,
-                   online_holdout: int = 0, normalization: str = "base", split: dict[str, int] | None = None):
+                   online_holdout: int = 0, normalization: str = "base", split: dict[str, int] | None = None,
+                   no_number: bool = False):
     """Positions for training.
 
     `refresh_features` decides what a step-2+ row means. Off (the default and
@@ -296,6 +297,10 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
     whose board seed it accepts. `holdout_boards` also resolves positions on
     the eval suites' held-out-vocabulary boards and `online_collected` the
     generated online-vocabulary ones (see board_lookup).
+    `no_number` reads the rankings bought with the clue shown without its
+    number (collect_listener_data.py --no-number) instead of the numbered
+    ones; their `k` feature is -1 and "k" (the depth used) is provisionally
+    the whole ranking, for the caller to trim.
 
     Frozen is what Plackett-Luce assumes and what codenames/pl_reward.py needs
     to be exact. Measured, the assumption does not hold for this model:
@@ -351,8 +356,8 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = conn.execute(
-        "SELECT clue, candidates, number, ranking FROM responses WHERE model=? AND number IS NOT NULL",
-        (model,)).fetchall()
+        "SELECT clue, candidates, number, ranking FROM responses WHERE model=? AND number IS "
+        + ("NULL" if no_number else "NOT NULL"), (model,)).fetchall()
     conn.close()
 
     import pickle
@@ -390,7 +395,12 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
         shuffled = [rank[i] for i in perm]
         where = {orig: new for new, orig in enumerate(perm)}
         targets = [where[j] for j in range(len(rank))]  # teacher's j-th pick -> its row
-        fkey = (clue, int(number), tuple(shuffled))
+        # A ranking asked for without a number (`no_number`) has the `k`
+        # feature at -1 (extract's value for None) and, provisionally, every
+        # pick as an event; the caller sets how deep to use it through "k".
+        num = -1 if number is None else int(number)
+        depth = len(rank) - 1 if number is None else int(number)
+        fkey = (clue, num, tuple(shuffled))
         if fkey in fcache:
             feats = fcache[fkey]
         else:
@@ -401,9 +411,9 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
         if feats is None:
             dropped["features"] += 1
             continue
-        rec = {"seed": seed, "clue": clue, "k": int(number), "x": feats,
+        rec = {"seed": seed, "clue": clue, "k": depth, "x": feats,
                "n": len(rank), "targets": targets,
-               "key": (clue, tuple(cand), int(number)), "words": shuffled}
+               "key": (clue, tuple(cand), None if number is None else int(number)), "words": shuffled}
         if soft is not None:
             # One label vector per step over ALL rows, in shuffled order, and
             # the local model's own picks as the targets that build_groups
@@ -419,7 +429,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
             # One extraction per step on the words still standing. Cheap --
             # it is the observed path, not a tree over possible ones.
             steps, taken, ok = [], [], True
-            for j in range(min(int(number), len(rank) - 1)):
+            for j in range(min(depth, len(rank) - 1)):
                 keep = [r for r in range(len(rank)) if r not in taken]
                 sub = [shuffled[r] for r in keep]
                 f = extract(clue, sub, number, sims, stats, wstats, clue_index, swow, entity,

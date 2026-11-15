@@ -8279,3 +8279,13 @@ Expected: later picks flatter than the shared softmax assumes. Found: yes, incre
 
 Boards won in both seatings: GBT 142, Gaussian 20. Numbers: GBT 1/2/3/4/5/6 = 26.1/43.0/18.0/8.7/3.6/0.7%, k >= 5 in 4.3% of clues (Gaussian 2.0%).
 Expected: a clear win, as in October's 72% (Sonnet guessing) and the Gaussian's 31.4% (gpt-oss) on the old protocol. Found: the same size of effect under the clean protocol, with a listener that has never seen a test word. Its clues are no bolder (mean k 2.23 against 2.32); they are more accurate (1.71 own words per clue against 1.47) and safer (assassin 4.8% against 8.5%). This is the paper's Section 4 result in place of policy iteration, whose W versions all landed within noise of 50% against the same opponent.
+
+## 2026-11-15 — No-number rankings on the three-way split (user's design for the standard GBT)
+
+User's design: show gpt-oss the clue alone (no number), use the first n picks of its ranking, n = own words still unrevealed, with later picks weighted down; then fit per-pick temperatures. Not a new model: this is choosing which variant of the one GBT is the standard.
+
+**Collection** (`collect_listener_data.py --no-number`; scratchpad plain_split.sh with a usage watchdog at $16.50): the same planned positions as the numbered collection (same boards, reveals and clues), cached with number NULL. Train 29,675 (two halves), tune 2,994, test 2,006, 0 errors, about 65 minutes. November usage $12.58 -> $14.77, about $2.20. The prompt asks for at least 80% of the words named (guessers/llm.py::required_named), so the guaranteed depth is ceil(0.8 n).
+
+**Code** (no runs yet; the user is using the PC): `load_positions(no_number=True)` reads the NULL-number rankings, with the `k` feature at -1. `train_fresh_split_listener.py --prompt plain` keeps the planned positions, sets the depth to min(own words unrevealed, ceil(0.8 n)) (build_groups also caps at n-1), and drops positions with no own word left; `--decay` sets the pick weight ratio (0.75 before); `--score` reports R² for pick 1, 2-4 and 5+; `--eval-on numbered` scores the no-number boosters on the numbered rankings, which is how games show clues. Numbered boosters keep their file names; plain ones are `listener_gbt_fresh_split_plain_{variant}_d{decay}.txt`.
+
+Plan when the PC is free: prepare the plain sets, fit no_k at decay 0.75 / 0.6 / 0.5, pick by tuning R², fit temperatures per pick on the early-stopping slice, then decide how the spymaster's reward uses them (per-pick temperatures break the exponential-clock exactness of pl_reward).
