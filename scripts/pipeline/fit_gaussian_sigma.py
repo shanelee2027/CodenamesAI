@@ -41,6 +41,7 @@ Free: reads cached responses only, never calls an API.
 
 Usage:
     python scripts/pipeline/fit_gaussian_sigma.py --n 17000 --space numberbatch
+    python scripts/pipeline/fit_gaussian_sigma.py --vocab split_train --n 34000   # the three-way split's 400
 """
 
 from __future__ import annotations
@@ -55,9 +56,9 @@ from scipy.special import log_ndtr, ndtr
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-from codenames.board import load_online_split  # noqa: E402
+from codenames.board import load_online_split, load_three_way_split  # noqa: E402
 from codenames.clue_stats import ClueStats  # noqa: E402
-from codenames.listener_training import ONLINE_TRAIN_BASE  # noqa: E402
+from codenames.listener_training import ONLINE_TRAIN_BASE, SPLIT_BASES  # noqa: E402
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor  # noqa: E402
 
 
@@ -106,6 +107,9 @@ def main() -> None:
     ap.add_argument("--max-m", type=int, default=5)
     ap.add_argument("--boot", type=int, default=1000, help="bootstrap resamples over positions")
     ap.add_argument("--out", default=None, help="write the results as JSON here")
+    ap.add_argument("--vocab", choices=("online_train", "split_train"), default="online_train",
+                    help="whose generated positions: the online split's 550 training words, or the three-way "
+                         "split's 400 (board.py::load_three_way_split; collected with --n 34000)")
     args = ap.parse_args()
 
     col = load_collector()
@@ -113,7 +117,10 @@ def main() -> None:
     plan_stats = ClueStats.load(DEFAULT_CACHE_DIR)                       # what the collector planned with
     z_stats = ClueStats.load(DEFAULT_CACHE_DIR, stem="clue_stats_online")  # z over the 800 online words
     pool = col.build_clue_pool(plan_stats, 10.0)
-    vocab = load_online_split()[0]
+    if args.vocab == "split_train":
+        vocab, seed_base = load_three_way_split()["train"], SPLIT_BASES["train"]
+    else:
+        vocab, seed_base = load_online_split()[0], ONLINE_TRAIN_BASE
     plan_space = sims.spaces.index("numberbatch")                        # the collector's default --space
 
     from codenames.guessers.openai_compat import OpenAICompatGuesser
@@ -124,7 +131,7 @@ def main() -> None:
     clue_index = {w: i for i, w in enumerate(z_stats.clue_words)}
     data, skipped = [], {"uncached": 0, "nan": 0}
     for i in range(args.n):
-        p = col.make_position(i, sims, plan_stats, pool, plan_space, col.DEFAULT_MIX, vocab, ONLINE_TRAIN_BASE)
+        p = col.make_position(i, sims, plan_stats, pool, plan_space, col.DEFAULT_MIX, vocab, seed_base)
         if p is None:
             continue
         ranking = g._disk_cache.get(g.cache_model_id, p["clue"], tuple(p["candidates"]), p["k"])
