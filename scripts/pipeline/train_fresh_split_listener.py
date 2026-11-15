@@ -23,7 +23,11 @@ and left out (sense_*, the two-hop med_*), 73 columns. `no_assoc` drops every
 column built from gpt-oss's free-association lists (assoc_share, assoc_rank,
 the b_assoc_* clue profile, the c_rev_* reverse lists, hub_assoc), the only
 features that need prompting. `no_pmi` drops pmi_gaptop (GPT-2 PMI),
-`no_text` the te_* text-embedding block, `no_extras` all three.
+`no_text` the te_* text-embedding block, `no_extras` all three. `no_k` drops
+the clue's number: whether gpt-oss's pick order depends on it at all. And
+`full` is also scored with `k` set to 4 on every position (`full@k=4`), which
+is what the spymaster feeds it in play (it predicts once per clue, before the
+number is chosen), so the gap is what that shortcut costs.
 
 Features are z-scored over the online 800 (normalization "online"). That
 standardisation uses no guesser answers, only the similarity tables.
@@ -61,7 +65,7 @@ def variants() -> dict[str, list[str]]:
 
     full = [f for f in FEATURE_NAMES if f not in ("sense_agree", "sense_spread", *MEDIATED_FEATURES)]
     drop = {"full": (), "no_assoc": ASSOC, "no_pmi": PMI, "no_text": TEXT_FEATURES,
-            "no_extras": ASSOC + PMI + tuple(TEXT_FEATURES)}
+            "no_extras": ASSOC + PMI + tuple(TEXT_FEATURES), "no_k": ("k",)}
     return {name: [f for f in full if f not in d] for name, d in drop.items()}
 
 
@@ -135,13 +139,16 @@ def fit(variant: str, seed: int) -> None:
     print(f"{variant}: {b.num_trees()} trees -> {out.name}", flush=True)
 
 
-def nll_of(booster, positions: list[dict]):
+def nll_of(booster, positions: list[dict], k_as: int | None = None):
     """Per event: negative log-likelihood, the uniform baseline's, the board
-    seed and whether it is a first pick."""
+    seed and whether it is a first pick. `k_as` overrides the `k` feature."""
     import codenames.listener_training as T
-    from codenames.listener_features import booster_columns
+    from codenames.listener_features import FEATURE_NAMES, booster_columns
 
     X, y, g, seeds = T.build_groups(positions)
+    if k_as is not None:
+        X = X.copy()
+        X[:, FEATURE_NAMES.index("k")] = k_as
     sizes = np.asarray(g)
     starts = np.concatenate([[0], np.cumsum(sizes)[:-1]])
     z = booster.predict(X[:, booster_columns(booster)], raw_score=True)
@@ -160,6 +167,9 @@ def score(part: str, reference: str = "full") -> dict:
     nll = {}
     for v in fitted:
         nll[v], null, seeds, first = nll_of(lgb.Booster(model_file=str(booster_path(v))), positions)
+    if "full" in fitted:
+        nll["full@k=4"] = nll_of(lgb.Booster(model_file=str(booster_path("full"))), positions, k_as=4)[0]
+        fitted.append("full@k=4")
     _, bid = np.unique(seeds, return_inverse=True)
     nb = bid.max() + 1
     rng = np.random.default_rng(0)
