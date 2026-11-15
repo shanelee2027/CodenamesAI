@@ -110,11 +110,15 @@ ONLINE_COLLECTED_BASE = 7_000_000
 # held-out words (--vocab online_train / online_holdout).
 ONLINE_TRAIN_BASE = 8_000_000
 ONLINE_HOLDOUT_BASE = 9_000_000
+# Generated positions on the three-way split (board.py::load_three_way_split):
+# boards from its 400 training, 150 tuning and 250 test words
+# (--vocab split_train / split_tune / split_test).
+SPLIT_BASES = {"train": 10_000_000, "tune": 11_000_000, "test": 12_000_000}
 
 
 def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
                  holdout_collected: int = 0, online_collected: int = 0, online_train: int = 0,
-                 online_holdout: int = 0) -> BoardIndex:
+                 online_holdout: int = 0, split: dict[str, int] | None = None) -> BoardIndex:
     """(seed, word set) for every board a cached response could have come from.
 
     Three sources, built with different vocabularies and disjoint seed ranges:
@@ -132,6 +136,8 @@ def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
     the generated online-vocabulary boards, seeds ONLINE_COLLECTED_BASE + i,
     likewise. `online_train` and `online_holdout` add the online split's
     generated boards, seeds ONLINE_TRAIN_BASE + i and ONLINE_HOLDOUT_BASE + i.
+    `split` ({"train": n, ...}) adds the three-way split's generated boards,
+    seeds SPLIT_BASES[part] + i for i < n.
     """
     from codenames.board import (load_holdout_wordlist, load_online_split, load_online_test_wordlist,
                                  load_training_wordlist)
@@ -161,6 +167,13 @@ def board_lookup(max_seed: int, collected: int = 0, holdout_boards: int = 0,
         for n, base, vocab in ((online_train, ONLINE_TRAIN_BASE, split[0]),
                                (online_holdout, ONLINE_HOLDOUT_BASE, split[1])):
             out += [(base + i, frozenset(w.lower() for w in Board.generate(seed=base + i, vocabulary=vocab).words))
+                    for i in range(n)]
+    if split:
+        from codenames.board import load_three_way_split
+        words = load_three_way_split()
+        for part, n in split.items():
+            base = SPLIT_BASES[part]
+            out += [(base + i, frozenset(w.lower() for w in Board.generate(seed=base + i, vocabulary=words[part]).words))
                     for i in range(n)]
     return BoardIndex(out)
 
@@ -263,7 +276,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
                    refresh_features: bool = False, decoys: Path | None = None,
                    soft_labels: dict | None = None, seed_filter=None, holdout_boards: int = 0,
                    holdout_collected: int = 0, online_collected: int = 0, online_train: int = 0,
-                   online_holdout: int = 0, normalization: str = "base"):
+                   online_holdout: int = 0, normalization: str = "base", split: dict[str, int] | None = None):
     """Positions for training.
 
     `refresh_features` decides what a step-2+ row means. Off (the default and
@@ -334,7 +347,7 @@ def load_positions(db: Path, model: str, max_seed: int, collected: int = 0,
           f"   kind: {'loaded' if kind else 'ABSENT'}   text: {'loaded' if text else 'ABSENT'}"
           f"   mediated: {'loaded' if mediated else 'ABSENT'}")
     boards = board_lookup(max_seed, collected, holdout_boards, holdout_collected, online_collected,
-                          online_train, online_holdout)
+                          online_train, online_holdout, split)
 
     conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     rows = conn.execute(

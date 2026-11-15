@@ -373,3 +373,13 @@ class TestLegalityDerivationalForms:
         """"went" -> "go" must not make every board word containing "go" illegal."""
         assert is_legal_clue("went", ["Goat"])
         assert is_legal_clue("went", ["Ago"])
+
+
+def test_three_way_split_partitions_the_online_words():
+    from codenames.board import THREE_WAY_SIZES, load_three_way_split, load_wordlist, ONLINE_WORDLIST_PATH
+    parts = load_three_way_split()
+    assert {k: len(v) for k, v in parts.items()} == THREE_WAY_SIZES
+    together = [w for v in parts.values() for w in v]
+    assert len(set(together)) == len(together) == 800
+    assert set(together) == set(load_wordlist(ONLINE_WORDLIST_PATH))
+    assert parts == load_three_way_split()      # fixed seed

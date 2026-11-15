@@ -47,6 +47,11 @@ Usage:
     python scripts/data/collect_listener_data.py --vocab online_train --n 11300
     python scripts/data/collect_listener_data.py --vocab online_holdout --n 2100
 
+    # the three-way split: training data, the tuning set, the test set
+    python scripts/data/collect_listener_data.py --vocab split_train --n 34000
+    python scripts/data/collect_listener_data.py --vocab split_tune --n 3400
+    python scripts/data/collect_listener_data.py --vocab split_test --n 2300
+
     # the same held-out test set ranked by Sonnet, stopping before $4 is spent
     python scripts/data/collect_listener_data.py --vocab holdout --n 2100 \
         --guesser anthropic:claude-sonnet-5:medium --budget 4.0
@@ -71,7 +76,7 @@ import numpy as np
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 from codenames.board import (Board, Role, is_legal_clue, load_holdout_wordlist, load_online_split,
-                             load_online_test_wordlist, load_training_wordlist)
+                             load_online_test_wordlist, load_three_way_split, load_training_wordlist)
 from codenames.clue_stats import ClueStats
 from codenames.similarity import DEFAULT_CACHE_DIR, SimilarityTensor
 
@@ -97,6 +102,10 @@ from codenames.listener_training import ONLINE_COLLECTED_BASE as ONLINE_SEED_BAS
 # and 250 held-out words (board.py::load_online_split), training data and a
 # test set for models trained on the online game's words.
 from codenames.listener_training import ONLINE_HOLDOUT_BASE, ONLINE_TRAIN_BASE  # noqa: E402
+# `--vocab split_train` / `split_tune` / `split_test`: the three-way split's
+# 400 / 150 / 250 words (board.py::load_three_way_split), for the restart that
+# uses no earlier data: training data, a tuning set and a test set.
+from codenames.listener_training import SPLIT_BASES  # noqa: E402
 
 # How clues are chosen. The point of the non-"own" rows is that a spymaster's
 # search has to reject these, which it cannot learn to do from a training set
@@ -204,12 +213,14 @@ def main() -> None:
                          "while you are using the machine")
     ap.add_argument("--max-rarity", type=float, default=10.0, help="same clue pool the spymaster searches")
     ap.add_argument("--space", default="numberbatch")
-    ap.add_argument("--vocab", choices=("training", "holdout", "online", "online_train", "online_holdout"),
+    ap.add_argument("--vocab", choices=("training", "holdout", "online", "online_train", "online_holdout",
+                                        "split_train", "split_tune", "split_test"),
                     default="training",
                     help="board words: the training list, or for a test set only the held-out list "
                          "(seeds from HOLDOUT_SEED_BASE) or the online game's words outside the base "
                          "400 (seeds from ONLINE_SEED_BASE); or the online split's training words "
-                         "(ONLINE_TRAIN_BASE) or held-out words, a test set only (ONLINE_HOLDOUT_BASE)")
+                         "(ONLINE_TRAIN_BASE) or held-out words, a test set only (ONLINE_HOLDOUT_BASE); or the "
+                         "three-way split's training, tuning or test words (SPLIT_BASES)")
     ap.add_argument("--dry-run", action="store_true", help="plan and report coverage; buy nothing")
     ap.add_argument("--nice", type=int, default=10, help="process niceness, so this yields to your work")
     args = ap.parse_args()
@@ -231,6 +242,9 @@ def main() -> None:
         vocab, seed_base = load_online_split()[0], ONLINE_TRAIN_BASE
     elif args.vocab == "online_holdout":
         vocab, seed_base = load_online_split()[1], ONLINE_HOLDOUT_BASE
+    elif args.vocab.startswith("split_"):
+        part = args.vocab.removeprefix("split_")
+        vocab, seed_base = load_three_way_split()[part], SPLIT_BASES[part]
     else:
         vocab, seed_base = load_training_wordlist(), SEED_BASE
     print(f"clue pool: {len(pool)} of {len(stats.clue_words)} at rarity<={args.max_rarity}")

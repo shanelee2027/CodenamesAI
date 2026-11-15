@@ -298,6 +298,35 @@ def load_online_split(path: Path = ONLINE_WORDLIST_PATH) -> tuple[list[str], lis
     return [w for w in online if w not in held], [w for w in online if w in held]
 
 
+THREE_WAY_SIZES = {"train": 400, "tune": 150, "test": 250}
+THREE_WAY_SEED = 20261116
+
+
+def load_three_way_split(path: Path = ONLINE_WORDLIST_PATH) -> dict[str, list[str]]:
+    """{"train", "tune", "test"} words: a uniform random partition of the
+    online game's 800 into 400 / 150 / 250, with a fixed seed (docs/log.md,
+    2026-11-15, "A three-way split of the 800 words").
+
+    For the restart in which no earlier data is used: models are fitted on
+    boards from the 400 training words; feature blocks and hyperparameters are
+    chosen by R² on boards from the 150 tuning words; the 250 test words are
+    used once, for the final R² and the games. Unlike load_online_split, which
+    kept the old training words in training so their data stayed usable, every
+    word is equally likely to land in any part. Each list keeps the order of
+    the word file."""
+    online = load_wordlist(path)
+    if len(online) != sum(THREE_WAY_SIZES.values()):
+        raise ValueError(f"expected {sum(THREE_WAY_SIZES.values())} online words, got {len(online)}")
+    order = list(online)
+    random.Random(THREE_WAY_SEED).shuffle(order)
+    part, start = {}, 0
+    for name, size in THREE_WAY_SIZES.items():
+        chosen = set(order[start:start + size])
+        part[name] = [w for w in online if w in chosen]
+        start += size
+    return part
+
+
 def _normalize(word: str) -> str:
     return re.sub(r"[^a-z0-9]", "", word.lower())
 
