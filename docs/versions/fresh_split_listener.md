@@ -32,7 +32,9 @@ The number does not change gpt-oss's pick order measurably, so the listener does
 
 ## Results on the test words
 
-**[pending: test R², and games against the Gaussian spymaster at sigma 1.5 on test-word boards]**
+**R²** (2,005 positions, 5,036 choice events): 0.3357; pick 1 0.5594, picks 2+ 0.1796. Each feature block's contribution on the test words is within 0.002 of its tuning value. Post-hoc temperatures per pick index (fitted on the training words' early-stopping slice: 0.96, 1.05, 1.18, 1.43) raise it to 0.3426 (+0.0069 [+0.0051, +0.0088]), all of it at picks 2+; they are not part of this model.
+
+**Games** against the Gaussian spymaster at sigma 1.5 (no cap), 300 boards dealt from the test words, both seatings, gpt-oss guessing: **70.3% [66.9, 73.8]**; boards won in both seatings 142 against 20. Assassin 4.8% against 8.5%; mean number 2.23 against 2.32; own words per clue 1.71 against 1.47. Numbers of 5 or more: 4.3% of its clues.
 
 ## Open
 

@@ -8262,3 +8262,20 @@ Test R² (2,005 positions on the 250 test words, 5,036 choice events; every vari
 | full, k set to 4 | 0.3371 | 0.5577 | 0.1832 | +0.0008 [+0.0000, +0.0015] |
 
 Expected: the tuning-word ranking to hold. Found: it does, with each block's size within 0.002 of its tuning value; R² is about 0.013 lower on the test words for every variant (word-to-word variation; nothing was chosen on them). On the test words `k` may carry a little at picks 2+ (−0.0021), the one place the two sets differ in sign; the pooled difference stays inside ±0.002.
+
+## 2026-11-15 — Per-pick temperatures on the fresh_split listener; the GBT spymaster against the Gaussian on test words
+
+**Temperatures** (user's question: does a temperature per pick index need a retrained GBT?). Post-hoc, booster frozen: one temperature per pick index 1-4, fitted by maximum likelihood on the training words' early-stopping slice (15% of training boards, not used to fit the trees): 0.96, 1.05, 1.18, 1.43. On the rows the trees were fitted on they come out 0.64, 0.63, 0.72, 0.86 (the trees are overconfident in-sample), which is why the held-out slice is the one to fit on. R² with them, against the plain softmax (95% bootstrap over boards):
+- tuning words: all +0.0072 [+0.0056, +0.0088]; pick 1 −0.0010; pick 2 +0.0023; pick 3 +0.0186; pick 4 +0.0364; 2+ +0.0130.
+- test words: 0.3357 -> 0.3426, +0.0069 [+0.0051, +0.0088]; pick 1 −0.0013 [−0.0020, −0.0005]; pick 2 +0.0026; pick 3 +0.0183; pick 4 +0.0331; 2+ +0.0126 [+0.0095, +0.0158].
+Expected: later picks flatter than the shared softmax assumes. Found: yes, increasingly with the index, and the gain carries to the test words. T_1 = 0.96 costs a little at pick 1 on new words. Not in fresh_split_listener (which stays the plain softmax); a variant would be a new named model. Script: scratchpad pick_temps.py.
+
+**Match** (scratchpad gbt_vs_gauss.sh, label `gbt-vs-gauss15-test-p1`): fresh_split_listener against expected_words at sigma 1.5 (clue_stats_online, no cap, prefilter 1000), 300 boards dealt from the 250 test words, both seatings, gpt-oss guessing, no board discarded, 17 minutes, about $0.30 (November usage $12.58).
+
+| | win% | 95% CI over boards | assassin | mean k | own words per clue | own% of guesses |
+|---|---|---|---|---|---|---|
+| GBT spymaster | 70.3% | [66.9, 73.8] | 4.8% | 2.23 | 1.71 | 83.5% |
+| Gaussian spymaster, sigma 1.5 | 29.7% | | 8.5% | 2.32 | 1.47 | 75.1% |
+
+Boards won in both seatings: GBT 142, Gaussian 20. Numbers: GBT 1/2/3/4/5/6 = 26.1/43.0/18.0/8.7/3.6/0.7%, k >= 5 in 4.3% of clues (Gaussian 2.0%).
+Expected: a clear win, as in October's 72% (Sonnet guessing) and the Gaussian's 31.4% (gpt-oss) on the old protocol. Found: the same size of effect under the clean protocol, with a listener that has never seen a test word. Its clues are no bolder (mean k 2.23 against 2.32); they are more accurate (1.71 own words per clue against 1.47) and safer (assassin 4.8% against 8.5%). This is the paper's Section 4 result in place of policy iteration, whose W versions all landed within noise of 50% against the same opponent.
