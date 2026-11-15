@@ -8184,3 +8184,10 @@ Expected: a stable policy at least as good against gpt-oss. Found: stable, but n
 - Overall: sigma 1 40.1%, 1.5 51.2%, 2 55.3%, 2.5 53.4%.
 - Mean k: about 3.96 (sigma 1), 3.07 (1.5), 2.46 (2), 2.11 (2.5); sigma 1 ends a quarter of its games on the assassin.
 Expected: under W the best sigma moves up from the reward round robin's 1.5 toward the fitted 2.02. Found: sigma 2 is best overall and wins all three of its pairs, though against 1.5 and 2.5 not significantly. Caveat: the simulated guesser is at sigma 2, so only the sigma-2 spymaster's V comes from a world where its own model is right.
+
+**Sanity checks of the logistic-V W spymaster's clues** (2026-11-14; scratchpad sanity_w.py). On the sigma-2 W spymaster's 7,216 clues in the round robin (gpt-oss), plus the 2.02 logistic match and round-4 self-play:
+- No clue overlaps an unrevealed board word, and no number exceeds the words left.
+- Opponent on 1 word, us on 2-4: k equals our words left in 100% of 406 clues. expected_words does this in 10%.
+- Number by score: mean k 1.03 when 4+ ahead, 1.88 level, 5.19 when 4+ behind. When 3+ behind, 41% of clues are k >= 5 (isotonic W 24%, expected_words 10%), and against gpt-oss k >= 5 finds 1.67 own words, all k in 3%, with the assassin at 9.3% (self-play 3.9%). Otherwise outcomes by k match self-play closely (all k found: k = 2 0.57 vs 0.52, k = 3 0.23 vs 0.25, k = 4 0.09 vs 0.12).
+- Repeated clues: 6.0% of clues repeat one the same side gave earlier in the game, three quarters after the earlier use found no own word; 69 cases of one clue 3+ times in a game (e.g. MICHEL 5, 6, 7, 7, 8 on nine unrelated words). Shared with the whole Gaussian family, since the model sees only the board: expected_words 8.4%, isotonic W 5.2%.
+- The far-behind clues are often vague words (MICHEL, GENUS, ATTRIBUTE, ACHIEVE, ODD, GRASP), plausibly standardized z spreading over many words for low-variance clues.
