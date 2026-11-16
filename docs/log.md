@@ -8317,3 +8317,21 @@ User's call after the previous entry. The slice temperatures (training words' ea
 
 **Match** (`gbt-tunetemps-vs-gauss15-test-p1`, same boards and protocol, 15 minutes, about $0.12, usage $15.09): **70.5% [67.0, 74.0]** against the Gaussian at sigma 1.5; both seatings 145 against 22; assassin 3.7% against 8.2%; mean number 1.81 against 2.29; own per clue 1.57 against 1.45; own% 89.2 against 74.7. Numbers 1/2/3/4 = 34.2/52.6/11.1/2.1%, none above 4.
 Paired over boards: −1.8 points [−4.8, +1.2] against the slice temperatures (72.3%), +0.2 [−3.8, +4.3] against the numbered first version (70.3%). All three versions are within noise of each other in games; the listener is chosen on R², where the tuning-word temperatures are best, and kept.
+
+## 2026-11-16 — How often the GBT spymaster's best clue is in the Gaussian shortlist (overnight)
+
+User's question. scripts/tools/shortlist_coverage.py: every turn the GBT spymaster played in `gbt-tunetemps-vs-gauss15-test-p1` (2,648 states on the 300 test boards, rebuilt from the game records), scored by the GBT over the whole pool (about 10,700 clues the Gaussian first stage scores) and with the shortlist cut at 25 to 5,000. 8 workers, 6.7 hours, no LLM calls. Check: at 200 the pick equals the clue played in the match in all 2,648 states. Output cache/shortlist_coverage.jsonl.
+
+| shortlist | full-pool best inside | mean expected reward lost per turn | lost when missed |
+|---|---|---|---|
+| 25 | 45.5% | 0.131 | 0.240 |
+| 100 | 63.3% | 0.078 | 0.212 |
+| **200 (used)** | **74.9%** | **0.046** | 0.183 |
+| 300 | 82.3% | 0.030 | 0.169 |
+| 500 | 89.7% | 0.014 | 0.140 |
+| 1000 | 95.0% | 0.006 | 0.126 |
+| 2000 | 98.3% | 0.002 | 0.100 |
+| 5000 | 99.5% | 0.0002 | 0.049 |
+
+The full-pool best's rank in the Gaussian ordering: median 36, 75th percentile 201, 90th 512, 99th 3,177, max 8,823. Mean full-pool expected reward 1.414 words, so 200 gives up 3.2% of it. Same number whenever the same clue. The full-pool picks lean slightly larger (number 1 in 29.0% against 34.2%). Coverage by words revealed: 78% / 66% / 69% / 78% / 92% (0-3, 4-7, 8-11, 12-15, 16+).
+Expected: the shortlist to hold the best clue most of the time, since the two models agree on what a clue is near. Found: a quarter of turns miss it, but the misses are mostly cheap (0.18 words). The big misses are clues the GBT trusts and the Gaussian ranks far down, e.g. PIRATE 3 at Gaussian rank 1,252-3,136 in place of ROD 2 (2.24 against 1.18 expected words), TREASURE 2 at rank 761 in place of a 1. Time per turn is linear in the shortlist (about 2.7 ms per clue on 8 cores plus 0.5 s): 1,000 would take about 3 s a turn for 95% coverage and 0.006 lost. Measured on test-word states; a shortlist size chosen from it should be checked on tuning-word states first.
