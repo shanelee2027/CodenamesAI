@@ -17,10 +17,12 @@ so one prediction per clue serves every number.
 **Temperature per pick.** At pick j the guesser is modelled as choosing from
 the words left with probabilities softmax(s / tau_j), PICK_TEMPERATURES
 below, picks 7 and later sharing the last. They were fitted by maximum
-likelihood with the trees frozen, on the 15% of training boards the trees
-were not fitted on (the early-stopping slice), and lift tuning R² from
-0.1676 to 0.1953 on the no-number rankings and 0.3506 to 0.3549 on the
-numbered ones. Because the scores' scale changes with the pick,
+likelihood with the trees frozen, on the tuning words' no-number rankings,
+and lift test R² from 0.1721 to 0.2019 on the no-number rankings and 0.3386
+to 0.3454 on the numbered ones. Fitted instead on the training words'
+early-stopping boards they came out sharper (0.94 at pick 1) and cost a
+little at pick 1 on new words: the trees are sharper on words they have
+seen, even on new boards. Because the scores' scale changes with the pick,
 pl_reward's exponential-clock formula no longer applies; the expected reward
 is computed exactly over which of our words have been picked so far
 (pick_temperature_listener.tempered_gain_and_penalty).
@@ -43,8 +45,8 @@ from codenames.spymasters.learned_listener import LearnedListenerSpymaster
 from codenames.spymasters.pick_temperature_listener import tempered_gain_and_penalty
 
 MODEL = "listener_gbt_fresh_split.txt"
-# Picks 1..7 (7 = every later pick); cache/fresh_split_temps_plain_no_k_d0.6_on_plain_tune.json.
-PICK_TEMPERATURES = (0.942, 1.012, 1.157, 1.295, 1.399, 1.748, 2.387)
+# Picks 1..7 (7 = every later pick); cache/fresh_split_temps_plain_no_k_d0.6_fit_tune_on_plain_test.json.
+PICK_TEMPERATURES = (1.026, 1.137, 1.372, 1.626, 1.863, 2.238, 2.904)
 
 
 class FreshSplitListenerSpymaster(LearnedListenerSpymaster):

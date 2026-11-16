@@ -8308,3 +8308,12 @@ Same model name (fresh_split_listener): the user is choosing the variant of the 
 
 **Match** (label `gbt-plain-vs-gauss15-test-p1`, same protocol and boards as `gbt-vs-gauss15-test-p1`, 14 minutes, about $0.20, usage $14.97): **72.3% [69.0, 75.7]** against the Gaussian spymaster at sigma 1.5. Boards won in both seatings 147 against 13. Assassin 5.3% against 9.2%; mean number 1.98 against 2.31; own words per clue 1.65 against 1.46; own% of guesses 86.9 against 75.0. Numbers 1/2/3/4/5 = 28.1/51.4/15.5/4.6/0.5%.
 Expected: the deeper picks and calibrated later picks to make long clues trustworthy, so perhaps more of them. Found: fewer long clues (k >= 5 in 0.5% against 4.3%), mean number down from 2.23 to 1.98: the temperatures flatten picks 3+, so long clues now look riskier, correctly by test R². Against the numbered version on the same boards: +2.0 points [−1.8, +5.8], within noise.
+
+## 2026-11-15 — Temperatures refitted on the tuning words
+
+User's call after the previous entry. The slice temperatures (training words' early-stopping boards) were sharper than 1 at picks 1-2 and cost about 0.002 R² at pick 1 on new words. Refitted on the tuning words' no-number rankings (16,239 events): 1.03, 1.14, 1.37, 1.63, 1.86, 2.24, 2.90 (picks 7+ shared). The tuning words now also fit seven scalars; the test words stay untouched by any fit.
+
+**Test R²** (T = 1 -> tuning-word temperatures; slice temperatures in brackets): no-number 0.1721 -> **0.2019** (0.1994), pick 1 0.5733 -> 0.5733 (0.5723); numbered 0.3386 -> **0.3454** (0.3426), pick 1 0.5594 -> 0.5597 (0.5575). Expected: the pick-1 loss gone and later picks flatter. Found: both, and the gain is on every pick group.
+
+**Match** (`gbt-tunetemps-vs-gauss15-test-p1`, same boards and protocol, 15 minutes, about $0.12, usage $15.09): **70.5% [67.0, 74.0]** against the Gaussian at sigma 1.5; both seatings 145 against 22; assassin 3.7% against 8.2%; mean number 1.81 against 2.29; own per clue 1.57 against 1.45; own% 89.2 against 74.7. Numbers 1/2/3/4 = 34.2/52.6/11.1/2.1%, none above 4.
+Paired over boards: −1.8 points [−4.8, +1.2] against the slice temperatures (72.3%), +0.2 [−3.8, +4.3] against the numbered first version (70.3%). All three versions are within noise of each other in games; the listener is chosen on R², where the tuning-word temperatures are best, and kept.
