@@ -412,7 +412,7 @@ SPYMASTERS.update({
         "model": "listener_gbt_fresh_split.txt", "needs": ["listener_gbt_fresh_split.meta.json"],
         "about": "The GBT spymaster: the expected reward of the Gaussian spymaster (+1, -0.2, -1, -10) with the "
                  "guesser modelled by gradient-boosted trees trained on gpt-oss's rankings of clues given without "
-                 "a number, a temperature per pick. The Gaussian at sigma 1.5 shortlists 200 clues and the GBT "
+                 "a number, a temperature per pick. The Gaussian at sigma 1.5 shortlists 1000 clues and the GBT "
                  "rescores them. Trained on 400 of the 800 words; boards here use all 800. The value shown is the "
                  "expected reward; the listing is the GBT's first-pick probabilities."},
 })

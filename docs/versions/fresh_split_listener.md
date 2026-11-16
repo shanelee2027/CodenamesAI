@@ -24,7 +24,7 @@ The model was settled in two steps on 2026-11-15, both under this name (the user
 
 **Temperature per pick.** With the trees frozen, pick j is softmax(s / tau_j) over the words left; tau fitted by maximum likelihood on the tuning words' no-number rankings (16,239 events), picks 7 and later sharing one: 1.03, 1.14, 1.37, 1.63, 1.86, 2.24, 2.90. Later picks are flatter, increasingly. Fitted first on the training words' early-stopping slice they came out sharper (0.94, 1.01, 1.16, 1.30, 1.40, 1.75, 2.39) and cost about 0.002 R² at pick 1 on the test words: the slice's boards are new but its words are training words, on which the trees are sharper. The decay table above uses those slice temperatures; it was chosen before the switch.
 
-**Spymaster.** `learned_listener`'s search: the Gaussian model (sigma 1.5) shortlists 200 clues, the listener rescores them, and each clue's number maximises the expected reward under the game's costs. With a temperature per pick, pl_reward's exponential clocks no longer apply, so the expectation is computed exactly over which of our words have been picked so far (`pick_temperature_listener.tempered_gain_and_penalty`, 2^(own words) sets). No cap on the number, as for the Gaussian spymaster in the thesis. No STOP model, overpromise charge, win value or tie-break.
+**Spymaster.** `learned_listener`'s search: the Gaussian model (sigma 1.5) shortlists 1000 clues (200 until 2026-11-16; see below), the listener rescores them, and each clue's number maximises the expected reward under the game's costs. With a temperature per pick, pl_reward's exponential clocks no longer apply, so the expectation is computed exactly over which of our words have been picked so far (`pick_temperature_listener.tempered_gain_and_penalty`, 2^(own words) sets). No cap on the number, as for the Gaussian spymaster in the thesis. No STOP model, overpromise charge, win value or tie-break.
 
 ## Files
 
@@ -44,6 +44,8 @@ The model was settled in two steps on 2026-11-15, both under this name (the user
 **Games** against the Gaussian spymaster at sigma 1.5 (no cap), 300 boards dealt from the test words, both seatings, gpt-oss guessing (label `gbt-tunetemps-vs-gauss15-test-p1`): **70.5% [67.0, 74.0]** (95% bootstrap over boards); boards won in both seatings 145 against 22. Assassin 3.7% against 8.2%; mean number 1.81 against 2.29; own words per clue 1.57 against 1.45; 89.2% of its team's guesses are its own words (Gaussian 74.7%). Numbers 1/2/3/4 = 34.2/52.6/11.1/2.1% of its clues, none above 4.
 
 Same boards, other versions (paired over boards): with the slice temperatures 72.3% (this one −1.8 points [−4.8, +1.2]); the numbered first version 70.3% (+0.2 [−3.8, +4.3]). The flatter tuning-word temperatures make it more cautious still (mean number 1.98 -> 1.81, assassin 5.3% -> 3.7%), at no measurable cost in wins.
+
+**Shortlist size** (2026-11-16, user's call). On the 2,648 turns the GBT spymaster played in the match above, its best clue over the whole pool (about 10,700 clues) is inside the Gaussian's top 200 on 74.9% of turns and inside the top 1000 on 95.0%; the expected reward lost against the whole pool is 0.046 words per turn at 200 and 0.006 at 1000 (`scripts/tools/shortlist_coverage.py`, docs/log.md). This uses only the model's own scores, no guesser outcomes, so the test words are not used to fit anything. A turn takes about 2.8 s at 1000 against 1.1 s at 200. The games above were played at 200.
 
 ## History: the numbered listener (first version, 2026-11-15)
 

@@ -405,7 +405,7 @@
    "name": "fresh_split_listener",
    "type": "fresh_split_listener",
    "params": {
-    "shortlist": 200,
+    "shortlist": 1000,
     "sigma": 1.5,
     "max_rarity": 10.0
    },

@@ -28,7 +28,7 @@ is computed exactly over which of our words have been picked so far
 (pick_temperature_listener.tempered_gain_and_penalty).
 
 **The search** is learned_listener's: the Gaussian expected-reward model
-shortlists 200 clues, the listener rescores them, and each clue's number is
+shortlists 1000 clues, the listener rescores them, and each clue's number is
 the one with the highest expected reward under the game's costs. No
 overpromise charge, STOP model, win value or tie-break: the expected reward
 alone, so the one difference from the Gaussian spymaster is the model of the
