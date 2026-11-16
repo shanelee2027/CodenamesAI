@@ -403,6 +403,18 @@ SPYMASTERS.update({
                  "probability of winning W(c, k) under V_4 from policy iteration against the simulated guesser "
                  "at sigma 2, each cell of V shrunk toward the logistic fit with the weight of 300 games, then "
                  "made monotone. Not in the paper. The value shown is W."},
+    # Built from the registry like the Gaussian entries, but it has a listener,
+    # so its clues are explained by it ("listener": True) rather than by
+    # Numberbatch similarity.
+    "paper_gbt": {
+        "label": "Paper: GBT spymaster (Section 4)", "paper": True, "listener": True,
+        "registry": "fresh_split_listener", "overrides": {},
+        "model": "listener_gbt_fresh_split.txt", "needs": ["listener_gbt_fresh_split.meta.json"],
+        "about": "The GBT spymaster: the expected reward of the Gaussian spymaster (+1, -0.2, -1, -10) with the "
+                 "guesser modelled by gradient-boosted trees trained on gpt-oss's rankings of clues given without "
+                 "a number, a temperature per pick. The Gaussian at sigma 1.5 shortlists 200 clues and the GBT "
+                 "rescores them. Trained on 400 of the 800 words; boards here use all 800. The value shown is the "
+                 "expected reward; the listing is the GBT's first-pick probabilities."},
 })
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a
@@ -496,7 +508,7 @@ class Engine:
         distribution over the board -- plus the pass, when it has one. From
         `LearnedListenerSpymaster.listen`, i.e. the numbers the clue was
         chosen on."""
-        if SPYMASTERS[key].get("registry"):
+        if SPYMASTERS[key].get("registry") and not SPYMASTERS[key].get("listener"):
             return self._explain_gaussian(board, key, clue, number)
         with _LOCK:
             sm = self.spymaster(key)
@@ -532,7 +544,8 @@ class Engine:
         entries = [(w, ROLE_CODE[r], float(x)) for w, r, x in zip(words, roles, s)]
         if got["outside"] is not None:
             entries.append(("PASS", "pass", got["outside"]))
-        z = np.array([e[2] for e in entries])
+        # First-pick probabilities at the model's pick-1 temperature, if it has one.
+        z = np.array([e[2] for e in entries]) / (getattr(sm, "pick_temperatures", None) or (1.0,))[0]
         p = np.exp(z - z.max())
         p /= p.sum()
         rate = getattr(sm, "rate", None)            # association models only
