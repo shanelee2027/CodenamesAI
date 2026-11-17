@@ -8339,3 +8339,11 @@ Expected: the shortlist to hold the best clue most of the time, since the two mo
 ## 2026-11-16 — GBT spymaster shortlist 200 -> 1000
 
 User's call after the coverage numbers above. `configs/spymasters.json` fresh_split_listener `shortlist` 1000 (docstring, version doc and play-site text updated). Expected: at 1000 the pick equals the whole-pool pick on 95.0% of the match's turns and loses 0.006 expected words per turn against the whole pool, at about 2.8 s per turn instead of 1.1 s. The choice uses only the model's own scores, not guesser outcomes, so it fits nothing on the test words. The games reported for this model (70.5%, `gbt-tunetemps-vs-gauss15-test-p1`) were played at 200; not rerun yet.
+
+## 2026-11-17 — Overnight shortlist matches: DeepInfra outage
+
+Plan (user: use overnight compute): replay `gbt-tunetemps-vs-gauss15-test-p1` (300 test-word boards, both seatings, gpt-oss guessing, Gaussian at sigma 1.5) with the GBT spymaster's shortlist at 1000 (the shipped config, label `gbt-shortlist1000-vs-gauss15-test-p*`), then over the whole clue pool (`gbt-fullpool-vs-gauss15-test-p*`, about 7.5 h of CPU at ~72 core-seconds per turn). Backup `cache/backups/llm_store_20261117_pre_shortlist_matches.db`.
+
+Memory: the first launch (8 workers x 16 games) put each worker at 3.2-3.8 GB and left 6 GB free, so it was stopped; it left 3 game records labelled `gbt-sl1000-vs-gauss15-test-p1` (stray, ignore). One full-pool turn peaks at 3.0 GB in one process and takes up to 88 s on a fresh board. Relaunched with 7 workers (8 games each at 1000, 2 at the full pool) and a watchdog that kills the arena under 2.5 GB available; 11 GB stayed free.
+
+Outage: from about 01:10, DeepInfra answered every gpt-oss-120b call with 503 "Model is not ready to serve requests". All six passes of the 1000 match finished the same 159 boards (cached) and discarded the other 141; usage stayed at $15.14. Still 503 at 04:52. scratchpad wait_then_matches.sh probes with one tiny call every 10 minutes and reruns the matches when it answers (passes of the 1000 match numbered from p7, so labels do not repeat the failed passes).
