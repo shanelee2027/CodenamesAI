@@ -34,6 +34,10 @@ overpromise charge, STOP model, win value or tie-break: the expected reward
 alone, so the one difference from the Gaussian spymaster is the model of the
 guesser. **No cap on the number** (`max_number=None`), as for the Gaussian
 spymaster in the thesis.
+
+**`gpu_trees=True`** evaluates the trees on the GPU (codenames/gpu_forest.py), which returns LightGBM's
+scores bit for bit, so the spymaster picks exactly the same clues. It is for full-pool searches
+(`shortlist` = the whole pool), where LightGBM's predict is ~78% of a ~93 s turn on one core.
 """
 
 from __future__ import annotations
@@ -52,11 +56,18 @@ PICK_TEMPERATURES = (1.026, 1.137, 1.372, 1.626, 1.863, 2.238, 2.904)
 class FreshSplitListenerSpymaster(LearnedListenerSpymaster):
     def __init__(self, *args, cache_dir: Path = DEFAULT_CACHE_DIR, model_path: Path | None = None,
                  max_number: int | None = None,
-                 pick_temperatures: tuple[float, ...] | list[float] = PICK_TEMPERATURES, **kwargs):
+                 pick_temperatures: tuple[float, ...] | list[float] = PICK_TEMPERATURES,
+                 gpu_trees: bool = False, **kwargs):
         cache_dir = Path(cache_dir)
         super().__init__(*args, cache_dir=cache_dir, model_path=Path(model_path or cache_dir / MODEL),
                          max_number=max_number, **kwargs)
         self.pick_temperatures = tuple(float(t) for t in pick_temperatures)
+        if gpu_trees:
+            from codenames.gpu_forest import GpuBooster
+
+            import dataclasses
+
+            self.bundle = dataclasses.replace(self.bundle, booster=GpuBooster(self.bundle.booster))
 
     def _gain_and_penalty(self, s_own, s_bad, costs, max_k, s_out, words=None):
         return tempered_gain_and_penalty(s_own, s_bad, costs, max_k, self.pick_temperatures, s_out)

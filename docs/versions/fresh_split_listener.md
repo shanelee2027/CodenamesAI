@@ -47,6 +47,8 @@ Same boards, other versions (paired over boards): with the slice temperatures 72
 
 **Shortlist size** (2026-11-16, user's call). On the 2,648 turns the GBT spymaster played in the match above, its best clue over the whole pool (about 10,700 clues) is inside the Gaussian's top 200 on 74.9% of turns and inside the top 1000 on 95.0%; the expected reward lost against the whole pool is 0.046 words per turn at 200 and 0.006 at 1000 (`scripts/tools/shortlist_coverage.py`, docs/log.md). This uses only the model's own scores, no guesser outcomes, so the test words are not used to fit anything. A turn takes about 2.8 s at 1000 against 1.1 s at 200. The games above were played at 200.
 
+**GPU trees** (2026-11-17). `gpu_trees=True` evaluates the booster with `codenames/gpu_forest.py`, bit-identical to LightGBM's raw predictions (tests/test_gpu_forest.py), so the same clues are chosen. A full-pool turn takes ~9-15 s instead of ~53-88 s; for the paper's full-pool search.
+
 ## History: the numbered listener (first version, 2026-11-15)
 
 Trained on rankings made with the number shown (1-4), first `number` picks, pick weights 0.75^(j-1), no temperatures (`listener_gbt_fresh_split_no_k.txt`). 29,659 training, 2,959 tuning and 2,005 test positions.
