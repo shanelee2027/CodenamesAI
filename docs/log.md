@@ -8359,3 +8359,11 @@ Options weighed: the trees on the GPU (RTX 5080, PyTorch/Triton already installe
 `tests/test_gpu_forest.py`: `np.array_equal` against LightGBM on a toy model with NaNs and zeros and on the shipped listener, including values exactly on thresholds, NaN, 0, +-tiny. End to end: full-pool turns on 8 test-word boards, mid-game, with and without: identical top-3 (clue, number, expected reward) on 8/8.
 
 Speed: GPU part 0.4 s per full turn (+0.56 s CPU encoding), against 73 s; a first attempt level by level in PyTorch took 6.6 s, bound by temporaries. Full-pool turn 9.1 s mid-game (53.3 s without), 14.9 s on a fresh board (88 s). Peak RAM per process 3.4 GB (3.0 GB without); 0.12 GB of GPU memory. A full-pool match should take ~1.5-2 h instead of ~7.5 h; feature extraction is now ~90% of a turn. `run_two_team_arena.py --param` now reads True/False as booleans. Triton's kernel cache goes to cache/triton (set in gpu_forest.py; its default is ~/.triton). The waiting overnight script now passes gpu_trees=True.
+
+## 2026-11-17 — Sonnet pilot: GBT spymaster (full pool) vs the Sonnet spymaster
+
+The user's plan for the paper: the GBT spymaster against the Sonnet 5.5 spymaster only, Sonnet 5.5 (medium) guessing for both, no gpt-oss games and no new games against the Gaussian (the queued gpt-oss shortlist matches were stopped at the user's request after ~2 minutes). Pilot (user's go-ahead): `fresh_split_listener` with `shortlist=1000000000 gpu_trees=True` vs `sonnet_spymaster model=claude-sonnet-5-5` (no cap), 5 boards from the 250 test words, both seatings, label `gbt-full-vs-sonnet-test-pilot`, 3 minutes at 5 x 2 in flight. Backup `cache/backups/llm_store_20261117_pre_gbt_sonnet_pilot.db`.
+
+Cost: Sonnet spymaster 41 clues, 19.0k input / 19.8k output tokens, ~$0.24 at $2/$10 per M; guesser 80 calls at the measured ~$0.0025-0.0031, ~$0.20-0.25; ~$0.46 for 10 games, ~$0.046 a game (8 guesser turns a game). Projected: 100 boards (200 games) ~$9-10, 300 boards ~$28. (An earlier estimate in conversation, $15-17 for 300 boards, counted the guesser only and missed the Sonnet spymaster's half.)
+
+Play (10 games, not a result): GBT won 4 (40%); GBT mean number 2.03, 1.77 own words per clue, 88.5% of its team's guesses its own words, no assassin; Sonnet 2.15, 1.68, 84.1%, assassin in 1 game.
