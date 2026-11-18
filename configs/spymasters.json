@@ -422,7 +422,7 @@
     "shortlist": 1000,
     "sigma": 1.5,
     "max_rarity": 10.0,
-    "value_path": "cache/policy_iteration/gbt/V_round3.npz"
+    "value_path": "cache/policy_iteration/gbt/V_round4.npz"
    },
    "trained": true,
    "roles": [

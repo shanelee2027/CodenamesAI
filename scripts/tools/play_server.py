@@ -415,6 +415,18 @@ SPYMASTERS.update({
                  "a number, a temperature per pick. The Gaussian at sigma 1.5 shortlists 1000 clues and the GBT "
                  "rescores them. Trained on 400 of the 800 words; boards here use all 800. The value shown is the "
                  "expected reward; the listing is the GBT's first-pick probabilities."},
+    # The GBT spymaster scored by the probability of winning, V from policy
+    # iteration in self-play against the simulated GBT guesser.
+    "paper_gbt_win_value": {
+        "label": "Paper: GBT spymaster + policy iteration (Section 5)", "paper": True, "listener": True,
+        "registry": "gbt_win_value", "overrides": {}, "score_is": "win",
+        "model": "listener_gbt_fresh_split.txt",
+        "needs": ["listener_gbt_fresh_split.meta.json", "policy_iteration/gbt/V_round4.npz"],
+        "about": "The GBT spymaster's model of the guesser (gradient-boosted trees, a temperature per pick), "
+                 "choosing the clue and number with the highest probability of winning W(c, k) instead of the "
+                 "expected reward. V(a, b) is V_4 from policy iteration: self-play on the 150 tuning words with a "
+                 "simulated guesser that samples from the GBT, logistic fit. The Gaussian at sigma 1.5 shortlists "
+                 "1000 clues. The value shown is W; the listing is the GBT's first-pick probabilities."},
 })
 
 # Clue computation holds one lock: LightGBM and the tensor are shared, and a

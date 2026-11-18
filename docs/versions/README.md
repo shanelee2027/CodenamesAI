@@ -8,6 +8,9 @@ One doc per model, named for the model — see `CLAUDE.md`'s naming rule
   incumbent's first stage.
 - [`gaussian_win_value`](gaussian_win_value.md): the Gaussian model scored by
   the probability of winning, with V from policy iteration (thesis Section 4).
+- [`gbt_win_value`](gbt_win_value.md): the GBT spymaster (`fresh_split_listener`)
+  scored by the probability of winning, V by policy iteration in self-play
+  against a simulated GBT guesser (thesis Section 5).
 - [`association_listener`](association_listener.md): the incumbent retrained
   with free-association counts, plus a pass priced on the absolute level they
   give.
