@@ -36,7 +36,18 @@ Change in V = game-weighted mean |V_t − V_{t−1}|. Two bootstrap resamples (o
 
 **Number choices** (scripts in the session scratchpad, docs/log.md 2026-11-18): no score has a two-peaked distribution of the number in any round (the isotonic Gaussian had 7 of 60), and mean number never goes against the score (bigger behind, smaller ahead). The opening is 2-4 (round 4: 31/45/22% for 2/3/4), drifting slowly toward smaller numbers over the rounds (mean 3.27, 3.16, 3.05, 2.91) while V changes by ~0.008.
 
+## Against the expected-reward GBT, gpt-oss guessing
+
+300 boards from the test words, both seatings, both at shortlist 1000, gpt-oss-120b (low) guessing (label `gbtw-vs-gbt-test-p2`, about $0.22):
+
+| | win% | 95% CI over boards | boards won both | assassin | mean number | own words per clue | own% |
+|---|---|---|---|---|---|---|---|
+| gbt_win_value (V_4) | **58.3%** | [55.0, 61.8] | 84 | 10.3% | 2.48 | 1.81 | 81.2% |
+| fresh_split_listener | 41.7% | | 34 | 3.5% | 2.02 | 1.74 | 88.5% |
+
+Sign test on the 118 boards one side won twice: p = 5e-6. The win comes with about three times the assassin rate. gpt-oss is the guesser the GBT was trained on, so this is not the paper's protocol.
+
 ## Not measured yet
 
-- Any game against an LLM guesser. Everything above is self-play against the simulated GBT guesser. A Sonnet match (against the Sonnet spymaster, Sonnet guessing, test-word boards, as for the GBT spymaster) is about $9 of Anthropic spend and needs approval.
+- Any game with Sonnet guessing. A Sonnet match (against the Sonnet spymaster, Sonnet guessing, test-word boards, as for the GBT spymaster) is about $9 of Anthropic spend and needs approval.
 - V reads only the score, not which words are left.
