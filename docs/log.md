@@ -8370,3 +8370,18 @@ Play (10 games, not a result): GBT won 4 (40%); GBT mean number 2.03, 1.77 own w
 
 **Match** (label `gbt-full-vs-sonnet-test-p1`, same setup as the pilot, 100 boards from the test words, both seatings, one pass, no board discarded, 27 minutes at 7 x 2 in flight). Backup `cache/backups/llm_store_20261117_pre_gbt_sonnet_match.db`. Spend ~$9.35 including the pilot by the watchdog's estimate (guesser $0.0031 a call, spymaster tokens at $2/$10 per M); stop was $12. **The GBT spymaster wins 49.0% [42.5, 55.5]** (95% bootstrap over boards) against the Sonnet 5.5 spymaster. Boards won in both seatings: GBT 21, Sonnet 23, split 56 (sign test p = 0.88). GBT: mean number 1.96, 1.71 own words per clue, 89.8% of its team's guesses its own words, assassin in 2.5% of its games; Sonnet: 2.24, 1.73, 83.8%, 8.5%. As A (first, 9 words) 41.0% against 43.0%; as B 57.0% against 59.0%.
 For reference only (different boards: all 800 words, so not comparable): the Gaussian spymaster at sigma 1.5 won 34.0% [28.0, 40.0] against the same Sonnet spymaster in Section 3. Thesis 4.5 filled in.
+
+## 2026-11-18 — Policy iteration for the GBT spymaster (`gbt_win_value`)
+
+User's request: the policy iteration step of Section 4's Gaussian work, with the GBT in place of the Gaussian. New model `gbt_win_value` (codenames/spymasters/gbt_win_value.py, configs/spymasters.json, docs/versions/gbt_win_value.md once there are results): `fresh_split_listener`'s search and guesser model, maximizing W(c, k) from codenames/win_value.py instead of the expected reward; the ending probabilities are `tempered_gain_and_penalty` with indicator costs, as gaussian_win_value does with the Gaussian integral.
+
+Choices (flagged for the user):
+- **Guesser of the self-play:** `sim:fresh_split`, ListenerSampleGuesser with the GBT spymaster's own features and per-pick temperatures (pick j from softmax(s / tau_j) over the words left; new `pick_temperatures` option). In these games the spymaster's guesser model is exactly true, as the Gaussian guesser was for the Gaussian spymaster. No API calls.
+- **Boards:** the 150 tuning words (`--vocab split_tune`), not the training words (the trees are sharper on them than on new words) and not the test words (kept for evaluation).
+- **Shortlist 1000** in self-play, not the whole pool: ~0.75 s a clue against ~10 s; 95% of turns pick the whole-pool best at 1000 (2026-11-16).
+- **Logistic V** (`build_win_value.py --logistic`): in the Gaussian runs only the logistic V gave smooth number choices; isotonic and shrunk tables flipped the opening number between rounds (2026-11-13 to 15).
+- 1,000 boards per round in both seatings (2,000 games; the Gaussian used 2,500 boards), the same boards every round; up to 4 W rounds after round 0, stopping early if V's game-weighted mean change falls below 0.005.
+
+Crash first: a 4-board smoke test at 8 workers loaded three copies of the GBT's feature tables per worker (side A, side B, the guesser's reader; ~1.2 GB each at rest, peaks above 3 GB a process), ran WSL out of its 30 GB, and WSL rebooted (lost the night; also killed the play server and tunnel). Fix: `ListenerBundle.load` now loads each (cache dir, model) once per process and shares it (the bundle is frozen and only read): two spymasters plus the guesser take 1.78 GB together. Measured at 1 worker: one board (2 games) in ~26-31 s, peak RSS 3.35 GB. Runs at 6 workers under a watchdog that kills the run below 4 GB available. Expected ~75 min per round, ~6 h in all.
+
+Driver: scripts/pipeline/gbt_policy_iteration.py (games in cache/selfplay_games.db, V in cache/policy_iteration/gbt/). Tests: tests/test_gbt_win_value.py (W at k = 1 by hand, sampling at each pick's temperature).

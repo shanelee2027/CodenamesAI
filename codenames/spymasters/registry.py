@@ -64,6 +64,7 @@ from codenames.spymasters.base import Spymaster
 from codenames.spymasters.centroid import CentroidSpymaster
 from codenames.spymasters.expected_words import ExpectedWordsSpymaster
 from codenames.spymasters.gaussian_win_value import GaussianWinValueSpymaster
+from codenames.spymasters.gbt_win_value import GbtWinValueSpymaster
 from codenames.spymasters.gptoss_reward_policy import GptossRewardPolicySpymaster
 from codenames.spymasters.imitation_policy import ImitationPolicySpymaster
 from codenames.spymasters.learned_listener import LearnedListenerSpymaster
@@ -96,6 +97,7 @@ SPYMASTER_CLASSES: dict[str, type[Spymaster]] = {
     "floored_overpromise_listener": FlooredOverpromiseListenerSpymaster,
     "online_vocab_listener": OnlineVocabListenerSpymaster,
     "fresh_split_listener": FreshSplitListenerSpymaster,
+    "gbt_win_value": GbtWinValueSpymaster,
     "leftover_plus_one_listener": LeftoverPlusOneListenerSpymaster,
     "profile_temperature_listener": ProfileTemperatureListenerSpymaster,
     "within_turn_listener": WithinTurnListenerSpymaster,

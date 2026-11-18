@@ -85,7 +85,7 @@ class TestRegistry:
                                 "margin_value_overpromise_listener", "floored_overpromise_listener",
                                 "profile_temperature_listener", "online_vocab_listener",
                                 "leftover_plus_one_listener", "gaussian_win_value",
-                                "fresh_split_listener"}
+                                "fresh_split_listener", "gbt_win_value"}
 
     def test_the_paid_spymaster_is_never_picked_up_by_role(self):
         """Every game sonnet_spymaster plays costs money, so no arena may
@@ -103,13 +103,14 @@ class TestRegistry:
 
     def test_only_the_policies_are_marked_trained(self):
         """The clue policies need a checkpoint from their training scripts,
-        and gaussian_win_value the V table from policy iteration; every other
+        and gaussian_win_value and gbt_win_value the V table from policy iteration; every other
         registered spymaster is constructible straight from its config params."""
         from codenames.spymasters.registry import load_spymasters
 
         entries = load_spymasters()
         assert {n for n, e in entries.items() if e.trained} == {"imitation_policy", "gptoss_reward_policy",
-                                                               "win_actor_critic", "gaussian_win_value"}
+                                                               "win_actor_critic", "gaussian_win_value",
+                                                               "gbt_win_value"}
 
     def test_spec_is_a_class_and_kwargs_tuple(self):
         from codenames.spymasters.registry import load_spymasters

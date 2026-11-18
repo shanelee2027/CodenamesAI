@@ -90,6 +90,9 @@ def bundle_normalization(model_path: Path) -> str:
     return json.loads(side.read_text()).get("normalization", "base") if side.exists() else "base"
 
 
+_LOADED: dict[tuple[str, str], "ListenerBundle"] = {}
+
+
 @dataclass(frozen=True)
 class ListenerBundle:
     """Every artifact `extract` needs, loaded once.
@@ -117,6 +120,17 @@ class ListenerBundle:
 
     @classmethod
     def load(cls, cache_dir: Path, model_path: Path) -> "ListenerBundle":
+        """Loaded once per process and shared: the bundle is frozen and only read, and self-play
+        builds two spymasters plus a simulated guesser on the same booster in every arena worker
+        (about 1.2 GB per copy for the GBT spymaster; three copies a worker crashed WSL, docs/log.md
+        2026-11-18)."""
+        key = (str(Path(cache_dir).resolve()), str(Path(model_path).resolve()))
+        if key not in _LOADED:
+            _LOADED[key] = cls._load(Path(cache_dir), Path(model_path))
+        return _LOADED[key]
+
+    @classmethod
+    def _load(cls, cache_dir: Path, model_path: Path) -> "ListenerBundle":
         import lightgbm as lgb
 
         def maybe(loader, name):

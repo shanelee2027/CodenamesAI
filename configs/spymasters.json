@@ -413,6 +413,21 @@
    "roles": [
     "exploration"
    ]
+  },
+  {
+   "_comment": "The GBT spymaster (fresh_split_listener) scored by the probability of winning, W(c, k), instead of the expected reward; V(a, b) by policy iteration in self-play with a simulated guesser that samples from the GBT with its per-pick temperatures (sim:fresh_split), boards from the 150 tuning words (scripts/pipeline/gbt_policy_iteration.py). value_path is the latest round's V. docs/versions/gbt_win_value.md.",
+   "name": "gbt_win_value",
+   "type": "gbt_win_value",
+   "params": {
+    "shortlist": 1000,
+    "sigma": 1.5,
+    "max_rarity": 10.0,
+    "value_path": "cache/policy_iteration/gbt/V_round3.npz"
+   },
+   "trained": true,
+   "roles": [
+    "exploration"
+   ]
   }
- ]
+]
 }

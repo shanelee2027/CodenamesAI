@@ -124,7 +124,9 @@ def build_guesser(spec: str, pool_config: Path | dict = DEFAULT_POOL_CONFIG) -> 
                                         ListenerSampleGuesser: a fitted listener as the
                                         guesser, no API calls (codenames/guessers/
                                         listener_sample.py; presets assoc, conceptnet,
-                                        incumbent). `frozen` drops the within-turn model.
+                                        incumbent, and fresh_split: the thesis's GBT with
+                                        its per-pick temperatures). `frozen` drops the
+                                        within-turn model.
 
     Every LLM guesser caches to cache/llm_store.db, keyed by model and
     effort (and temperature, when set), so two specs never share an answer and
